@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+
+{% block title %}Voice Call - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .voice-call-container {
+        height: 85vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 15px;
+        overflow: hidden;
+        position: relative;
+    }
+    .call-header {
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        padding: 20px;
+        text-align: center;
+    }
+    .call-main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 60%;
+        color: white;
+    }
+    .caller-avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+    }
+    .caller-avatar i {
+        font-size: 3em;
+    }
+    .call-status {
+        font-size: 1.2em;
+        margin-bottom: 10px;
+    }
+    .call-timer {
+        font-size: 2em;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+    .call-controls {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        padding: 30px 20px;
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+    }
+    .control-btn {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5em;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    .control-btn:hover {
+        transform: scale(1.1);
+    }
+    .control-btn:active {
+        transform: scale(0.95);
+    }
+    .end-call {
+        background: #dc3545;
+        color: white;
+    }
+    .mute-audio {
+        background: #6c757d;
+        color: white;
+    }
+    .mute-audio.active {
+        background: #dc3545;
+    }
+    .speaker {
+        background: #17a2b8;
+        color: white;
+    }
+    .speaker.active {
+        background: #28a745;
+    }
+    .hold-call {
+        background: #ffc107;
+        color: black;
+    }
+    .hold-call.active {
+        background: #fd7e14;
+    }
+    .call-notes {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .participants-list {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        padding: 15px;
+        margin: 20px;
+    }
+    .participant-item {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    .participant-item:last-child {
+        border-bottom: none;
+    }
+    .participant-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #007bff;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 10px;
+    }
+    .call-quality {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 20px;
+        font-size: 0.9em;
+    }
+    .recording-indicator {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: #dc3545;
+        color: white;
+        padding: 10px 15px;
+        border-radius: 20px;
+        font-size: 0.9em;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="voice-call-container">
+                <!-- Call Quality Indicator -->
+                <div class="call-quality">
+                    <i class="fas fa-signal me-1"></i> Excellent
+                </div>
+
+                <!-- Recording Indicator -->
+                <div class="recording-indicator">
+                    <i class="fas fa-circle me-1"></i> Recording
+                </div>
+
+                <!-- Call Header -->
+                <div class="call-header">
+                    <h4 class="mb-1">Voice Call</h4>
+                    <p class="mb-0">Secure Medical Consultation</p>
+                </div>
+
+                <!-- Call Main Area -->
+                <div class="call-main">
+                    <div class="caller-avatar">
+                        <i class="fas fa-user-md"></i>
+                    </div>
+                    <div class="call-status" id="callStatus">Connected</div>
+                    <div class="call-timer" id="callTimer">00:00:00</div>
+                    <div class="caller-name">Dr. Sarah Johnson</div>
+                    <div class="caller-specialty">Cardiologist</div>
+                </div>
+
+                <!-- Call Notes -->
+                <div class="call-notes">
+                    <h6><i class="fas fa-sticky-note me-2"></i>Call Notes</h6>
+                    <textarea class="form-control border-0" rows="3" placeholder="Take notes during the call..."></textarea>
+                </div>
+
+                <!-- Participants List -->
+                <div class="participants-list">
+                    <h6><i class="fas fa-users me-2"></i>Participants (2)</h6>
+                    <div class="participant-item">
+                        <div class="participant-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">You</div>
+                            <small class="text-muted">Caller</small>
+                        </div>
+                        <div class="text-success">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                    </div>
+                    <div class="participant-item">
+                        <div class="participant-avatar">
+                            SJ
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">Dr. Sarah Johnson</div>
+                            <small class="text-muted">Cardiologist</small>
+                        </div>
+                        <div class="text-success">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Call Controls -->
+                <div class="call-controls">
+                    <button class="control-btn mute-audio" id="muteBtn" title="Mute">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <button class="control-btn speaker" id="speakerBtn" title="Speaker">
+                        <i class="fas fa-volume-up"></i>
+                    </button>
+                    <button class="control-btn hold-call" id="holdBtn" title="Hold Call">
+                        <i class="fas fa-pause"></i>
+                    </button>
+                    <button class="control-btn end-call" id="endCallBtn" title="End Call">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call Information Card -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Call Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <small class="text-muted">Call Type</small>
+                            <div class="fw-bold">Medical Consultation</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Appointment</small>
+                            <div class="fw-bold">#APT-2024-0015</div>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Connection</small>
+                            <div class="fw-bold text-success">Secure</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Encryption</small>
+                            <div class="fw-bold">AES-256</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-tools me-2"></i>Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group w-100">
+                        <button class="btn btn-outline-primary btn-sm" onclick="shareScreen()">
+                            <i class="fas fa-desktop me-1"></i>Share Screen
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" onclick="sendFile()">
+                            <i class="fas fa-file me-1"></i>Send File
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="toggleRecording()">
+                            <i class="fas fa-record-vinyl me-1"></i>Record
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let callStartTime;
+    let callTimer;
+    let isMuted = false;
+    let isSpeakerOn = false;
+    let isOnHold = false;
+    let isRecording = true;
+
+    $(document).ready(function() {
+        // Start call timer
+        startCallTimer();
+
+        // Initialize call controls
+        initCallControls();
+
+        // Simulate call connection
+        simulateCallConnection();
+    });
+
+    function startCallTimer() {
+        callStartTime = new Date();
+        callTimer = setInterval(updateCallTimer, 1000);
+    }
+
+    function updateCallTimer() {
+        const now = new Date();
+        const diff = now - callStartTime;
+        
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        
+        $('#callTimer').text(
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+    }
+
+    function initCallControls() {
+        // Mute button
+        $('#muteBtn').click(function() {
+            isMuted = !isMuted;
+            $(this).toggleClass('active', isMuted);
+            $(this).html(isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>');
+            updateCallStatus(isMuted ? 'You are muted' : 'Connected');
+        });
+
+        // Speaker button
+        $('#speakerBtn').click(function() {
+            isSpeakerOn = !isSpeakerOn;
+            $(this).toggleClass('active', isSpeakerOn);
+            $(this).html(isSpeakerOn ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>');
+        });
+
+        // Hold button
+        $('#holdBtn').click(function() {
+            isOnHold = !isOnHold;
+            $(this).toggleClass('active', isOnHold);
+            updateCallStatus(isOnHold ? 'Call on hold' : 'Connected');
+        });
+
+        // End call button
+        $('#endCallBtn').click(function() {
+            endCall();
+        });
+    }
+
+    function updateCallStatus(status) {
+        $('#callStatus').text(status);
+    }
+
+    function simulateCallConnection() {
+        // Simulate call quality changes
+        setInterval(() => {
+            const qualities = ['Excellent', 'Good', 'Fair', 'Poor'];
+            const randomQuality = qualities[Math.floor(Math.random() * qualities.length)];
+            $('.call-quality').html(`<i class="fas fa-signal me-1"></i> ${randomQuality}`);
+        }, 10000);
+    }
+
+    function endCall() {
+        if (confirm('Are you sure you want to end the call?')) {
+            clearInterval(callTimer);
+            
+            // Show call ended screen
+            $('.voice-call-container').html(`
+                <div class="call-main">
+                    <div class="caller-avatar" style="background: #6c757d;">
+                        <i class="fas fa-phone-slash"></i>
+                    </div>
+                    <div class="call-status">Call Ended</div>
+                    <div class="call-timer">${$('#callTimer').text()}</div>
+                    <div class="mt-4">
+                        <button class="btn btn-primary me-2" onclick="window.location.href='{{ url_for('communication_dashboard', appointment_id=1) }}'">
+                            <i class="fas fa-comments me-1"></i>Send Message
+                        </button>
+                        <button class="btn btn-success" onclick="scheduleFollowUp()">
+                            <i class="fas fa-calendar-plus me-1"></i>Schedule Follow-up
+                        </button>
+                    </div>
+                </div>
+            `);
+        }
+    }
+
+    function shareScreen() {
+        alert('Screen sharing functionality would be implemented here');
+    }
+
+    function sendFile() {
+        alert('File sharing functionality would be implemented here');
+    }
+
+    function toggleRecording() {
+        isRecording = !isRecording;
+        $('.recording-indicator').toggle(isRecording);
+        alert(isRecording ? 'Recording started' : 'Recording stopped');
+    }
+
+    function scheduleFollowUp() {
+        alert('Schedule follow-up appointment functionality');
+    }
+
+    // Handle page unload
+    $(window).on('beforeunload', function() {
+        if (callTimer) {
+            return 'Are you sure you want to leave? The call will be ended.';
+        }
+    });
+</script>
+{% endblock %}

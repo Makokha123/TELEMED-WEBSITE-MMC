@@ -1,0 +1,206 @@
+:root {
+    --primary-color: #0d6efd;
+    --secondary-color: #6c757d;
+    --success-color: #198754;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #0dcaf0;
+    --bg-color: #f8f9fa;
+    --text-color: #1e293b;
+    --card-bg: #ffffff;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+/* Dashboard Cards */
+.dashboard-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px);
+}
+
+.dashboard-card .card-body {
+    padding: 2rem;
+}
+
+.dashboard-card i {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Navigation */
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+    border: none;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #0a58ca 0%, #084298 100%);
+}
+
+/* Tables */
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+/* Forms */
+.form-control, .form-select {
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    padding: 0.75rem 1rem;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Alerts */
+.alert {
+    border-radius: 10px;
+    border: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .dashboard-card .card-body {
+        padding: 1.5rem;
+    }
+    
+    .navbar-brand {
+        font-size: 1.2rem;
+    }
+}
+
+/* Loading Spinner */
+.loading-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #0d6efd;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Footer contact icons and social links */
+.footer-contact-icons {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.footer-contact-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.05rem;
+    text-decoration: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.footer-contact-icon.phone { background: var(--primary-color); }
+.footer-contact-icon.whatsapp { background: #25D366; }
+.footer-contact-icon.message { background: #ffffff; color: #343a40; border: 1px solid rgba(0,0,0,0.08); }
+
+.social-links { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.social-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+.social-icon.whatsapp { background: #25D366; }
+.social-icon.facebook { background: #3b5998; }
+.social-icon.telegram { background: #0088cc; }
+.social-icon.instagram { background: #E1306C; }
+.social-icon.twitter { background: #1DA1F2; }
+
+@media (max-width: 576px) {
+    .footer-contact-icons { gap: 0.5rem; }
+    .footer-contact-icon { width: 40px; height: 40px; }
+}
+
+/* Dark theme overrides when body[data-theme="dark"] */
+body[data-theme="dark"] {
+    --bg-color: #0b1220;
+    --text-color: #e6eef8;
+    --card-bg: #0f1724;
+    --primary-color: #2563eb;
+}
+
+/* Use card background variable */
+.info-card, .dashboard-card, .card {
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+
+/* Navbar & footer specific dark mode */
+body[data-theme="dark"] .navbar {
+    background-color: #0b1220 !important;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+body[data-theme="dark"] .navbar .nav-link,
+body[data-theme="dark"] .navbar .navbar-brand {
+    color: var(--text-color) !important;
+}
+
+body[data-theme="dark"] footer {
+    background: #071124;
+    color: var(--text-color);
+}
+
+body[data-theme="dark"] .footer-contact-icon.message { color: #0f1724; }

@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+
+{% block title %}Patient Dashboard - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .welcome-card {
+        background: linear-gradient(135deg, #28a745, #20c997);
+        color: white;
+        border: none;
+        border-radius: 15px;
+    }
+    .quick-action-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+        text-align: center;
+        padding: 1.5rem;
+        height: 100%;
+    }
+    .quick-action-card:hover {
+        transform: translateY(-5px);
+    }
+    .appointment-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .doctor-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.2em;
+    }
+    .health-metric {
+        text-align: center;
+        padding: 1rem;
+    }
+    .metric-value {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #007bff;
+    }
+    .metric-label {
+        font-size: 0.9em;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Welcome Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card welcome-card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h3 class="card-title mb-2">Hello, {{ current_user.first_name }}!</h3>
+                            <p class="card-text mb-0">
+                                {% if appointments %}
+                                    You have {{ appointments|length }} upcoming appointment{% if appointments|length > 1 %}s{% endif %}.
+                                {% else %}
+                                    You have no upcoming appointments. Book one now!
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+                                {% if current_user.profile_picture %}
+                                    <img src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile" style="width:64px;height:64px;border-radius:50%;object-fit:cover;" />
+                                {% else %}
+                                    <i class="fas fa-heartbeat fa-4x opacity-50"></i>
+                                {% endif %}
+                                <div>
+                                    <form id="uploadPicFormPatient" enctype="multipart/form-data">
+                                        <input type="file" name="file" id="patientProfileFile" accept="image/*" style="display:none;" />
+                                        <button type="button" class="btn btn-light btn-sm" id="uploadPicBtnPatient">Upload Photo</button>
+                                    </form>
+                                </div>
+                                <div>
+                                    <a href="{{ url_for('edit_patient_profile') }}" class="btn btn-outline-primary btn-sm">Edit Profile</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="{{ url_for('patient_appointment') }}" class="text-decoration-none">
+                <div class="card quick-action-card border-left-primary">
+                    <div class="card-body">
+                        <i class="fas fa-calendar-plus fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Book Appointment</h5>
+                        <p class="card-text text-muted">Schedule a new consultation with a doctor</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="{{ url_for('patient_communication') }}" class="text-decoration-none">
+                <div class="card quick-action-card border-left-success">
+                    <div class="card-body">
+                        <i class="fas fa-comments fa-3x text-success mb-3"></i>
+                        <h5 class="card-title">My Messages</h5>
+                        <p class="card-text text-muted">Chat with your healthcare providers</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card quick-action-card border-left-info" onclick="viewMedicalRecords()">
+                <div class="card-body">
+                    <i class="fas fa-file-medical fa-3x text-info mb-3"></i>
+                    <h5 class="card-title">Medical Records</h5>
+                    <p class="card-text text-muted">Access your health history and reports</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card quick-action-card border-left-warning" onclick="findDoctors()">
+                <div class="card-body">
+                    <i class="fas fa-user-md fa-3x text-warning mb-3"></i>
+                    <h5 class="card-title">Find Doctors</h5>
+                    <p class="card-text text-muted">Discover specialists for your needs</p>
+                </div>
+            </div>
+        </div>
+    </div>
+<script>
+    document.getElementById('uploadPicBtnPatient')?.addEventListener('click', function(){
+        document.getElementById('patientProfileFile').click();
+    });
+
+    document.getElementById('patientProfileFile')?.addEventListener('change', async function(e){
+        const f = e.target.files[0];
+        if (!f) return;
+        const form = new FormData();
+        form.append('file', f);
+        try {
+            const res = await fetch('/upload_profile_picture', { method: 'POST', body: form });
+            if (res.ok) {
+                location.reload();
+            } else {
+                const data = await res.json();
+                alert('Upload failed: ' + (data.error || 'unknown'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Upload failed');
+        }
+    });
+</script>
+
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-lg-8">
+            <!-- Upcoming Appointments -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Upcoming Appointments</h5>
+                    <a href="{{ url_for('patient_appointment') }}" class="btn btn-sm btn-outline-primary">
+                        View All
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if appointments and appointments|length > 0 %}
+                    <div class="list-group list-group-flush">
+                        {% for appointment in appointments %}
+                        <div class="list-group-item">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <div class="doctor-avatar">
+                                        {% if appointment.doctor and appointment.doctor.user %}
+                                            {{ appointment.doctor.user.first_name[0] }}{{ appointment.doctor.user.last_name[0] }}
+                                        {% else %}
+                                            DR
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <h6 class="mb-1">
+                                        {% if appointment.doctor and appointment.doctor.user %}
+                                            Dr. {{ appointment.doctor.user.first_name }} {{ appointment.doctor.user.last_name }}
+                                        {% else %}
+                                            Doctor
+                                        {% endif %}
+                                    </h6>
+                                    <p class="mb-1 text-muted">
+                                        <i class="fas fa-stethoscope me-1"></i>
+                                        {% if appointment.doctor and appointment.doctor.specialization %}
+                                            {{ appointment.doctor.specialization }}
+                                        {% else %}
+                                            General Practitioner
+                                        {% endif %}
+                                    </p>
+                                    <p class="mb-1 text-muted">
+                                        <i class="fas fa-calendar me-1"></i>
+                                        {% if appointment.appointment_date %}
+                                            {{ appointment.appointment_date.strftime('%A, %B %d, %Y') }}
+                                        {% else %}
+                                            Date not set
+                                        {% endif %}
+                                    </p>
+                                    <p class="mb-1 text-muted">
+                                        <i class="fas fa-clock me-1"></i>
+                                        {% if appointment.appointment_date %}
+                                            {{ appointment.appointment_date.strftime('%H:%M') }}
+                                        {% endif %}
+                                        •
+                                        <i class="fas fa-{{ 'video' if appointment.consultation_type == 'video' else 'phone' if appointment.consultation_type == 'voice' else 'comments' }} me-1"></i>
+                                        {% if appointment.consultation_type %}
+                                            {{ appointment.consultation_type|title }}
+                                        {% else %}
+                                            Consultation
+                                        {% endif %}
+                                    </p>
+                                    {% if appointment.symptoms %}
+                                    <small class="text-muted">Reason: {{ appointment.symptoms|truncate(50) }}</small>
+                                    {% endif %}
+                                </div>
+                                <div class="col-auto">
+                                    <div class="btn-group">
+                                        {% if appointment.status == 'confirmed' %}
+                                        <button class="btn btn-sm btn-outline-primary" 
+                                                onclick="joinConsultation('{{ appointment.id }}')">
+                                            <i class="fas fa-{{ 'video' if appointment.consultation_type == 'video' else 'phone' if appointment.consultation_type == 'voice' else 'comments' }} me-1"></i>
+                                            Join
+                                        </button>
+                                        {% endif %}
+                                        <button class="btn btn-sm btn-outline-info" 
+                                                onclick="sendMessage('{{ appointment.id }}')">
+                                            <i class="fas fa-comment me-1"></i>Message
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
+                        <h5>No upcoming appointments</h5>
+                        <p class="text-muted">Schedule your first consultation to get started.</p>
+                        <a href="{{ url_for('patient_appointment') }}" class="btn btn-primary">
+                            <i class="fas fa-calendar-plus me-2"></i>Book Appointment
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Health Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Health Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ vitals.blood_pressure if vitals and vitals.blood_pressure else (patient.blood_type if false else ("N/A")) }}</div>
+                            <div class="metric-label">Blood Pressure</div>
+                            {% if vitals and vitals.blood_pressure %}
+                                <small class="text-success">Latest</small>
+                            {% else %}
+                                <small class="text-muted">No data</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ vitals.heart_rate if vitals and vitals.heart_rate else 'N/A' }}</div>
+                            <div class="metric-label">Heart Rate</div>
+                            {% if vitals and vitals.heart_rate %}
+                                <small class="text-success">Latest</small>
+                            {% else %}
+                                <small class="text-muted">No data</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ vitals.temperature if vitals and vitals.temperature else 'N/A' }}{% if vitals and vitals.temperature %}°F{% endif %}</div>
+                            <div class="metric-label">Temperature</div>
+                            {% if vitals and vitals.temperature %}
+                                <small class="text-success">Latest</small>
+                            {% else %}
+                                <small class="text-muted">No data</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ patient.blood_type or 'N/A' }}</div>
+                            <div class="metric-label">Blood Type</div>
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{% if bmi %}{{ bmi }}{% else %}N/A{% endif %}</div>
+                            <div class="metric-label">BMI</div>
+                            {% if bmi_category %}
+                                {% set badge_class = 'bg-info' %}
+                                {% if bmi_category == 'Normal' %}
+                                    {% set badge_class = 'bg-success' %}
+                                {% elif bmi_category == 'Overweight' %}
+                                    {% set badge_class = 'bg-warning text-dark' %}
+                                {% elif bmi_category == 'Obese' %}
+                                    {% set badge_class = 'bg-danger' %}
+                                {% elif bmi_category == 'Underweight' %}
+                                    {% set badge_class = 'bg-info' %}
+                                {% endif %}
+                                <div class="mt-1">
+                                    <span class="badge {{ badge_class }}" data-bs-toggle="popover" data-bs-trigger="hover focus" title="BMI ranges" data-bs-content="Underweight: &lt;18.5; Normal: 18.5–24.9; Overweight: 25–29.9; Obese: ≥30">{{ bmi_category }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Recent Medications</h6>
+                            <ul class="list-unstyled">
+                                {% if medications %}
+                                    {% for m in medications %}
+                                        <li><i class="fas fa-pills text-primary me-2"></i>{{ m }}</li>
+                                    {% endfor %}
+                                {% else %}
+                                    <li class="text-muted">No medications listed</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Allergies</h6>
+                            <div>
+                                {% if allergies %}
+                                    {% for a in allergies %}
+                                        <span class="badge bg-warning me-2">{{ a }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted">No allergies listed</span>
+                                {% endif %}
+                            </div>
+                            <h6 class="mt-3">Conditions</h6>
+                            <div>
+                                {% if patient.medical_history %}
+                                    <span class="badge bg-info me-2">Medical history available</span>
+                                {% else %}
+                                    <span class="text-muted">No recorded conditions</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-lg-4">
+            <!-- Recent Activity -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        {% if recent_activity %}
+                            {% for act in recent_activity %}
+                                <div class="list-group-item px-0">
+                                    <div class="d-flex">
+                                        <div class="flex-shrink-0">
+                                            {% if act.type == 'record' %}
+                                                <i class="fas fa-file-medical text-info"></i>
+                                            {% else %}
+                                                <i class="fas fa-comment text-warning"></i>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex-grow-1 ms-3">
+                                            <small class="text-muted">{{ act.time.strftime('%b %d, %Y %I:%M %p') if act.time else '' }}</small>
+                                            <p class="mb-1">{{ act.text }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="list-group-item px-0 text-muted">No recent activity</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Contacts -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-phone-alt me-2"></i>Emergency Contacts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">Emergency Medical Services</h6>
+                                    <small class="text-muted">24/7 Emergency Line</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-phone"></i> Call
+                                </button>
+                            </div>
+                        </div>
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">MAKOKHA Medical Centre</h6>
+                                    <small class="text-muted">Main Hospital Line</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-phone"></i> Call
+                                </button>
+                            </div>
+                        </div>
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">Pharmacy</h6>
+                                    <small class="text-muted">Prescription Refills</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-phone"></i> Call
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- My Contact Information -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-address-book me-2"></i>My Contacts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="info-item">
+                        <span class="info-label">Email:</span>
+                        <span class="info-value">{{ current_user.email }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Phone:</span>
+                        <span class="info-value">{{ current_user.phone or 'Not provided' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Age:</span>
+                        <span class="info-value">{% if current_user.age is not none %}{{ current_user.age }}{% else %}Not provided{% endif %}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Emergency Contact:</span>
+                        <span class="info-value">{{ patient.emergency_contact if patient and patient.emergency_contact else 'Not provided' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Health Tips -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Health Tips</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-heart me-2"></i>Stay Hydrated</h6>
+                        <p class="mb-0 small">Drink at least 8 glasses of water daily to maintain optimal health.</p>
+                    </div>
+                    <div class="alert alert-success">
+                        <h6><i class="fas fa-walking me-2"></i>Daily Exercise</h6>
+                        <p class="mb-0 small">30 minutes of moderate exercise can improve cardiovascular health.</p>
+                    </div>
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-bed me-2"></i>Sleep Well</h6>
+                        <p class="mb-0 small">Aim for 7-9 hours of quality sleep each night for better recovery.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function joinConsultation(appointmentId) {
+        window.location.href = `/communication/appointment/${appointmentId}`;
+    }
+
+    function sendMessage(appointmentId) {
+        window.location.href = `/communication/appointment/${appointmentId}`;
+    }
+
+    function viewMedicalRecords() {
+        alert('View medical records functionality');
+        // Implement medical records view
+    }
+
+    function findDoctors() {
+        alert('Find doctors functionality');
+        // Implement doctor search
+    }
+
+    // Emergency call function
+    $('.btn-outline-danger').click(function() {
+        if (confirm('Are you sure you want to call Emergency Medical Services?')) {
+            alert('Calling Emergency Services...');
+            // Implement emergency call
+        }
+    });
+
+    // initialize bootstrap popovers for BMI badges
+    document.addEventListener('DOMContentLoaded', function(){
+        try{
+            var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+            popoverTriggerList.map(function (popoverTriggerEl) {
+                return new bootstrap.Popover(popoverTriggerEl)
+            })
+        }catch(e){
+            // ignore if bootstrap not available
+            console.error('Popover init failed', e)
+        }
+    });
+</script>
+{% endblock %}

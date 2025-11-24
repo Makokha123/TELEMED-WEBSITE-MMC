@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}Consultation - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-container {
+        height: 70vh;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .chat-header {
+        background: #25D366;
+        color: white;
+        padding: 15px;
+    }
+    .chat-messages {
+        height: calc(100% - 120px);
+        overflow-y: auto;
+        padding: 15px;
+        background: #e5ddd5;
+    }
+    .message {
+        margin-bottom: 15px;
+        clear: both;
+    }
+    .message-sent {
+        float: right;
+        background: #dcf8c6;
+        border-radius: 10px 10px 0 10px;
+    }
+    .message-received {
+        float: left;
+        background: white;
+        border-radius: 10px 10px 10px 0;
+    }
+    .message-content {
+        padding: 8px 12px;
+        max-width: 70%;
+    }
+    .message-time {
+        font-size: 0.8em;
+        color: #666;
+        text-align: right;
+    }
+    .chat-input {
+        border-top: 1px solid #ddd;
+        padding: 15px;
+        background: white;
+    }
+    .attachment-btn {
+        background: none;
+        border: none;
+        font-size: 1.2em;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="chat-container">
+                <!-- Chat Header -->
+                <div class="chat-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="fas fa-user-md"></i>
+                            Dr. {{ appointment.doctor.user.first_name }} {{ appointment.doctor.user.last_name }}
+                        </h5>
+                        <small>
+                            <i class="fas fa-circle text-success"></i> Online
+                        </small>
+                    </div>
+                    <div>
+                        <button class="btn btn-light btn-sm me-2" title="Voice Call">
+                            <i class="fas fa-phone"></i>
+                        </button>
+                        <button class="btn btn-light btn-sm" title="Video Call">
+                            <i class="fas fa-video"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Add role-specific features -->
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="d-flex flex-wrap gap-2 position-relative">
+                            {% if payment_required %}
+                            <div id="paymentOverlay" style="position:absolute;inset:0;background:rgba(255,255,255,0.85);z-index:50;display:flex;align-items:center;justify-content:center;flex-direction:column;">
+                                <div class="text-center">
+                                    <i class="fas fa-lock fa-2x mb-2"></i>
+                                    <h5>Payment required</h5>
+                                    <p class="mb-2">Please complete payment to enable chat and calls for this consultation.</p>
+                                    <a href="{{ payment_url }}" class="btn btn-primary mb-2" target="_blank">Pay Now</a>
+                                    <a href="{{ url_for('patient_appointment') }}" class="btn btn-secondary">Return to appointments</a>
+                                </div>
+                            </div>
+                            {% endif %}
+                        
+                        <div class="d-flex flex-wrap gap-2">
+                            <!-- Common features for all roles -->
+                            <button class="btn btn-outline-primary btn-sm" id="attachFileBtn">
+                                <i class="fas fa-paperclip"></i> Attach File
+                            </button>
+                            <button class="btn btn-outline-success btn-sm" id="recordVoiceBtn">
+                                <i class="fas fa-microphone"></i> Record Voice
+                            </button>
+                            
+                            <!-- Doctor-specific features -->
+                            {% if current_user.role == 'doctor' %}
+                            <button class="btn btn-outline-info btn-sm" id="prescriptionBtn">
+                                <i class="fas fa-file-prescription"></i> Send Prescription
+                            </button>
+                            <button class="btn btn-outline-warning btn-sm" id="medicalNoteBtn">
+                                <i class="fas fa-file-medical"></i> Medical Note
+                            </button>
+                            {% endif %}
+                            
+                            <!-- Admin-specific features -->
+                            {% if current_user.role == 'admin' %}
+                            <button class="btn btn-outline-secondary btn-sm" id="exportChatBtn">
+                                <i class="fas fa-download"></i> Export Chat
+                            </button>
+                            <button class="btn btn-outline-dark btn-sm" id="monitorBtn">
+                                <i class="fas fa-eye"></i> Monitor Mode
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Messages -->
+                <div class="chat-messages" id="chatMessages">
+                    {% for message in messages %}
+                    <div class="message {% if message.sender_id == current_user.id %}message-sent{% else %}message-received{% endif %}">
+                        <div class="message-content">
+                            {% if message.message_type == 'text' %}
+                                <div>{{ message.content }}</div>
+                            {% elif message.message_type == 'voice_note' %}
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-microphone me-2"></i>
+                                    <audio controls style="height: 30px;">
+                                        <source src="{{ message.file_path }}" type="audio/wav">
+                                    </audio>
+                                </div>
+                            {% elif message.message_type == 'document' %}
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-file me-2"></i>
+                                    <a href="{{ message.file_path }}" target="_blank">{{ message.content }}</a>
+                                </div>
+                            {% endif %}
+                            <div class="message-time">
+                                {{ message.timestamp.strftime('%H:%M') }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Chat Input -->
+                <div class="chat-input">
+                    <div class="input-group">
+                        <button class="attachment-btn" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" id="attachDocument"><i class="fas fa-file"></i> Document</a></li>
+                            <li><a class="dropdown-item" href="#" id="recordVoice"><i class="fas fa-microphone"></i> Voice Note</a></li>
+                            <li><a class="dropdown-item" href="#" id="attachImage"><i class="fas fa-image"></i> Image</a></li>
+                        </ul>
+                        
+                        <input type="text" class="form-control" id="messageInput" placeholder="Type a message...">
+                        
+                        <button class="btn btn-primary" id="sendMessage">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+                <!-- Testimonial Form (show to patients after completed appointment) -->
+                {% if current_user.role == 'patient' and appointment.status == 'completed' %}
+                <div class="mt-3 p-3 bg-light rounded" id="testimonialSection">
+                    <h6>Leave a testimonial for Dr. {{ appointment.doctor.user.get_display_name() }}</h6>
+                    <div class="mb-2">
+                        <label class="form-label">Rating</label>
+                        <select id="testimonialRating" class="form-select" style="width:120px;">
+                            <option value="5">5 - Excellent</option>
+                            <option value="4">4 - Very Good</option>
+                            <option value="3">3 - Good</option>
+                            <option value="2">2 - Fair</option>
+                            <option value="1">1 - Poor</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Your feedback</label>
+                        <textarea id="testimonialContent" class="form-control" rows="3" placeholder="Share your experience..."></textarea>
+                    </div>
+                    <div>
+                        <button id="submitTestimonial" class="btn btn-primary">Submit Testimonial</button>
+                        <span id="testimonialMsg" class="ms-3 text-success" style="display:none;">Thank you for your feedback!</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const appointmentId = "{{ appointment.id }}";
+    const paymentRequired = {{ 'true' if payment_required else 'false' }};
+    const paymentUrl = "{{ payment_url or '' }}";
+    
+    $(document).ready(function() {
+        // Scroll to bottom of chat
+        $('#chatMessages').scrollTop($('#chatMessages')[0].scrollHeight);
+        
+        // Send message on enter key
+        $('#messageInput').keypress(function(e) {
+            if (e.which == 13) {
+                sendMessage();
+            }
+        });
+        
+        // Send message on button click
+        $('#sendMessage').click(sendMessage);
+        
+        function sendMessage() {
+            if (paymentRequired && paymentUrl) {
+                // redirect to payment flow
+                window.open(paymentUrl, 'paymentWindow', 'width=700,height=800');
+                alert('Please complete payment to enable messaging.');
+                return;
+            }
+            const message = $('#messageInput').val().trim();
+            if (message) {
+                $.ajax({
+                    url: '/api/send_message',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        appointment_id: appointmentId,
+                        message: message,
+                        type: 'text'
+                    }),
+                    success: function(response) {
+                        if (response.success) {
+                            $('#messageInput').val('');
+                            // Add message to chat (in real app, you might use WebSockets)
+                            location.reload();
+                        }
+                    }
+                });
+            }
+        }
+        
+        // File attachment handlers
+        $('#attachDocument').click(function(e) {
+            e.preventDefault();
+            $('#fileInput').click();
+        });
+        
+        // Submit testimonial
+        $('#submitTestimonial').click(function(e) {
+            e.preventDefault();
+            const rating = $('#testimonialRating').val();
+            const content = $('#testimonialContent').val().trim();
+            if (!rating) return;
+            $.ajax({
+                url: '/api/testimonial',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    appointment_id: appointmentId,
+                    rating: rating,
+                    content: content
+                }),
+                success: function(resp) {
+                    if (resp.success) {
+                        $('#testimonialMsg').show();
+                        setTimeout(function(){ $('#testimonialMsg').fadeOut(); }, 4000);
+                    } else {
+                        alert(resp.error || 'Failed to submit testimonial');
+                    }
+                },
+                error: function() {
+                    alert('Error submitting testimonial');
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

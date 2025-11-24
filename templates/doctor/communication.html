@@ -1,0 +1,1124 @@
+{% extends "base.html" %}
+
+{% block title %}Doctor Communications - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    .whatsapp-container {
+        display: flex;
+        height: 90vh;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 5px 40px 16px rgba(82, 98, 130, 0.1);
+    }
+
+    /* Left Sidebar - Patients List */
+    .patients-sidebar {
+        width: 360px;
+        background: #fff;
+        border-right: 1px solid #e5e5e5;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sidebar-header {
+        padding: 16px 16px;
+        border-bottom: 1px solid #e5e5e5;
+    }
+
+    .sidebar-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+    .sidebar-header-top h5 {
+        font-size: 32px;
+        font-weight: 800;
+        margin: 0;
+        color: #000;
+    }
+
+    .header-icons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .header-icon-btn {
+        background: none;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #54656f;
+        font-size: 20px;
+        transition: background-color 0.2s;
+    }
+
+    .header-icon-btn:hover {
+        background-color: #f0f0f0;
+    }
+
+    .search-container {
+        padding: 8px 8px;
+    }
+
+    .search-box {
+        background: #f0f0f0;
+        border: none;
+        border-radius: 24px;
+        padding: 10px 16px;
+        width: 100%;
+        font-size: 14px;
+    }
+
+    .search-box::placeholder {
+        color: #999;
+    }
+
+    .patients-list {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .patients-list::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .patients-list::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .patients-list::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 4px;
+    }
+
+    .patient-item {
+        padding: 8px 8px;
+        margin: 0 8px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 72px;
+        position: relative;
+    }
+
+    .patient-item:hover {
+        background-color: #f5f5f5;
+    }
+
+    .patient-item.active {
+        background-color: #e7f3ff;
+    }
+
+    .patient-item.unread {
+        font-weight: 600;
+    }
+
+    .patient-item.unread::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: #667eea;
+        border-radius: 0 3px 3px 0;
+    }
+
+    .patient-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .patient-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .patient-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 4px;
+    }
+
+    .patient-name {
+        font-weight: 500;
+        color: #000;
+        font-size: 15px;
+    }
+
+    .patient-time {
+        font-size: 13px;
+        color: #999;
+        flex-shrink: 0;
+        margin-left: 8px;
+    }
+
+    .patient-preview {
+        font-size: 13px;
+        color: #999;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .patient-item.unread .patient-preview {
+        color: #000;
+    }
+
+    /* Right Chat Area */
+    .chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+    }
+
+    .chat-header {
+        padding: 12px 20px;
+        border-bottom: 1px solid #e5e5e5;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f8f8f8;
+    }
+
+    .chat-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .chat-header-info {
+        min-width: 0;
+    }
+
+    .chat-header-name {
+        font-weight: 500;
+        color: #000;
+        font-size: 15px;
+        margin: 0;
+    }
+
+    .chat-header-status {
+        font-size: 13px;
+        color: #999;
+        margin: 0;
+    }
+
+    .chat-header-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .chat-action-btn {
+        background: none;
+        border: none;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #54656f;
+        font-size: 18px;
+        transition: background-color 0.2s;
+    }
+
+    .chat-action-btn:hover {
+        background-color: #e9ecef;
+    }
+
+    .chat-action-btn.video {
+        color: #667eea;
+    }
+
+    .chat-action-btn.voice {
+        color: #667eea;
+    }
+
+    .chat-messages {
+        flex: 1;
+        padding: 16px 20px;
+        overflow-y: auto;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .chat-messages::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 4px;
+    }
+
+    .message-group {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .message-group.sent {
+        justify-content: flex-end;
+    }
+
+    .message-bubble {
+        max-width: 55%;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        line-height: 1.4;
+        word-wrap: break-word;
+    }
+
+    .message-bubble.sent {
+        background: #dcf8c6;
+        color: #000;
+        border-radius: 0 8px 8px 8px;
+    }
+
+    .message-bubble.received {
+        background: #e5e5ea;
+        color: #000;
+        border-radius: 8px 0 8px 8px;
+    }
+
+    .message-time {
+        font-size: 12px;
+        color: #999;
+        margin-top: 4px;
+    }
+
+    /* Chat Input Area */
+    .chat-input-area {
+        padding: 12px 20px;
+        border-top: 1px solid #e5e5e5;
+        background: #fff;
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+
+    .input-action-btn {
+        background: none;
+        border: none;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #667eea;
+        font-size: 20px;
+        transition: background-color 0.2s;
+    }
+
+    .input-action-btn:hover {
+        background-color: #f0f0f0;
+    }
+
+    .message-input-wrapper {
+        flex: 1;
+        display: flex;
+        gap: 8px;
+    }
+
+    .message-input {
+        flex: 1;
+        border: 1px solid #e5e5e5;
+        border-radius: 24px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-family: inherit;
+        resize: none;
+        max-height: 100px;
+    }
+
+    .message-input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .send-btn {
+        background: none;
+        border: none;
+        color: #667eea;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 0 8px;
+    }
+
+    .send-btn:hover {
+        transform: scale(1.1);
+    }
+
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #999;
+        gap: 16px;
+    }
+
+    .empty-state-icon {
+        font-size: 80px;
+        color: #ddd;
+    }
+
+    .empty-state-text {
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    /* New styles for appointment info */
+    .appointment-info {
+        margin-top: 4px;
+        font-size: 11px;
+    }
+
+    .payment-status-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    .appointment-details {
+        font-size: 12px;
+        color: #666;
+        margin-top: 2px;
+    }
+
+    /* Payment Lock Styles */
+    .payment-lock-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.95);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        border-radius: 8px;
+    }
+
+    .lock-icon {
+        font-size: 48px;
+        color: #ffc107;
+        margin-bottom: 16px;
+    }
+
+    .lock-message {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .lock-message h5 {
+        color: #333;
+        margin-bottom: 8px;
+    }
+
+    .lock-message p {
+        color: #666;
+        font-size: 14px;
+    }
+
+    .locked-feature {
+        position: relative;
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    .locked-feature::after {
+        content: '🔒';
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        font-size: 12px;
+        background: white;
+        border-radius: 50%;
+        width: 18px;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="whatsapp-container">
+        <!-- Left Sidebar - Appointments List -->
+        <div class="patients-sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-header-top">
+                    <h5>Appointments</h5>
+                    <div class="header-icons">
+                        <button class="header-icon-btn" title="New consultation">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button class="header-icon-btn" title="Menu">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="search-container">
+                    <input type="text" class="search-box" id="searchInput" placeholder="🔍 Search patients">
+                </div>
+            </div>
+
+            <div class="patients-list" id="patientsList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-inbox"></i>
+                    </div>
+                    <div class="empty-state-text">Loading appointments...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Chat Area -->
+        <div class="chat-area">
+            <!-- Chat Header -->
+            <div class="chat-header">
+                <div class="chat-header-left">
+                    <div class="patient-avatar" id="chatAvatar">-</div>
+                    <div class="chat-header-info">
+                        <h6 class="chat-header-name" id="chatHeaderName">Select an appointment</h6>
+                        <p class="chat-header-status" id="chatHeaderStatus">Select a patient to start messaging</p>
+                    </div>
+                </div>
+                <div class="chat-header-actions">
+                    <button class="chat-action-btn video locked-feature" id="videoCallBtn" title="Video call">
+                        <i class="fas fa-video"></i>
+                    </button>
+                    <button class="chat-action-btn voice locked-feature" id="voiceCallBtn" title="Voice call">
+                        <i class="fas fa-phone"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div class="chat-messages" id="chatMessages">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-inbox"></i>
+                    </div>
+                    <div class="empty-state-text">Select an appointment to start messaging</div>
+                </div>
+            </div>
+
+            <!-- Message Input Area -->
+            <div class="chat-input-area">
+                <button class="input-action-btn locked-feature" id="attachFileBtn" title="Attach file">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <input type="file" id="fileInput" style="display: none;" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt,.xlsx">
+
+                <div class="message-input-wrapper">
+                    <input type="text" class="message-input locked-feature" id="messageInput" placeholder="Type a message..." disabled>
+                    <button class="send-btn locked-feature" id="sendMessageBtn" title="Send message" disabled>
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+
+                <button class="input-action-btn locked-feature" id="prescribeBtn" title="Add prescription">
+                    <i class="fas fa-prescription-bottle"></i>
+                </button>
+            </div>
+
+            <!-- Payment Lock Overlay -->
+            <div class="payment-lock-overlay" id="paymentLockOverlay" style="display: none;">
+                <div class="lock-icon">
+                    <i class="fas fa-lock"></i>
+                </div>
+                <div class="lock-message">
+                    <h5>Patient Payment Required</h5>
+                    <p>This patient has not completed payment. Communication features will be unlocked once payment is confirmed.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<script>
+const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+let currentAppointmentId = null;
+let currentPatientId = null;
+let currentPaymentStatus = null;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadAppointments();
+    setupEventListeners();
+    setupSocketIO();
+});
+
+// Load appointments with patients
+function loadAppointments() {
+    fetch('/api/doctor/appointments')
+        .then(response => response.json())
+        .then(data => {
+            const list = document.getElementById('patientsList');
+            list.innerHTML = '';
+            
+            if (data.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-user-injured"></i></div>
+                        <div class="empty-state-text">No appointments</div>
+                    </div>
+                `;
+                return;
+            }
+
+            data.forEach(appointment => {
+                const patient = appointment.patient;
+                const patientName = patient.first_name + ' ' + patient.last_name;
+                const avatar = patient.first_name[0] + patient.last_name[0];
+                const lastMessage = appointment.last_message || 'No messages yet';
+                const unread = appointment.unread_count > 0;
+                
+                // Format appointment date and time
+                const appointmentDate = new Date(appointment.appointment_date);
+                const dateStr = appointmentDate.toLocaleDateString();
+                const timeStr = appointmentDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                // Payment status badge
+                const paymentStatus = appointment.payment_status;
+                const paymentBadge = paymentStatus === 'paid' ? 
+                    '<span class="badge bg-success ms-2">Paid</span>' : 
+                    '<span class="badge bg-warning ms-2">Pending</span>';
+                
+                const div = document.createElement('div');
+                div.className = `patient-item ${unread ? 'unread' : ''}`;
+                div.dataset.appointmentId = appointment.appointment_id;
+                div.dataset.patientId = patient.id;
+                div.dataset.paymentStatus = paymentStatus;
+                div.innerHTML = `
+                    <div class="patient-avatar">${avatar}</div>
+                    <div class="patient-content">
+                        <div class="patient-header">
+                            <span class="patient-name">${patientName}</span>
+                            <span class="patient-time">${appointment.last_message_time || ''}</span>
+                        </div>
+                        <div class="patient-preview">
+                            <div>${lastMessage}</div>
+                            <div class="appointment-info">
+                                <small class="text-muted">
+                                    <i class="fas fa-calendar me-1"></i>${dateStr} at ${timeStr}
+                                    ${paymentBadge}
+                                    <span class="badge bg-info ms-2">${appointment.consultation_type}</span>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                div.addEventListener('click', () => selectAppointment(appointment.appointment_id, appointment));
+                list.appendChild(div);
+            });
+        })
+        .catch(error => console.error('Error loading appointments:', error));
+}
+
+// Select appointment (replaces selectPatient)
+function selectAppointment(appointmentId, appointment) {
+    // Leave previous appointment room if any
+    if (currentAppointmentId) {
+        socket.emit('leave_appointment', { appointment_id: currentAppointmentId });
+        currentAppointmentId = null;
+    }
+    
+    currentAppointmentId = appointmentId;
+    currentPatientId = appointment.patient.id;
+    currentPaymentStatus = appointment.payment_status;
+    
+    document.querySelectorAll('.patient-item').forEach(el => el.classList.remove('active'));
+    event.target.closest('.patient-item').classList.add('active');
+
+    // Update header with patient and appointment info
+    const patient = appointment.patient;
+    const avatar = document.getElementById('chatAvatar');
+    avatar.textContent = patient.first_name[0] + patient.last_name[0];
+    
+    const appointmentDate = new Date(appointment.appointment_date);
+    const dateStr = appointmentDate.toLocaleDateString();
+    const timeStr = appointmentDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    document.getElementById('chatHeaderName').textContent = patient.first_name + ' ' + patient.last_name;
+    document.getElementById('chatHeaderStatus').textContent = 
+        `Appointment: ${dateStr} at ${timeStr} | Payment: ${appointment.payment_status}`;
+
+    // Load messages for this appointment
+    loadMessages(appointmentId);
+
+    // Update payment lock state
+    updatePaymentLockState(appointment.payment_status);
+}
+
+// Update payment lock state based on payment status
+function updatePaymentLockState(paymentStatus) {
+    const lockOverlay = document.getElementById('paymentLockOverlay');
+    const communicationFeatures = [
+        'messageInput', 'sendMessageBtn', 'attachFileBtn', 'prescribeBtn', 
+        'videoCallBtn', 'voiceCallBtn'
+    ];
+
+    if (paymentStatus === 'pending' || paymentStatus === 'not_paid') {
+        // Show lock overlay and disable features
+        lockOverlay.style.display = 'flex';
+        
+        // Disable all communication features
+        communicationFeatures.forEach(featureId => {
+            const element = document.getElementById(featureId);
+            if (element) {
+                element.disabled = true;
+                element.classList.add('locked-feature');
+            }
+        });
+    } else if (paymentStatus === 'paid') {
+        // Hide lock overlay and enable features
+        lockOverlay.style.display = 'none';
+        
+        // Enable all communication features
+        communicationFeatures.forEach(featureId => {
+            const element = document.getElementById(featureId);
+            if (element) {
+                element.disabled = false;
+                element.classList.remove('locked-feature');
+            }
+        });
+    }
+}
+
+// Load messages
+function loadMessages(appointmentId) {
+    fetch(`/api/appointment/${appointmentId}/messages`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Messages data received:', data); // Debug log
+            
+            const messagesArea = document.getElementById('chatMessages');
+            messagesArea.innerHTML = '';
+            
+            // Check if messages array exists and is not empty
+            if (!data.messages || !Array.isArray(data.messages)) {
+                console.warn('No messages array found in response:', data);
+                messagesArea.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-comments"></i></div>
+                        <div class="empty-state-text">No messages yet</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            if (data.messages.length === 0) {
+                messagesArea.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-comments"></i></div>
+                        <div class="empty-state-text">No messages yet. Start the conversation!</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            data.messages.forEach(message => {
+                const isSent = message.is_sent;
+                const group = document.createElement('div');
+                group.className = `message-group ${isSent ? 'sent' : 'received'}`;
+                
+                // Safely parse timestamp
+                let timestamp = 'Unknown time';
+                try {
+                    if (message.timestamp) {
+                        const messageTime = new Date(message.timestamp);
+                        timestamp = messageTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    }
+                } catch (e) {
+                    console.warn('Error parsing timestamp:', e);
+                }
+                
+                const messageContent = message.content || '[No content]';
+                
+                group.innerHTML = `
+                    <div>
+                        <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+                            ${messageContent}
+                        </div>
+                        <div class="message-time">${timestamp}</div>
+                    </div>
+                `;
+                messagesArea.appendChild(group);
+            });
+            
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+            
+            // Join socket room for this appointment to receive live updates
+            if (currentAppointmentId) {
+                socket.emit('join_appointment', { appointment_id: currentAppointmentId });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading messages:', error);
+            const messagesArea = document.getElementById('chatMessages');
+            messagesArea.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="empty-state-text">Error loading messages</div>
+                    <small class="text-muted">${error.message}</small>
+                </div>
+            `;
+        });
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    document.getElementById('sendMessageBtn').addEventListener('click', sendMessage);
+    document.getElementById('messageInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    document.getElementById('attachFileBtn').addEventListener('click', () => {
+        if (currentPaymentStatus !== 'paid') {
+            alert('Patient payment required to send files.');
+            return;
+        }
+        document.getElementById('fileInput').click();
+    });
+
+    document.getElementById('videoCallBtn').addEventListener('click', function() {
+        if (currentPaymentStatus !== 'paid') {
+            alert('Patient payment required for video calls.');
+            return;
+        }
+        initiateVideoCall();
+    });
+
+    document.getElementById('voiceCallBtn').addEventListener('click', function() {
+        if (currentPaymentStatus !== 'paid') {
+            alert('Patient payment required for voice calls.');
+            return;
+        }
+        initiateVoiceCall();
+    });
+
+    document.getElementById('prescribeBtn').addEventListener('click', function() {
+        if (currentPaymentStatus !== 'paid') {
+            alert('Patient payment required to create prescriptions.');
+            return;
+        }
+        openPrescription();
+    });
+
+    // Search
+    document.getElementById('searchInput').addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        document.querySelectorAll('.patient-item').forEach(item => {
+            const name = item.querySelector('.patient-name').textContent.toLowerCase();
+            item.style.display = name.includes(query) ? 'flex' : 'none';
+        });
+    });
+}
+
+// Send message
+function sendMessage() {
+    if (currentPaymentStatus !== 'paid') {
+        alert('Patient payment required to send messages.');
+        return;
+    }
+
+    const content = document.getElementById('messageInput').value;
+    if (!content.trim() || !currentAppointmentId) return;
+
+    // Stop typing indicator
+    socket.emit('stop_typing', {
+        appointment_id: currentAppointmentId
+    });
+
+    // Send message via real-time Socket.IO
+    socket.emit('send_message', {
+        appointment_id: currentAppointmentId,
+        content: content
+    });
+
+    // Clear input
+    document.getElementById('messageInput').value = '';
+    
+    // Reload messages after a short delay to ensure message is saved
+    setTimeout(function() {
+        loadMessages(currentAppointmentId);
+        // Reload appointments list to update last message preview
+        setTimeout(() => loadAppointments(), 100);
+    }, 500);
+}
+
+// Initiate video call
+function initiateVideoCall() {
+    if (!currentAppointmentId) {
+        alert('Please select an appointment first');
+        return;
+    }
+    
+    // Use Socket.IO to initiate video call
+    socket.emit('initiate_video_call', {
+        appointment_id: currentAppointmentId
+    });
+    
+    // Redirect to video call page after a short delay
+    setTimeout(function() {
+        window.location.href = `/video-call/${currentAppointmentId}`;
+    }, 500);
+}
+
+// Initiate voice call
+function initiateVoiceCall() {
+    if (!currentAppointmentId) {
+        alert('Please select an appointment first');
+        return;
+    }
+    
+    // Use Socket.IO to initiate voice call
+    socket.emit('initiate_voice_call', {
+        appointment_id: currentAppointmentId
+    });
+    
+    // Redirect to voice call page after a short delay
+    setTimeout(function() {
+        window.location.href = `/voice-call/${currentAppointmentId}`;
+    }, 500);
+}
+
+// Open prescription modal
+function openPrescription() {
+    if (!currentAppointmentId) {
+        alert('Please select an appointment first');
+        return;
+    }
+    window.location.href = `/prescription/new/${currentAppointmentId}`;
+}
+
+// Setup SocketIO
+function setupSocketIO() {
+    // Make sure socket is defined (from base.html)
+    if (typeof socket === 'undefined') {
+        console.error('Socket.IO not loaded. Please check your base.html template.');
+        return;
+    }
+
+    socket.on('connect', function() {
+        console.log('Doctor socket connected');
+    });
+
+    socket.on('message_received', function(data) {
+        // data contains appointment_id and sender_id
+        if (data.appointment_id && data.appointment_id === currentAppointmentId) {
+            addMessageToUI(data);
+        } else {
+            // New message for other appointment - refresh appointments list preview
+            loadAppointments();
+        }
+    });
+
+    socket.on('conversation_updated', function(messages) {
+        // Replace conversation if this is the currently open appointment
+        if (!currentAppointmentId) return;
+        const messagesArea = document.getElementById('chatMessages');
+        messagesArea.innerHTML = '';
+        messages.forEach(msg => {
+            const isSent = msg.is_sent;
+            const group = document.createElement('div');
+            group.className = `message-group ${isSent ? 'sent' : 'received'}`;
+            const timestamp = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            group.innerHTML = `
+                <div>
+                    <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+                        ${msg.content}
+                    </div>
+                    <div class="message-time">${timestamp}</div>
+                </div>
+            `;
+            messagesArea.appendChild(group);
+        });
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+    });
+
+    socket.on('incoming_video_call', function(data) {
+        if (confirm(`${data.initiator_name} is requesting a video consultation. Accept?`)) {
+            socket.emit('accept_video_call', {
+                appointment_id: data.appointment_id
+            });
+            window.location.href = `/video-call/${data.appointment_id}`;
+        }
+    });
+
+    socket.on('incoming_voice_call', function(data) {
+        if (confirm(`${data.initiator_name} is calling. Accept?`)) {
+            socket.emit('accept_voice_call', {
+                appointment_id: data.appointment_id
+            });
+            window.location.href = `/voice-call/${data.appointment_id}`;
+        }
+    });
+
+    socket.on('user_typing', function(data) {
+        if (data.appointment_id === currentAppointmentId) {
+            showTypingIndicator(data.user_name);
+        }
+    });
+
+    socket.on('user_stop_typing', function(data) {
+        if (data.appointment_id === currentAppointmentId) {
+            hideTypingIndicator();
+        }
+    });
+
+    // Listen for payment status updates
+    socket.on('payment_status_updated', function(data) {
+        updatePaymentStatus(data.appointment_id, data.status);
+    });
+
+    // Add error handlers
+    socket.on('message_error', function(data) {
+        console.error('Message sending error:', data);
+        alert('Failed to send message: ' + data.error);
+    });
+
+    socket.on('message_sent', function(data) {
+        console.log('Message sent successfully:', data);
+    });
+}
+
+function addMessageToUI(messageData) {
+    const messagesArea = document.getElementById('chatMessages');
+    const isSent = messageData.is_sent;
+    
+    const group = document.createElement('div');
+    group.className = `message-group ${isSent ? 'sent' : 'received'}`;
+    
+    // Safely parse timestamp
+    let timestamp = 'Unknown time';
+    try {
+        if (messageData.timestamp) {
+            const messageTime = new Date(messageData.timestamp);
+            timestamp = messageTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+    } catch (e) {
+        console.warn('Error parsing timestamp:', e);
+    }
+    
+    group.innerHTML = `
+        <div>
+            <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+                ${messageData.content}
+            </div>
+            <div class="message-time">${timestamp}</div>
+        </div>
+    `;
+    
+    messagesArea.appendChild(group);
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+}
+
+function showTypingIndicator(userName) {
+    const indicator = document.getElementById('typingIndicator');
+    if (!indicator) {
+        const messagesArea = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.id = 'typingIndicator';
+        div.style.paddingLeft = '20px';
+        div.innerHTML = `<small class="text-muted"><em>${userName} is typing...</em></small>`;
+        messagesArea.appendChild(div);
+    }
+}
+
+function hideTypingIndicator() {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) indicator.remove();
+}
+
+// Update payment status in real-time
+function updatePaymentStatus(appointmentId, status) {
+    const appointmentItems = document.querySelectorAll(`[data-appointment-id="${appointmentId}"]`);
+    appointmentItems.forEach(item => {
+        const paymentBadge = item.querySelector('.badge.bg-warning, .badge.bg-success');
+        if (paymentBadge) {
+            if (status === 'paid') {
+                paymentBadge.className = 'badge bg-success ms-2';
+                paymentBadge.textContent = 'Paid';
+            } else {
+                paymentBadge.className = 'badge bg-warning ms-2';
+                paymentBadge.textContent = 'Pending';
+            }
+        }
+    });
+    
+    // Update header if this is the current appointment
+    if (currentAppointmentId === appointmentId) {
+        const headerStatus = document.getElementById('chatHeaderStatus');
+        const currentText = headerStatus.textContent;
+        const newText = currentText.replace(/Payment: [a-z]+/, `Payment: ${status}`);
+        headerStatus.textContent = newText;
+        
+        // Update current payment status and lock state
+        currentPaymentStatus = status;
+        updatePaymentLockState(status);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,497 @@
+{% extends 'base.html' %}
+
+{% block title %}Payment - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payment-method-card {
+        border: 2px solid #e9ecef;
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: white;
+        margin-bottom: 1rem;
+    }
+    
+    .payment-method-card:hover {
+        border-color: #007bff;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.15);
+    }
+    
+    .payment-method-card.selected {
+        border-color: #007bff;
+        background-color: #f8f9ff;
+    }
+    
+    .payment-icon {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .payment-method-name {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+    
+    .payment-method-desc {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-bottom: 0;
+    }
+    
+    .payment-amount {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #28a745;
+    }
+    
+    .payment-details {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+    
+    .payment-status {
+        display: none;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    
+    .payment-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .payment-processing {
+        background: #cce7ff;
+        color: #004085;
+        border: 1px solid #b3d7ff;
+    }
+    
+    .payment-logo {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        margin-right: 10px;
+    }
+    
+    .mpesa-color { color: #00A650; }
+    .airtel-color { color: #E60A14; }
+    .card-color { color: #1A1F71; }
+    .paypal-color { color: #003087; }
+    .google-color { color: #4285F4; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-10 col-lg-8">
+            <!-- Payment Header -->
+            <div class="text-center mb-4">
+                <h2 class="text-primary mb-2">Complete Your Payment</h2>
+                <p class="text-muted">Secure payment required to activate your consultation</p>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-primary text-white py-3">
+                    <h5 class="mb-0">
+                        <i class="fas fa-lock me-2"></i>
+                        Secure Payment Gateway
+                    </h5>
+                </div>
+                
+                <div class="card-body p-4">
+                    <!-- Payment Details -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="payment-details">
+                                <h6 class="text-muted mb-3">Appointment Details</h6>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Appointment ID:</span>
+                                    <strong>#{{ payment.appointment_id }}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Consultation Type:</span>
+                                    <strong>{{ payment.appointment.consultation_type|title if payment.appointment else 'Video' }}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Date & Time:</span>
+                                    <strong>
+                                        {% if payment.appointment %}
+                                            {{ payment.appointment.appointment_date.strftime('%b %d, %Y at %H:%M') }}
+                                        {% else %}
+                                            To be scheduled
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                                <hr>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="h6 mb-0">Total Amount:</span>
+                                    <span class="payment-amount">{{ payment.amount }} {{ payment.currency }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="payment-status" id="paymentStatus">
+                                <!-- Payment status messages will appear here -->
+                            </div>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Important:</strong> Payment is required to enable video/voice calling and messaging features for your consultation.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Methods -->
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-3">Choose Payment Method</h6>
+                        <div class="row">
+                            <!-- M-Pesa -->
+                            <div class="col-md-6 mb-3">
+                                <div class="payment-method-card" onclick="selectPaymentMethod('mpesa')" id="mpesaCard">
+                                    <div class="payment-icon mpesa-color">
+                                        <i class="fas fa-mobile-alt"></i>
+                                    </div>
+                                    <div class="payment-method-name">Lipa Na M-Pesa</div>
+                                    <div class="payment-method-desc">Pay via Safaricom M-Pesa</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Airtel Money -->
+                            <div class="col-md-6 mb-3">
+                                <div class="payment-method-card" onclick="selectPaymentMethod('airtel')" id="airtelCard">
+                                    <div class="payment-icon airtel-color">
+                                        <i class="fas fa-signal"></i>
+                                    </div>
+                                    <div class="payment-method-name">Airtel Money</div>
+                                    <div class="payment-method-desc">Pay via Airtel Money</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Credit/Debit Card -->
+                            <div class="col-md-6 mb-3">
+                                <div class="payment-method-card" onclick="selectPaymentMethod('card')" id="cardCard">
+                                    <div class="payment-icon card-color">
+                                        <i class="fas fa-credit-card"></i>
+                                    </div>
+                                    <div class="payment-method-name">Credit/Debit Card</div>
+                                    <div class="payment-method-desc">Visa, MasterCard, American Express</div>
+                                </div>
+                            </div>
+                            
+                            <!-- PayPal -->
+                            <div class="col-md-6 mb-3">
+                                <div class="payment-method-card" onclick="selectPaymentMethod('paypal')" id="paypalCard">
+                                    <div class="payment-icon paypal-color">
+                                        <i class="fab fa-paypal"></i>
+                                    </div>
+                                    <div class="payment-method-name">PayPal</div>
+                                    <div class="payment-method-desc">Secure online payments</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Google Pay -->
+                            <div class="col-md-6 mb-3">
+                                <div class="payment-method-card" onclick="selectPaymentMethod('google')" id="googleCard">
+                                    <div class="payment-icon google-color">
+                                        <i class="fab fa-google"></i>
+                                    </div>
+                                    <div class="payment-method-name">Google Pay</div>
+                                    <div class="payment-method-desc">Fast and secure payments</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <a href="{{ url_for('patient_dashboard') }}" class="btn btn-outline-secondary w-100">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                            </a>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-primary w-100" id="payButton" onclick="processPayment()" disabled>
+                                <i class="fas fa-lock me-2"></i>
+                                Pay {{ payment.amount }} {{ payment.currency }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Security Badge -->
+                    <div class="text-center mt-4 pt-3 border-top">
+                        <small class="text-muted">
+                            <i class="fas fa-shield-alt me-1"></i>
+                            Your payment is secure and encrypted. We do not store your payment details.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Payment Processing Modal -->
+<div class="modal fade" id="paymentProcessingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title">Processing Payment</h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Processing...</span>
+                </div>
+                <h5>Please wait</h5>
+                <p class="text-muted">We're processing your payment. This may take a few moments.</p>
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Payment Success Modal -->
+<div class="modal fade" id="paymentSuccessModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0 bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Payment Successful!
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
+                <h4 class="text-success mb-3">Payment Completed</h4>
+                <p class="mb-3">Your payment has been processed successfully. Your consultation features are now activated.</p>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    You can now access video calls, voice calls, and messaging for your appointment.
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-success w-100" onclick="redirectToDashboard()">
+                    <i class="fas fa-home me-2"></i>
+                    Return to Dashboard
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<div id="paymentData" 
+     data-payment-id="{{ payment.id }}" 
+     data-appointment-id="{{ payment.appointment_id }}"
+     data-amount="{{ payment.amount }}"
+     data-currency="{{ payment.currency }}"
+     style="display:none">
+</div>
+
+<script>
+let selectedPaymentMethod = null;
+let paymentCheckInterval = null;
+
+// Read payment data from DOM
+const paymentDataEl = document.getElementById('paymentData');
+const paymentId = paymentDataEl ? paymentDataEl.dataset.paymentId : null;
+const appointmentId = paymentDataEl ? paymentDataEl.dataset.appointmentId : null;
+const amount = paymentDataEl ? paymentDataEl.dataset.amount : null;
+const currency = paymentDataEl ? paymentDataEl.dataset.currency : null;
+
+function selectPaymentMethod(method) {
+    selectedPaymentMethod = method;
+    
+    // Remove selected class from all cards
+    document.querySelectorAll('.payment-method-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    // Add selected class to chosen card
+    document.getElementById(method + 'Card').classList.add('selected');
+    
+    // Enable pay button
+    document.getElementById('payButton').disabled = false;
+}
+
+function processPayment() {
+    if (!selectedPaymentMethod) {
+        alert('Please select a payment method');
+        return;
+    }
+    
+    // Show processing modal
+    const processingModal = new bootstrap.Modal(document.getElementById('paymentProcessingModal'));
+    processingModal.show();
+    
+    // Show payment status
+    const statusDiv = document.getElementById('paymentStatus');
+    statusDiv.innerHTML = `
+        <div class="payment-processing">
+            <i class="fas fa-sync-alt fa-spin me-2"></i>
+            Processing {{ payment.amount }} {{ payment.currency }} via ${selectedPaymentMethod.toUpperCase()}...
+        </div>
+    `;
+    statusDiv.style.display = 'block';
+    
+    // Simulate payment processing (replace with actual payment gateway integration)
+    setTimeout(() => {
+        // For demo purposes, we'll simulate a successful payment
+        simulatePaymentProcessing();
+    }, 3000);
+}
+
+function simulatePaymentProcessing() {
+    console.log('Starting payment processing for payment ID:', paymentId);
+    
+    // Show processing state
+    const payButton = document.getElementById('payButton');
+    payButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
+    payButton.disabled = true;
+
+    // Make the payment confirmation request
+    fetch(`/payment/confirm/${paymentId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value || ''
+        },
+        // Send empty JSON body since we're using URL parameters
+        body: JSON.stringify({})
+    })
+    .then(response => {
+        if (!response.ok) {
+            // If response is not OK, try to get error message
+            return response.json().then(errorData => {
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showPaymentSuccess();
+        } else {
+            throw new Error(data.error || 'Payment failed');
+        }
+    })
+    .catch(error => {
+        console.error('Payment error:', error);
+        
+        // More specific error handling
+        if (error.message.includes('CSRF')) {
+            showPaymentError('Security token error. Please refresh the page and try again.');
+        } else if (error.message.includes('400')) {
+            showPaymentError('Invalid request. Please check your payment details.');
+        } else if (error.message.includes('403')) {
+            showPaymentError('Access denied. Please make sure you are logged in.');
+        } else if (error.message.includes('404')) {
+            showPaymentError('Payment not found. Please contact support.');
+        } else {
+            showPaymentError('Payment processing failed: ' + error.message);
+        }
+        
+        // Reset payment button
+        payButton.innerHTML = '<i class="fas fa-lock me-2"></i>Pay {{ payment.amount }} {{ payment.currency }}';
+        payButton.disabled = false;
+    });
+}
+
+// Alternative payment processing method for testing
+function processPaymentDirect() {
+    console.log('Processing payment directly for payment ID:', paymentId);
+    
+    // Create a form and submit it (bypasses CORS and CSRF issues)
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/payment/confirm/${paymentId}`;
+    
+    // Add CSRF token
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrf_token';
+    csrfInput.value = document.querySelector('input[name="csrf_token"]')?.value || '';
+    form.appendChild(csrfInput);
+    
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function showPaymentSuccess() {
+    // Hide processing modal
+    const processingModal = bootstrap.Modal.getInstance(document.getElementById('paymentProcessingModal'));
+    processingModal.hide();
+    
+    // Show success modal
+    const successModal = new bootstrap.Modal(document.getElementById('paymentSuccessModal'));
+    successModal.show();
+    
+    // Update payment status
+    const statusDiv = document.getElementById('paymentStatus');
+    statusDiv.innerHTML = `
+        <div class="payment-success">
+            <i class="fas fa-check-circle me-2"></i>
+            Payment completed successfully! Consultation features are now active.
+        </div>
+    `;
+    
+    // Stop checking payment status
+    if (paymentCheckInterval) {
+        clearInterval(paymentCheckInterval);
+    }
+}
+
+function showPaymentError(message) {
+    // Hide processing modal
+    const processingModal = bootstrap.Modal.getInstance(document.getElementById('paymentProcessingModal'));
+    processingModal.hide();
+    
+    // Show error
+    const statusDiv = document.getElementById('paymentStatus');
+    statusDiv.innerHTML = `
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            ${message}
+        </div>
+    `;
+    statusDiv.style.display = 'block';
+    
+    alert('Payment failed: ' + message);
+}
+
+function redirectToDashboard() {
+    // Hide success modal
+    const successModal = bootstrap.Modal.getInstance(document.getElementById('paymentSuccessModal'));
+    successModal.hide();
+    
+    // Redirect to patient dashboard
+    window.location.href = "{{ url_for('patient_dashboard') }}";
+}
+
+// Initialize payment page
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Payment page loaded for payment ID:', paymentId);
+    
+    // Auto-select first payment method for convenience
+    if (!selectedPaymentMethod) {
+        selectPaymentMethod('mpesa');
+    }
+});
+</script>
+{% endblock %}

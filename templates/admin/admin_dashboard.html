@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease;
+    }
+    .stats-card:hover {
+        transform: translateY(-5px);
+    }
+    .stats-icon {
+        font-size: 2.5rem;
+        opacity: 0.8;
+    }
+    .recent-activity {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .activity-item {
+        padding: 10px 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .activity-item:last-child {
+        border-bottom: none;
+    }
+    .quick-action-btn {
+        padding: 15px;
+        text-align: center;
+        border: 2px dashed #dee2e6;
+        border-radius: 10px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        display: block;
+        color: inherit;
+        text-decoration: none;
+    }
+    .quick-action-btn:hover {
+        border-color: #007bff;
+        background-color: #f8f9fa;
+        color: inherit;
+        text-decoration: none;
+    }
+    .avatar {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+    }
+    .system-progress {
+        height: 10px;
+    }
+    .border-left-primary { border-left: 4px solid #007bff; }
+    .border-left-success { border-left: 4px solid #28a745; }
+    .border-left-info { border-left: 4px solid #17a2b8; }
+    .border-left-warning { border-left: 4px solid #ffc107; }
+    .border-left-danger { border-left: 4px solid #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-2">Admin Dashboard</h1>
+                    <p class="text-muted">Welcome back, {{ current_user.get_display_name() }}! Here's what's happening today.</p>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary">
+                        <i class="fas fa-download"></i> Export Report
+                    </button>
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-primary">
+                        <i class="fas fa-cog"></i> Manage Users
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-primary">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total Patients
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_patients }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users stats-icon text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-success">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Total Doctors
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_doctors }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-user-md stats-icon text-success"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-info">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Total Appointments
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_appointments }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar-check stats-icon text-info"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-warning">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Pending Appointments
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.pending_appointments }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-clock stats-icon text-warning"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Stats Row -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-success">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Completed Today
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.today_appointments }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-check-circle stats-icon text-success"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-danger">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                Cancelled Appointments
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.cancelled_appointments }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-times-circle stats-icon text-danger"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-info">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Completed Total
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.completed_appointments }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar-check stats-icon text-info"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stats-card border-left-primary">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Active Users
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_patients + stats.total_doctors + 1 }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-user-check stats-icon text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-lg-8">
+            <!-- Recent Activity -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="recent-activity">
+                        {% if recent_activities %}
+                            {% for activity in recent_activities %}
+                            <div class="activity-item">
+                                <div class="d-flex align-items-center">
+                                    <div class="flex-shrink-0">
+                                        {% if activity.action == 'login' %}
+                                        <div class="avatar bg-primary text-white">
+                                            <i class="fas fa-sign-in-alt"></i>
+                                        </div>
+                                        {% elif activity.action == 'logout' %}
+                                        <div class="avatar bg-secondary text-white">
+                                            <i class="fas fa-sign-out-alt"></i>
+                                        </div>
+                                        {% elif 'password' in activity.action %}
+                                        <div class="avatar bg-warning text-white">
+                                            <i class="fas fa-key"></i>
+                                        </div>
+                                        {% elif 'appointment' in activity.action %}
+                                        <div class="avatar bg-info text-white">
+                                            <i class="fas fa-calendar"></i>
+                                        </div>
+                                        {% else %}
+                                        <div class="avatar bg-success text-white">
+                                            <i class="fas fa-info-circle"></i>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="flex-grow-1 ms-3">
+                                        <h6 class="mb-1 text-capitalize">{{ activity.action.replace('_', ' ') }}</h6>
+                                        <p class="mb-0 text-muted">{{ activity.description }}</p>
+                                        <small class="text-muted">{{ activity.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-info-circle fa-2x mb-2"></i>
+                                <p>No recent activity found</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-heartbeat me-2"></i>System Health</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Server Uptime</label>
+                            <div class="progress system-progress">
+                                <div class="progress-bar bg-success" data-width="{{ system_metrics.server_uptime }}"></div>
+                            </div>
+                            <small class="text-muted">{{ system_metrics.server_uptime }}% - 30 days</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Database Performance</label>
+                            <div class="progress system-progress">
+                                <div class="progress-bar bg-info" data-width="{{ system_metrics.database_performance }}"></div>
+                            </div>
+                            <small class="text-muted">{{ system_metrics.database_performance }}% - Optimal</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Storage Usage</label>
+                            <div class="progress system-progress">
+                                <div class="progress-bar bg-warning" data-width="{{ system_metrics.storage_usage }}"></div>
+                            </div>
+                            <small class="text-muted">{{ system_metrics.storage_usage }}% - 15GB of 20GB used</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Network Latency</label>
+                            <div class="progress system-progress">
+                                <div class="progress-bar bg-success" data-width="{{ system_metrics.network_latency }}"></div>
+                            </div>
+                            <small class="text-muted">{{ system_metrics.network_latency }}% - 45ms average</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-lg-4">
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <a href="{{ url_for('admin_users') }}" class="quick-action-btn">
+                                <i class="fas fa-user-plus fa-2x text-primary mb-2"></i>
+                                <h6 class="mb-0">Add User</h6>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('admin_patients') }}" class="quick-action-btn">
+                                <i class="fas fa-users fa-2x text-success mb-2"></i>
+                                <h6 class="mb-0">View Patients</h6>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('admin_communication') }}" class="quick-action-btn">
+                                <i class="fas fa-comments fa-2x text-info mb-2"></i>
+                                <h6 class="mb-0">Monitor Chat</h6>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('admin_users') }}" class="quick-action-btn">
+                                <i class="fas fa-chart-bar fa-2x text-warning mb-2"></i>
+                                <h6 class="mb-0">View Reports</h6>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Today's Appointments -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-calendar me-2"></i>Today's Appointments</h5>
+                </div>
+                <div class="card-body">
+                    {% if today_appointments %}
+                    <div class="list-group list-group-flush">
+                        {% for appointment_data in today_appointments %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                {% set appointment, patient, doctor, patient_user, doctor_user = appointment_data %}
+                                <h6 class="mb-1">Dr. {{ doctor_user.last_name }} - {{ patient_user.first_name }} {{ patient_user.last_name }}</h6>
+                                <small class="text-muted">
+                                    {{ appointment.appointment_date.strftime('%H:%M') }} - 
+                                    {{ appointment.consultation_type|title if appointment.consultation_type else 'Consultation' }}
+                                </small>
+                            </div>
+                            <span class="badge 
+                                {% if appointment.status == 'scheduled' %}bg-warning
+                                {% elif appointment.status == 'completed' %}bg-success
+                                {% elif appointment.status == 'cancelled' %}bg-danger
+                                {% else %}bg-secondary{% endif %}">
+                                {{ appointment.status|title }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="fas fa-calendar-times fa-2x mb-2"></i>
+                        <p>No appointments today</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.progress-bar[data-width]').forEach(function (el) {
+                var v = el.getAttribute('data-width');
+                if (v !== null && v !== undefined) {
+                    el.style.width = v + '%';
+                }
+            });
+        });
+    </script>
+{% endblock %}

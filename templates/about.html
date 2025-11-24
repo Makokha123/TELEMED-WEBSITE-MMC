@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}About - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+.about-hero {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: white;
+    padding: 60px 0;
+}
+.about-content {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="about-hero text-center">
+    <div class="container">
+        <h1 class="display-5">About MAKOKHA MEDICAL CENTRE</h1>
+        <p class="lead mt-3">Delivering trusted telemedicine services with compassion and clinical excellence.</p>
+    </div>
+</section>
+
+<section class="about-content">
+    <div class="container">
+        <h2>Our Mission</h2>
+        <p class="text-muted">To make quality healthcare accessible to everyone by combining experienced clinicians, patient-centred care, and secure telemedicine technology.</p>
+
+        <h2 class="mt-4">What We Offer</h2>
+        <ul>
+            <li>Video and voice consultations with certified doctors</li>
+            <li>Secure messaging and medical record sharing</li>
+            <li>Prescription delivery and follow-up care</li>
+            <li>Specialist referrals and continuity of care</li>
+        </ul>
+
+        <h2 class="mt-4">Our Values</h2>
+        <p class="text-muted">Quality, Privacy, Accessibility, and Compassion guide every interaction we have with our patients.</p>
+
+        <div class="mt-4">
+            <a href="{{ url_for('signup') }}" class="btn btn-primary me-2">Sign Up</a>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Contact Us</a>
+        </div>
+    </div>
+</section>
+{% endblock %}
