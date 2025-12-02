@@ -1,4 +1,5 @@
 
+import gc
 from flask import Flask
 from datetime import datetime, timedelta
 
@@ -29,14 +30,31 @@ from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
 
+app = Flask(__name__)
+
 # Attempt to import Flask-SocketIO; provide graceful fallbacks if unavailable.
+# Update your Socket.IO initialization
 try:
     from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
     SOCKETIO_AVAILABLE = True
-except Exception:
-    # If flask_socketio is not installed, provide no-op fallbacks so the rest of the app can import.
-    SocketIO = None
+    
+    # Configure Socket.IO for Render
+    socketio = SocketIO(
+        app, 
+        cors_allowed_origins="*",
+        async_mode='eventlet',
+        logger=True,
+        engineio_logger=True,
+        ping_timeout=60,  # Increase ping timeout
+        ping_interval=25,  # Increase ping interval
+        max_http_buffer_size=1e8  # 100MB limit
+    )
+    print("✓ Socket.IO initialized with eventlet")
+except ImportError as e:
+    print(f"⚠ Socket.IO not available: {e}")
     SOCKETIO_AVAILABLE = False
+    socketio = None
+
 
     def emit(*args, **kwargs):
         """No-op emit fallback when Flask-SocketIO isn't installed."""
@@ -96,6 +114,7 @@ import json
 import hmac
 import hashlib
 from flask_migrate import Migrate
+import psutil
 
 try:
     from config import Config
@@ -370,6 +389,34 @@ twitter_bp = None
 app.register_blueprint(google_bp, url_prefix="/login")
 app.register_blueprint(facebook_bp, url_prefix="/login")
 
+def cleanup_old_sessions():
+    """Clean up old user sessions"""
+    cutoff_time = datetime.utcnow() - timedelta(hours=1)
+    users_to_remove = []
+    
+    for user_id, last_seen_str in list(user_last_seen.items()):
+        try:
+            last_seen = datetime.fromisoformat(last_seen_str)
+            if last_seen < cutoff_time:
+                users_to_remove.append(user_id)
+        except:
+            pass
+    
+    for user_id in users_to_remove:
+        if user_id in user_sockets:
+            del user_sockets[user_id]
+        if user_id in user_last_seen:
+            del user_last_seen[user_id]
+    
+    # Force garbage collection
+    gc.collect()
+
+# Schedule cleanup (run every hour)
+import threading
+def schedule_cleanup():
+    while True:
+        threading.Event().wait(3600)  # Wait 1 hour
+        cleanup_old_sessions()
 
 # Social authentication success handler
 @oauth_authorized.connect_via(google_bp)
@@ -1657,6 +1704,24 @@ def admin_users():
     
     users = User.query.all()
     return render_template('admin/users.html', users=users)
+
+@app.route('/api/debug/memory')
+@login_required
+def debug_memory():
+    """Debug endpoint to check memory usage"""
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    
+    return jsonify({
+        'rss_mb': memory_info.rss / 1024 / 1024,
+        'vms_mb': memory_info.vms / 1024 / 1024,
+        'percent': process.memory_percent(),
+        'active_users': len(user_sockets),
+        'active_calls': len(active_calls)
+    })
 
 @app.route('/api/debug/db-check')
 def debug_db_check():
@@ -4487,41 +4552,72 @@ def doctors():
 # SOCKET.IO EVENT HANDLERS - REAL-TIME COMMUNICATION
 # ============================================
 
+@socketio.on_error_default
+def default_error_handler(e):
+    """Handle Socket.IO errors"""
+    print(f'Socket.IO error: {e}')
+    import traceback
+    traceback.print_exc()
+
 @socketio.on('connect')
 def handle_connect():
-    """Handle user connection"""
-    if not current_user.is_authenticated:
+    """Handle user connection with better error handling"""
+    try:
+        if not current_user.is_authenticated:
+            print("Unauthenticated connection attempt")
+            return False
+        
+        user_sockets[current_user.id] = request.sid
+        user_last_seen[current_user.id] = datetime.utcnow().isoformat()
+        
+        emit('connection_response', {'data': 'Connected to server'})
+        print(f'User {current_user.id} connected: {request.sid}')
+        
+    except Exception as e:
+        print(f'Error in handle_connect: {e}')
         return False
-    user_sockets[current_user.id] = request.sid
-    # When user connects, publish presence to others
-    emit('user_online', {
-        'user_id': current_user.id,
-        'user_name': safe_display_name(current_user)
-    }, broadcast=True, include_self=False)
-    emit('connection_response', {'data': 'Connected to server'})
-    print(f'User {current_user.id} connected: {request.sid}')
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle user disconnection"""
-    if current_user.is_authenticated:
-        user_id = current_user.id
-        if user_id in user_sockets:
-            del user_sockets[user_id]
-        # store last seen
-        user_last_seen[user_id] = datetime.utcnow().isoformat()
-        # notify others
-        emit('user_offline', {
-            'user_id': user_id,
-            'last_seen': user_last_seen[user_id]
-        }, broadcast=True, include_self=False)
-        # End any active calls for this user
-        for apt_id, users in list(active_calls.items()):
-            if user_id in users:
-                del users[user_id]
-                if not users:
-                    del active_calls[apt_id]
-        print(f'User {user_id} disconnected')
+    """Handle user disconnection with cleanup"""
+    try:
+        if current_user.is_authenticated:
+            user_id = current_user.id
+            if user_id in user_sockets:
+                del user_sockets[user_id]
+            
+            # Update last seen
+            user_last_seen[user_id] = datetime.utcnow().isoformat()
+            
+            # Clean up active calls
+            for apt_id, users in list(active_calls.items()):
+                if user_id in users:
+                    del users[user_id]
+                    if not users:
+                        del active_calls[apt_id]
+            
+            print(f'User {user_id} disconnected')
+            
+    except Exception as e:
+        print(f'Error in handle_disconnect: {e}')
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Render"""
+    try:
+        # Check database connection
+        db.session.execute('SELECT 1')
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
 
 # ============================================
 # MESSAGING EVENTS
@@ -5160,13 +5256,22 @@ def handle_leave_appointment(data):
 
 
 if __name__ == '__main__':
+    cleanup_thread = threading.Thread(target=schedule_cleanup, daemon=True)
+    cleanup_thread.start()
     # Get port from environment or use default
     port = int(os.environ.get('PORT', 5000))
     
     # Run application with Socket.IO if available
     if SOCKETIO_AVAILABLE:
         print(f"🚀 Starting application on port {port} with Socket.IO support")
-        socketio.run(app, host='0.0.0.0', port=port, debug=False)
+        
+        # For development
+        if os.environ.get('ENVIRONMENT') == 'development':
+            socketio.run(app, host='0.0.0.0', port=port, debug=True)
+        else:
+            # For production (Render)
+            socketio.run(app, host='0.0.0.0', port=port, debug=False, 
+                        log_output=True, allow_unsafe_werkzeug=True)
     else:
         print(f"🚀 Starting application on port {port}")
         app.run(host='0.0.0.0', port=port, debug=False)
