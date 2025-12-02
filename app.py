@@ -1,6 +1,8 @@
 
 from flask import Flask
 from datetime import datetime, timedelta
+
+import urllib
 from models import Communication, PatientVital, Payment, Report
 
 # Jinja2 filter for timeago
@@ -85,64 +87,226 @@ import secrets
 import string
 from config import Config
 import os
+
+# Initialize serializer for password reset tokens
+s = URLSafeTimedSerializer(os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production-12345'))
 from datetime import datetime
 from datetime import datetime, timedelta, date
 import json
 import hmac
 import hashlib
+from flask_migrate import Migrate
+
+try:
+    from config import Config
+except ImportError:
+    class Config:
+        ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt', 'mp3', 'wav', 'mp4'}
+        MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
 
 app = Flask(__name__)
 
-# Configure for Netlify deployment
+# Global dictionary to track online users for Socket.IO presence
+user_sockets = {}
+user_last_seen = {}
+active_calls = {}
+
 def configure_app():
-    # Use environment variables for configuration
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+    """Configure Flask application with environment variables"""
+    # Security
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production-12345')
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_UPLOAD_SIZE', 5 * 1024 * 1024))
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL") or 'sqlite:///clinic.db'
+    
+    # Database configuration with URL decoding
+    database_url = os.getenv("DATABASE_URL") or 'sqlite:///clinic.db'
+    
+    # Fix for Neon/Heroku: Decode URL-encoded characters in database name
+    if database_url.startswith('postgresql://') or database_url.startswith('postgres://'):
+        parsed_url = urllib.parse.urlparse(database_url)
+        decoded_path = urllib.parse.unquote(parsed_url.path)
+        database_url = urllib.parse.urlunparse((
+            parsed_url.scheme,
+            parsed_url.netloc,
+            decoded_path,
+            parsed_url.params,
+            parsed_url.query,
+            parsed_url.fragment
+        ))
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_recycle': 300,
-        'pool_pre_ping': True
+        'pool_pre_ping': True,
+        'pool_size': 20,
+        'max_overflow': 30
     }
+    
+    # Email configuration
     app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
     app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
     app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
     app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
     app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+    app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
+    
+    # OAuth configuration
     app.config['GOOGLE_OAUTH_CLIENT_ID'] = os.getenv('GOOGLE_OAUTH_CLIENT_ID')
     app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET')
     app.config['FACEBOOK_OAUTH_CLIENT_ID'] = os.getenv('FACEBOOK_OAUTH_CLIENT_ID')
     app.config['FACEBOOK_OAUTH_CLIENT_SECRET'] = os.getenv('FACEBOOK_OAUTH_CLIENT_SECRET')
+    
+    # File uploads
     app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'static/uploads')
-    app.config['ENCRYPTION_KEY'] = os.getenv('ENCRYPTION_KEY', 'dev-encryption-key-32-chars-long!')
+    app.config['ENCRYPTION_KEY'] = os.getenv('ENCRYPTION_KEY', 'dev-encryption-key-32-chars-long!123456')
+    
+    # Payment providers
+    app.config['STRIPE_SECRET_KEY'] = os.getenv('STRIPE_SECRET_KEY')
+    app.config['STRIPE_WEBHOOK_SECRET'] = os.getenv('STRIPE_WEBHOOK_SECRET')
+    
+    # Logging
+    app.config['LOG_LEVEL'] = os.getenv('LOG_LEVEL', 'INFO')
 
 configure_app()
 
 # Initialize extensions
-oauth = OAuth(app)
 db.init_app(app)
+migrate = Migrate(app, db)
 csrf = CSRFProtect(app)
 mail = Mail(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+oauth = OAuth(app)
 
-# Initialize Socket.IO for real-time communication
-# Let Flask-SocketIO choose the best async mode (eventlet/gevent) if available.
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Initialize Socket.IO with eventlet for best performance
+try:
+    from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
+    SOCKETIO_AVAILABLE = True
+    socketio = SocketIO(
+        app, 
+        cors_allowed_origins="*",
+        async_mode='eventlet',  # Use eventlet for WebSocket support
+        logger=True,
+        engineio_logger=True
+    )
+    print("✓ Socket.IO initialized with eventlet")
+except ImportError as e:
+    print(f"⚠ Socket.IO not available: {e}")
+    SOCKETIO_AVAILABLE = False
+    socketio = None
 
-# If the chosen async mode falls back to 'threading', websocket transport may not be supported.
-import logging
-if getattr(socketio, 'async_mode', None) == 'threading':
-    logging.warning("Socket.IO is running with 'threading' async mode. WebSocket transport may be unavailable.\n"
-                    "Install 'eventlet' (pip install eventlet) or 'gevent' for full websocket support.")
+# ============================================
+# DATABASE INITIALIZATION
+# ============================================
+def create_default_users():
+    """Create default admin, doctor, and patient accounts if they don't exist"""
+    with app.app_context():
+        # Default admin
+        admin = User.query.filter_by(username='admin').first()
+        if not admin:
+            admin_user = User(
+                username='admin',
+                email='admin@makokha.com',
+                role='admin',
+                is_active=True
+            )
+            admin_user.set_password('Admin@123456')
+            admin_user.first_name = 'System'
+            admin_user.last_name = 'Administrator'
+            admin_user.phone = '+254700000000'
+            db.session.add(admin_user)
+            print("✓ Default admin account created")
+        else:
+            print("✓ Default admin already exists")
+        
+        # Default doctor
+        doctor_user = User.query.filter_by(username='dr_mwangi').first()
+        if not doctor_user:
+            doctor_user = User(
+                username='dr_mwangi',
+                email='dr.mwangi@makokha.com',
+                role='doctor',
+                is_active=True
+            )
+            doctor_user.set_password('Doctor@123456')
+            doctor_user.first_name = 'David'
+            doctor_user.last_name = 'Mwangi'
+            doctor_user.phone = '+254700000001'
+            db.session.add(doctor_user)
+            db.session.commit()
+            
+            doctor_profile = Doctor(
+                user_id=doctor_user.id,
+                specialization='General Practitioner',
+                license_number='KMC/2020/001',
+                experience_years=8,
+                consultation_fee=1500.00,
+                qualifications='MBChB, MMed',
+                availability=True
+            )
+            db.session.add(doctor_profile)
+            print("✓ Default doctor account created")
+        else:
+            print("✓ Default doctor already exists")
+        
+        # Default patient
+        patient_user = User.query.filter_by(username='patient').first()
+        if not patient_user:
+            patient_user = User(
+                username='patient',
+                email='patient@makokha.com',
+                role='patient',
+                is_active=True
+            )
+            patient_user.set_password('Patient@123456')
+            patient_user.first_name = 'John'
+            patient_user.last_name = 'Doe'
+            patient_user.phone = '+254711000000'
+            db.session.add(patient_user)
+            db.session.commit()
+            
+            patient_profile = Patient(
+                user_id=patient_user.id,
+                blood_type='O+',
+                emergency_contact='Jane Doe +254722000000',
+                insurance_provider='NHIF'
+            )
+            db.session.add(patient_profile)
+            print("✓ Default patient account created")
+        else:
+            print("✓ Default patient already exists")
+        
+        try:
+            db.session.commit()
+            print("✓ Default users setup completed")
+        except Exception as e:
+            db.session.rollback()
+            print(f"✗ Error creating default users: {e}")
 
-# Track active connections
-active_calls = {}  # {appointment_id: {user_id: socket_id}}
-user_sockets = {}  # {user_id: socket_id}
-user_last_seen = {}  # {user_id: isotimestamp}
+def initialize_database():
+    """Initialize database tables and create default users"""
+    with app.app_context():
+        try:
+            # Create all tables if they don't exist
+            db.create_all()
+            print("✓ Database tables verified/created")
+            
+            # Create default users
+            create_default_users()
+            
+            # Create uploads directory
+            uploads_dir = app.config['UPLOAD_FOLDER']
+            if not os.path.exists(uploads_dir):
+                os.makedirs(uploads_dir, exist_ok=True)
+                print(f"✓ Created uploads directory: {uploads_dir}")
+                
+        except Exception as e:
+            print(f"✗ Database initialization error: {e}")
+            import traceback
+            traceback.print_exc()
 
-# Initialize serializer for token generation
-s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+# Run database initialization
+initialize_database()
 
 def safe_display_name(user):
     try:
@@ -206,81 +370,6 @@ twitter_bp = None
 app.register_blueprint(google_bp, url_prefix="/login")
 app.register_blueprint(facebook_bp, url_prefix="/login")
 
-def create_default_users():
-    """Create default admin, doctor, and patient accounts"""
-    with app.app_context():
-        # Check if default admin exists
-        admin = User.query.filter_by(username='admin').first()
-        if not admin:
-            admin_user = User(
-                username='admin',
-                email='admin@makokha.com',
-                role='admin',
-                is_active=True
-            )
-            admin_user.set_password('Admin@123456')
-            admin_user.first_name = 'System'
-            admin_user.last_name = 'Administrator'
-            db.session.add(admin_user)
-            print("✓ Default admin account created")
-
-        # Check if default doctor exists
-        doctor_user = User.query.filter_by(username='dr_mwangi').first()
-        if not doctor_user:
-            doctor_user = User(
-                username='dr_mwangi',
-                email='dr.mwangi@makokha.com',
-                role='doctor',
-                is_active=True
-            )
-            doctor_user.set_password('Doctor@123456')
-            doctor_user.first_name = 'David'
-            doctor_user.last_name = 'Mwangi'
-            doctor_user.phone = '+254700000001'
-            db.session.add(doctor_user)
-            db.session.commit()  # Commit to get user ID
-            
-            # Create doctor profile
-            doctor_profile = Doctor(
-                user_id=doctor_user.id,
-                specialization='General Practitioner',
-                license_number='KMC/2020/001',
-                experience_years=8,
-                consultation_fee=1500.00,
-                qualifications='MBChB, MMed',
-                availability=True
-            )
-            db.session.add(doctor_profile)
-            print("✓ Default doctor account created")
-
-        # Check if default patient exists
-        patient_user = User.query.filter_by(username='patient').first()
-        if not patient_user:
-            patient_user = User(
-                username='patient',
-                email='patient@makokha.com',
-                role='patient',
-                is_active=True
-            )
-            patient_user.set_password('Patient@123456')
-            patient_user.first_name = 'John'
-            patient_user.last_name = 'Doe'
-            patient_user.phone = '+254711000000'
-            db.session.add(patient_user)
-            db.session.commit()  # Commit to get user ID
-            
-            # Create patient profile
-            patient_profile = Patient(
-                user_id=patient_user.id,
-                blood_type='O+',
-                emergency_contact='Jane Doe +254722000000',
-                insurance_provider='NHIF'
-            )
-            db.session.add(patient_profile)
-            print("✓ Default patient account created")
-
-        db.session.commit()
-        print("✓ Default users setup completed")
 
 # Social authentication success handler
 @oauth_authorized.connect_via(google_bp)
@@ -5071,15 +5160,13 @@ def handle_leave_appointment(data):
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        # Create tables if they don't exist
-        db.create_all()
-        
-        # Create default users
-        create_default_users()
-    
+    # Get port from environment or use default
     port = int(os.environ.get('PORT', 5000))
-    if SOCKETIO_AVAILABLE and socketio:
-        socketio.run(app, host='0.0.0.0', port=port, bug=False)
+    
+    # Run application with Socket.IO if available
+    if SOCKETIO_AVAILABLE:
+        print(f"🚀 Starting application on port {port} with Socket.IO support")
+        socketio.run(app, host='0.0.0.0', port=port, debug=False)
     else:
+        print(f"🚀 Starting application on port {port}")
         app.run(host='0.0.0.0', port=port, debug=False)
