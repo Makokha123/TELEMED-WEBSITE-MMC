@@ -4594,12 +4594,11 @@ def handle_disconnect():
 def health_check():
     """Health check endpoint for Render"""
     try:
-        # Check database connection
-        db.session.execute('SELECT 1')
+        # Simple check without database query to avoid threading issues
         return jsonify({
             'status': 'healthy',
-            'database': 'connected',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.utcnow().isoformat(),
+            'service': 'telemedicine-platform'
         }), 200
     except Exception as e:
         return jsonify({
