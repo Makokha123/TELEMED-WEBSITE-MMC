@@ -98,21 +98,12 @@ def configure_app():
     # Use environment variables for configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_UPLOAD_SIZE', 5 * 1024 * 1024))
-    
-    # Database configuration for Neon PostgreSQL
-    database_url = os.getenv('DATABASE_URL')
-    if not database_url:
-        # Fallback to your Neon credentials
-        database_url = "postgresql://neondb_owner:npg_tBcr3dVmolJ6@ep-square-scene-aesfpdul4-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require"
-    
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL") or 'sqlite:///clinic.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_recycle': 300,
         'pool_pre_ping': True
     }
-    
-    # Other configuration
     app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
     app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
     app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
@@ -5089,6 +5080,6 @@ if __name__ == '__main__':
     
     port = int(os.environ.get('PORT', 5000))
     if SOCKETIO_AVAILABLE and socketio:
-        socketio.run(app, host='0.0.0.0', port=port, debug=False)
+        socketio.run(app, host='0.0.0.0', port=port, bug=False)
     else:
         app.run(host='0.0.0.0', port=port, debug=False)
