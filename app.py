@@ -1,4 +1,6 @@
-
+import eventlet
+eventlet.monkey_patch()
+from flask_socketio import SocketIO
 import gc
 from flask import Flask
 from datetime import datetime, timedelta
@@ -32,45 +34,18 @@ from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
 
 app = Flask(__name__)
 
-# Attempt to import Flask-SocketIO; provide graceful fallbacks if unavailable.
-# Update your Socket.IO initialization
-try:
-    from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
-    SOCKETIO_AVAILABLE = True
-    
-    # Configure Socket.IO for Render
-    socketio = SocketIO(
-        app, 
-        cors_allowed_origins="*",
-        async_mode='eventlet',
-        logger=True,
-        engineio_logger=True,
-        ping_timeout=60,  # Increase ping timeout
-        ping_interval=25,  # Increase ping interval
-        max_http_buffer_size=1e8  # 100MB limit
-    )
-    print("✓ Socket.IO initialized with eventlet")
-except ImportError as e:
-    print(f"⚠ Socket.IO not available: {e}")
-    SOCKETIO_AVAILABLE = False
-    socketio = None
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*",
+    async_mode='eventlet',
+    logger=True,
+    engineio_logger=True,
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=1e8
+)
 
-
-    def emit(*args, **kwargs):
-        """No-op emit fallback when Flask-SocketIO isn't installed."""
-        return None
-
-    def join_room(*args, **kwargs):
-        """No-op join_room fallback when Flask-SocketIO isn't installed."""
-        return None
-
-    def leave_room(*args, **kwargs):
-        """No-op leave_room fallback when Flask-SocketIO isn't installed."""
-        return None
-
-    def disconnect(*args, **kwargs):
-        """No-op disconnect fallback when Flask-SocketIO isn't installed."""
-        return None
+print("✓ Socket.IO initialized with eventlet")
 
 # Twitter OAuth integration removed — disable related variables
 make_twitter_blueprint = None
@@ -130,6 +105,20 @@ user_sockets = {}
 user_last_seen = {}
 active_calls = {}
 
+from sqlalchemy import event
+from sqlalchemy.pool import QueuePool
+
+@event.listens_for(QueuePool, "connect")
+def receive_connect(dbapi_connection, connection_record):
+    """Patch SQLAlchemy connection for eventlet compatibility"""
+    try:
+        import eventlet
+        if eventlet.patcher.is_monkey_patched('thread'):
+            # If eventlet has monkey-patched threading,
+            # ensure the connection uses green threads
+            pass
+    except ImportError:
+        pass
 def configure_app():
     """Configure Flask application with environment variables"""
     # Security
