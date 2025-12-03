@@ -6,7 +6,7 @@ from flask import Flask
 from datetime import datetime, timedelta
 
 import urllib
-from models import Communication, PatientVital, Payment, Report
+from models import Communication, PatientVital, Payment, Prescription, Report
 
 # Jinja2 filter for timeago
 def timeago(dt):
@@ -2480,32 +2480,109 @@ def payment_status(payment_id):
     payment = Payment.query.get_or_404(payment_id)
     return jsonify({'id': payment.id, 'status': payment.status, 'provider': payment.provider, 'amount': payment.amount})
 
-# Add this route for appointment details
+@app.route('/api/user/<int:user_id>/profile')
+@login_required
+def get_user_profile(user_id):
+    """Get user profile information including profile picture"""
+    user = User.query.get_or_404(user_id)
+    
+    # Check if current user has permission to view this profile
+    if current_user.role != 'admin' and current_user.id != user_id:
+        # For doctor-patient relationships, check if they have appointments together
+        if current_user.role == 'doctor':
+            doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+            patient = Patient.query.filter_by(user_id=user_id).first()
+            if not patient or not has_shared_appointment(doctor.id, patient.id):
+                return jsonify({'error': 'Access denied'}), 403
+        elif current_user.role == 'patient':
+            patient = Patient.query.filter_by(user_id=current_user.id).first()
+            doctor = Doctor.query.filter_by(user_id=user_id).first()
+            if not doctor or not has_shared_appointment(doctor.id, patient.id):
+                return jsonify({'error': 'Access denied'}), 403
+    
+    profile_data = {
+        'id': user.id,
+        'username': user.username,
+        'name': user.get_display_name(),
+        'role': user.role,
+        'profile_picture_url': None
+    }
+    
+    # Get profile picture URL
+    if user.profile_picture:
+        if user.profile_picture.startswith('http'):
+            profile_data['profile_picture_url'] = user.profile_picture
+        else:
+            profile_data['profile_picture_url'] = url_for('profile_picture', user_id=user.id, _external=True)
+    
+    return jsonify(profile_data)
+
+def has_shared_appointment(doctor_id, patient_id):
+    """Check if doctor and patient have any appointments together"""
+    appointment = Appointment.query.filter_by(
+        doctor_id=doctor_id,
+        patient_id=patient_id
+    ).first()
+    return appointment is not None
+
 @app.route('/api/appointment/<int:appointment_id>/details')
 @login_required
-def get_appointment_details(appointment_id):
-    """Get appointment details for confirmation"""
+def get_appointment_details_enhanced(appointment_id):
+    """Get enhanced appointment details with profile pictures"""
     appointment = Appointment.query.get_or_404(appointment_id)
     
     # Verify access
-    if current_user.role == 'patient':
-        patient = Patient.query.filter_by(user_id=current_user.id).first()
-        if appointment.patient_id != patient.id:
-            return jsonify({'error': 'Access denied'}), 403
+    if not verify_appointment_access(appointment, current_user):
+        return jsonify({'error': 'Access denied'}), 403
     
     doctor = Doctor.query.get(appointment.doctor_id)
     doctor_user = User.query.get(doctor.user_id) if doctor else None
+    patient = Patient.query.get(appointment.patient_id)
+    patient_user = User.query.get(patient.user_id) if patient else None
+    
+    # Get profile picture URLs
+    doctor_profile_picture = None
+    if doctor_user and doctor_user.profile_picture:
+        if doctor_user.profile_picture.startswith('http'):
+            doctor_profile_picture = doctor_user.profile_picture
+        else:
+            doctor_profile_picture = url_for('profile_picture', user_id=doctor_user.id, _external=True)
+    
+    patient_profile_picture = None
+    if patient_user and patient_user.profile_picture:
+        if patient_user.profile_picture.startswith('http'):
+            patient_profile_picture = patient_user.profile_picture
+        else:
+            patient_profile_picture = url_for('profile_picture', user_id=patient_user.id, _external=True)
+    
+    # Check if doctor is online
+    doctor_online = doctor_user.id in user_sockets if doctor_user else False
     
     return jsonify({
         'id': appointment.id,
+        'doctor_id': doctor.id if doctor else None,
         'doctor_first_name': doctor_user.first_name if doctor_user else '',
         'doctor_last_name': doctor_user.last_name if doctor_user else '',
         'doctor_specialization': doctor.specialization if doctor else '',
+        'doctor_profile_picture': doctor_profile_picture,
+        'doctor_online': doctor_online,
+        'patient_id': patient.id if patient else None,
+        'patient_first_name': patient_user.first_name if patient_user else '',
+        'patient_last_name': patient_user.last_name if patient_user else '',
+        'patient_profile_picture': patient_profile_picture,
         'appointment_date': appointment.appointment_date.isoformat(),
         'consultation_type': appointment.consultation_type,
         'symptoms': appointment.symptoms,
-        'status': appointment.status
+        'status': appointment.status,
+        'payment_status': get_appointment_payment_status_internal(appointment_id)
     })
+
+def get_appointment_payment_status_internal(appointment_id):
+    """Internal function to get payment status"""
+    payment = Payment.query.filter_by(appointment_id=appointment_id).order_by(Payment.created_at.desc()).first()
+    if payment:
+        return payment.status
+    return 'pending'
 
 # Add this route for appointment confirmation
 @app.route('/api/appointment/<int:appointment_id>/confirm', methods=['POST'])
@@ -3547,42 +3624,75 @@ def get_messages(appointment_id):
     })
 
 # File upload endpoint
-@app.route('/api/upload_file', methods=['POST'])
+@app.route('/api/upload-file', methods=['POST'])
 @login_required
 @csrf.exempt
-def upload_file():
+def upload_file_api():
+    """Upload a file and return its URL"""
     if 'file' not in request.files:
-        return jsonify({'error': 'No file selected'}), 400
+        return jsonify({'success': False, 'error': 'No file provided'}), 400
     
     file = request.files['file']
+    appointment_id = request.form.get('appointment_id')
+    
+    if not appointment_id:
+        return jsonify({'success': False, 'error': 'No appointment specified'}), 400
+    
+    appointment = Appointment.query.get_or_404(appointment_id)
+    
+    # Verify access
+    if not verify_appointment_access(appointment, current_user):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
     if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
     
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        # Store encrypted file with a unique prefix and .enc extension
         storage_name = f"{uuid4().hex}__{filename}.enc"
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], storage_name)
-
-        # Read raw file bytes and encrypt before saving
+        
+        # Determine upload directory based on appointment
+        rel_root = _uploads_rel_root() or 'uploads'
+        rel_dir = os.path.join(rel_root, 'appointments', str(appointment_id), 'files').replace('\\', '/')
+        full_dir = os.path.join(app.root_path, rel_dir)
+        os.makedirs(full_dir, exist_ok=True)
+        
+        full_path = os.path.join(full_dir, storage_name)
+        rel_path_for_db = os.path.join(rel_dir, storage_name).replace('\\', '/')
+        
+        # Read and encrypt file
         raw = file.read()
         try:
             encrypted_bytes = encrypt_file_bytes(raw)
+            with open(full_path, 'wb') as fh:
+                fh.write(encrypted_bytes)
+            
+            # Create communication record
+            comm = Communication(
+                appointment_id=appointment_id,
+                sender_id=current_user.id,
+                message_type='document' if not file.content_type.startswith('image/') else 'image',
+                content=filename,
+                file_path=rel_path_for_db
+            )
+            db.session.add(comm)
+            db.session.commit()
+            
+            # Return file URL
+            file_url = url_for('download_communication_file', communication_id=comm.id, _external=True)
+            
+            return jsonify({
+                'success': True,
+                'file_url': file_url,
+                'filename': filename,
+                'file_size': len(raw),
+                'message_id': comm.id
+            })
+            
         except Exception as e:
-            return jsonify({'error': 'Failed to encrypt file', 'detail': str(e)}), 500
-
-        # Ensure upload folder exists
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        with open(file_path, 'wb') as fh:
-            fh.write(encrypted_bytes)
-
-        return jsonify({
-            'success': True,
-            'file_path': file_path,
-            'filename': filename
-        })
+            return jsonify({'success': False, 'error': str(e)}), 500
     
-    return jsonify({'error': 'Invalid file type'}), 400
+    return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
 # Helper function to verify appointment access
 def verify_appointment_access(appointment, user):
@@ -4023,8 +4133,8 @@ def get_doctor_patients():
 # API to get messages for appointment (patient/doctor communication)
 @app.route('/api/appointment/<int:appointment_id>/messages', methods=['GET'])
 @login_required
-def get_appointment_messages(appointment_id):
-    """Get all messages for an appointment"""
+def get_appointment_messages_enhanced(appointment_id):
+    """Get all messages for an appointment with enhanced data"""
     try:
         appointment = Appointment.query.get_or_404(appointment_id)
         
@@ -4046,21 +4156,36 @@ def get_appointment_messages(appointment_id):
         
         messages_data = []
         for msg in messages:
-            try:
-                sender_name = safe_display_name(msg.sender)
-            except Exception:
-                sender_name = getattr(msg.sender, 'first_name', '') + ' ' + getattr(msg.sender, 'last_name', '')
+            # Get file URL if exists
+            file_url = None
+            if msg.file_path:
+                if msg.file_path.startswith('http'):
+                    file_url = msg.file_path
+                else:
+                    file_url = url_for('download_communication_file', communication_id=msg.id, _external=True)
+            
+            # Get sender profile picture
+            sender_profile_picture = None
+            if msg.sender and msg.sender.profile_picture:
+                if msg.sender.profile_picture.startswith('http'):
+                    sender_profile_picture = msg.sender.profile_picture
+                else:
+                    sender_profile_picture = url_for('profile_picture', user_id=msg.sender.id, _external=True)
             
             messages_data.append({
                 'id': msg.id,
                 'sender_id': msg.sender_id,
-                'sender_name': sender_name,
+                'sender_name': safe_display_name(msg.sender),
+                'sender_profile_picture': sender_profile_picture,
                 'message_type': msg.message_type or 'text',
                 'content': msg.content or '',
-                'file_path': msg.file_path,
+                'file_url': file_url,
+                'file_name': os.path.basename(msg.file_path) if msg.file_path else None,
+                'file_size': os.path.getsize(resolve_stored_path(msg.file_path)) if msg.file_path and os.path.exists(resolve_stored_path(msg.file_path)) else None,
                 'timestamp': msg.timestamp.isoformat() if msg.timestamp else None,
                 'is_sent': msg.sender_id == current_user.id,
                 'is_read': msg.is_read if hasattr(msg, 'is_read') else True,
+                'message_status': msg.message_status if hasattr(msg, 'message_status') else 'sent',
                 'is_prescription': msg.message_type == 'prescription'
             })
         
@@ -4076,7 +4201,6 @@ def get_appointment_messages(appointment_id):
             'error': 'Failed to load messages',
             'message': str(e)
         }), 500
-
 # API to send message in appointment
 @app.route('/api/send-message', methods=['POST'])
 @login_required
@@ -4161,6 +4285,101 @@ def send_voice_note():
     return jsonify({'success': True, 'message_id': communication.id})
 
 # API for doctor communication
+
+@app.route('/api/doctor/patient/<int:patient_id>/latest-appointment')
+@login_required
+def get_patient_latest_appointment(patient_id):
+    """Get the latest appointment for a specific patient with the current doctor"""
+    if current_user.role != 'doctor':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+    if not doctor:
+        return jsonify({'error': 'Doctor profile not found'}), 404
+    
+    # Get latest appointment between this doctor and patient
+    appointment = Appointment.query.filter_by(
+        doctor_id=doctor.id,
+        patient_id=patient_id
+    ).order_by(Appointment.appointment_date.desc()).first()
+    
+    if appointment:
+        return jsonify({
+            'appointment_id': appointment.id,
+            'appointment_date': appointment.appointment_date.isoformat(),
+            'status': appointment.status
+        })
+    else:
+        return jsonify({'appointment_id': None})
+
+# Add endpoint for patient to get doctor's latest appointment
+@app.route('/api/patient/doctor/<int:doctor_id>/latest-appointment')
+@login_required
+def get_doctor_latest_appointment(doctor_id):
+    """Get the latest appointment for a specific doctor with the current patient"""
+    if current_user.role != 'patient':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    patient = Patient.query.filter_by(user_id=current_user.id).first()
+    if not patient:
+        return jsonify({'error': 'Patient profile not found'}), 404
+    
+    # Get latest appointment between this patient and doctor
+    appointment = Appointment.query.filter_by(
+        doctor_id=doctor_id,
+        patient_id=patient.id
+    ).order_by(Appointment.appointment_date.desc()).first()
+    
+    if appointment:
+        return jsonify({
+            'appointment_id': appointment.id,
+            'appointment_date': appointment.appointment_date.isoformat(),
+            'status': appointment.status
+        })
+    else:
+        return jsonify({'appointment_id': None})
+
+# Add endpoint to start new consultation
+@app.route('/api/doctor/start-consultation', methods=['POST'])
+@login_required
+@csrf.exempt
+def start_consultation():
+    """Start a new consultation with a patient"""
+    if current_user.role != 'doctor':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    data = request.get_json()
+    patient_id = data.get('patient_id')
+    
+    if not patient_id:
+        return jsonify({'success': False, 'error': 'Patient ID required'}), 400
+    
+    doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+    if not doctor:
+        return jsonify({'success': False, 'error': 'Doctor profile not found'}), 404
+    
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({'success': False, 'error': 'Patient not found'}), 404
+    
+    # Create a new appointment
+    appointment = Appointment(
+        patient_id=patient_id,
+        doctor_id=doctor.id,
+        appointment_date=datetime.utcnow(),
+        consultation_type='message',
+        status='confirmed'
+    )
+    
+    db.session.add(appointment)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'appointment_id': appointment.id,
+        'message': 'Consultation started successfully'
+    })
+
 
 @app.route('/api/doctor/patient/<int:patient_id>/messages', methods=['GET'])
 @login_required
@@ -4536,7 +4755,93 @@ def doctors():
     ).filter(Doctor.availability == True).all()
 
     return render_template('doctors.html', doctors=doctors)
+@app.route('/api/prescription/form')
+@login_required
+def get_prescription_form():
+    """Get prescription form HTML"""
+    if current_user.role != 'doctor':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    patient_id = request.args.get('patient_id')
+    appointment_id = request.args.get('appointment_id')
+    
+    return '''
+    <form id="prescriptionFormData">
+        <input type="hidden" name="patient_id" value="''' + (patient_id or '') + '''">
+        <input type="hidden" name="appointment_id" value="''' + (appointment_id or '') + '''">
+        
+        <div class="mb-3">
+            <label class="form-label">Medication Name</label>
+            <input type="text" class="form-control" name="medication" required>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Dosage</label>
+            <input type="text" class="form-control" name="dosage" placeholder="e.g., 500mg twice daily" required>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Duration</label>
+            <input type="text" class="form-control" name="duration" placeholder="e.g., 7 days" required>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Instructions</label>
+            <textarea class="form-control" name="instructions" rows="3" placeholder="Additional instructions..."></textarea>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Refills</label>
+            <input type="number" class="form-control" name="refills" min="0" max="5" value="0">
+        </div>
+        
+        <div class="text-end">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="savePrescriptionBtn">Save Prescription</button>
+        </div>
+    </form>
+    '''
 
+# Add endpoint to save prescription
+@app.route('/api/prescription/save', methods=['POST'])
+@login_required
+@csrf.exempt
+def save_prescription():
+    """Save a new prescription"""
+    if current_user.role != 'doctor':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    patient_id = request.form.get('patient_id')
+    appointment_id = request.form.get('appointment_id')
+    medication = request.form.get('medication')
+    dosage = request.form.get('dosage')
+    instructions = request.form.get('instructions')
+    
+    if not all([patient_id, appointment_id, medication, dosage]):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    
+    doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+    if not doctor:
+        return jsonify({'success': False, 'error': 'Doctor profile not found'}), 404
+    
+    # Create prescription
+    prescription = Prescription(
+        doctor_id=doctor.id,
+        patient_id=patient_id,
+        appointment_id=appointment_id,
+        medication=medication,
+        dosage=dosage,
+        instructions=instructions
+    )
+    
+    db.session.add(prescription)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'prescription_id': prescription.id,
+        'message': 'Prescription saved successfully'
+    })
 # ============================================
 # SOCKET.IO EVENT HANDLERS - REAL-TIME COMMUNICATION
 # ============================================
@@ -4565,6 +4870,53 @@ def handle_connect():
     except Exception as e:
         print(f'Error in handle_connect: {e}')
         return False
+
+@socketio.on('message_delivered')
+def handle_message_delivered(data):
+    """Mark a message as delivered"""
+    if not current_user.is_authenticated:
+        return
+    
+    message_id = data.get('message_id')
+    appointment_id = data.get('appointment_id')
+    
+    if not message_id or not appointment_id:
+        return
+    
+    # Verify the user is part of this appointment
+    appointment = db.session.get(Appointment, appointment_id)
+    if not appointment:
+        return
+    
+    # Check access
+    if not verify_appointment_access(appointment, current_user):
+        return
+    
+    # Update message status
+    message = Communication.query.get(message_id)
+    if message and message.appointment_id == appointment_id:
+        message.message_status = 'delivered'
+        db.session.commit()
+        
+        # Notify sender that message was delivered
+        emit('message_status_updated', {
+            'message_id': message_id,
+            'status': 'delivered',
+            'appointment_id': appointment_id
+        }, room=f'appointment_{appointment_id}')
+        
+        # If the recipient is online, mark as read immediately
+        recipient_id = message.sender_id if message.sender_id != current_user.id else None
+        if recipient_id and recipient_id in user_sockets:
+            message.message_status = 'read'
+            message.is_read = True
+            db.session.commit()
+            
+            emit('message_status_updated', {
+                'message_id': message_id,
+                'status': 'read',
+                'appointment_id': appointment_id
+            }, room=f'appointment_{appointment_id}')
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -4607,34 +4959,99 @@ def health_check():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
+@socketio.on('user_online_status')
+def handle_user_online_status(data):
+    """Handle user online/offline status updates"""
+    if not current_user.is_authenticated:
+        return
+    
+    user_id = current_user.id
+    is_online = data.get('is_online', True)
+    
+    if is_online:
+        user_sockets[user_id] = request.sid
+        user_last_seen[user_id] = datetime.utcnow().isoformat()
+        
+        # Notify relevant users based on role
+        if current_user.role == 'doctor':
+            # Notify all patients who have appointments with this doctor
+            doctor = Doctor.query.filter_by(user_id=user_id).first()
+            if doctor:
+                appointments = Appointment.query.filter_by(doctor_id=doctor.id).all()
+                patient_ids = set([app.patient_id for app in appointments])
+                
+                for patient_id in patient_ids:
+                    patient = Patient.query.get(patient_id)
+                    if patient and patient.user_id in user_sockets:
+                        socketio.emit('doctor_online', {
+                            'doctor_id': doctor.id,
+                            'doctor_name': current_user.get_display_name()
+                        }, room=user_sockets[patient.user_id])
+        
+        elif current_user.role == 'patient':
+            # Notify all doctors who have appointments with this patient
+            patient = Patient.query.filter_by(user_id=user_id).first()
+            if patient:
+                appointments = Appointment.query.filter_by(patient_id=patient.id).all()
+                doctor_ids = set([app.doctor_id for app in appointments])
+                
+                for doctor_id in doctor_ids:
+                    doctor = Doctor.query.get(doctor_id)
+                    if doctor and doctor.user_id in user_sockets:
+                        socketio.emit('patient_online', {
+                            'patient_id': patient.id,
+                            'patient_name': current_user.get_display_name()
+                        }, room=user_sockets[doctor.user_id])
+    
+    else:
+        if user_id in user_sockets:
+            del user_sockets[user_id]
+        
+        # Notify relevant users about offline status
+        if current_user.role == 'doctor':
+            doctor = Doctor.query.filter_by(user_id=user_id).first()
+            if doctor:
+                appointments = Appointment.query.filter_by(doctor_id=doctor.id).all()
+                patient_ids = set([app.patient_id for app in appointments])
+                
+                for patient_id in patient_ids:
+                    patient = Patient.query.get(patient_id)
+                    if patient and patient.user_id in user_sockets:
+                        socketio.emit('doctor_offline', {
+                            'doctor_id': doctor.id
+                        }, room=user_sockets[patient.user_id])
+        
+        elif current_user.role == 'patient':
+            patient = Patient.query.filter_by(user_id=user_id).first()
+            if patient:
+                appointments = Appointment.query.filter_by(patient_id=patient.id).all()
+                doctor_ids = set([app.doctor_id for app in appointments])
+                
+                for doctor_id in doctor_ids:
+                    doctor = Doctor.query.get(doctor_id)
+                    if doctor and doctor.user_id in user_sockets:
+                        socketio.emit('patient_offline', {
+                            'patient_id': patient.id
+                        }, room=user_sockets[doctor.user_id])
+
 # ============================================
 # MESSAGING EVENTS
 # ============================================
 
 @socketio.on('send_message')
-def handle_send_message(data):
-    """Handle real-time message sending and update conversation"""
+def handle_send_message_enhanced(data):
+    """Handle real-time message sending with WhatsApp-style features"""
     if not current_user.is_authenticated:
         return {'success': False, 'error': 'Not authenticated'}
 
     try:
         appointment_id = data.get('appointment_id')
-        doctor_id = data.get('doctor_id')
         content = data.get('content')
+        message_type = data.get('message_type', 'text')
+        file_url = data.get('file_url')
+        file_size = data.get('file_size')
 
-        # If client passed doctor_id (legacy), find latest appointment
-        if not appointment_id and doctor_id:
-            patient = Patient.query.filter_by(user_id=current_user.id).first()
-            if not patient:
-                return {'success': False, 'error': 'Patient profile not found'}
-            appointment = Appointment.query.filter_by(
-                doctor_id=doctor_id,
-                patient_id=patient.id
-            ).order_by(Appointment.appointment_date.desc()).first()
-            if appointment:
-                appointment_id = appointment.id
-
-        if not appointment_id or not content:
+        if not appointment_id or (not content and message_type == 'text'):
             return {'success': False, 'error': 'Invalid data'}
 
         appointment = db.session.get(Appointment, appointment_id)
@@ -4649,48 +5066,71 @@ def handle_send_message(data):
         communication = Communication(
             appointment_id=appointment_id,
             sender_id=current_user.id,
-            message_type='text',
-            content=content
+            message_type=message_type,
+            content=content,
+            message_status='sent'
         )
+        
+        if file_url:
+            communication.file_path = file_url
+        
         db.session.add(communication)
         db.session.commit()
 
+        # Prepare message data for broadcast
         message_data = {
             'id': communication.id,
+            'appointment_id': appointment_id,
             'sender_id': current_user.id,
             'sender_name': safe_display_name(current_user),
+            'message_type': message_type,
             'content': content,
             'timestamp': communication.timestamp.isoformat(),
-            'appointment_id': appointment_id,
-            'status': 'sent'
+            'message_status': 'sent',
+            'file_url': file_url,
+            'file_size': file_size
         }
 
-        # Broadcast to both users in appointment
+        # Broadcast to appointment room
         appointment_room = f'appointment_{appointment_id}'
         emit('message_received', message_data, room=appointment_room)
-
-        # Send the updated conversation back to the sender
-        messages = Communication.query.filter_by(
-            appointment_id=appointment_id
-        ).order_by(Communication.timestamp).all()
-
-        messages_data = []
-        for msg in messages:
-            messages_data.append({
-                'id': msg.id,
-                'sender_id': msg.sender_id,
-                'sender_name': msg.sender.first_name + ' ' + msg.sender.last_name,
-                'message_type': msg.message_type,
-                'content': msg.content,
-                'timestamp': msg.timestamp.isoformat(),
-                'is_read': msg.is_read
-            })
-
-        emit('conversation_updated', messages_data, room=appointment_room)
+        
+        # Update sender's UI immediately
+        emit('message_sent', {
+            'message_id': communication.id,
+            'appointment_id': appointment_id,
+            'status': 'sent'
+        })
+        
+        # Check if recipient is online for immediate delivery status
+        recipient_id = None
+        if current_user.role == 'patient':
+            doctor = Doctor.query.get(appointment.doctor_id)
+            recipient_id = doctor.user_id if doctor else None
+        else:
+            patient = Patient.query.get(appointment.patient_id)
+            recipient_id = patient.user_id if patient else None
+        
+        if recipient_id and recipient_id in user_sockets:
+            # Mark as delivered immediately
+            communication.message_status = 'delivered'
+            db.session.commit()
+            
+            emit('message_status_updated', {
+                'message_id': communication.id,
+                'status': 'delivered',
+                'appointment_id': appointment_id
+            }, room=appointment_room)
+            
+            # If recipient is viewing the chat, mark as read
+            # This would require additional tracking of active chats
+            
+        return {'success': True, 'message_id': communication.id}
 
     except Exception as e:
         print(f'Error sending message: {str(e)}')
         emit('message_error', {'error': str(e)})
+        return {'success': False, 'error': str(e)}
 
 
 @socketio.on('message_read')

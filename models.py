@@ -503,14 +503,18 @@ class Communication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    message_type = db.Column(db.String(20), nullable=False)  # text, voice_note, document, system
+    message_type = db.Column(db.String(20), nullable=False)  # text, voice_note, document, system, image
     encrypted_content = db.Column(db.LargeBinary)
     encrypted_file_path = db.Column(db.LargeBinary)
     # Store binary blobs (encrypted) for recordings/uploads when needed
     encrypted_file_blob = db.Column(db.LargeBinary)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False)
-
+    # WhatsApp-style message status: sent, delivered, read
+    message_status = db.Column(db.String(20), default='sent')  # sent, delivered, read
+    # For typing indicators (temporary, not stored in DB)
+    # We'll handle typing via Socket.IO events
+    
     sender = db.relationship('User', foreign_keys=[sender_id])
 
     @property
