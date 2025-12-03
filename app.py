@@ -3,7 +3,7 @@ eventlet.monkey_patch()
 from flask_socketio import SocketIO
 import gc
 from flask import Flask
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import urllib
 from models import Communication, PatientVital, Payment, Prescription, Report
@@ -12,7 +12,7 @@ from models import Communication, PatientVital, Payment, Prescription, Report
 def timeago(dt):
     if not dt:
         return "N/A"
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     diff = now - dt if now > dt else dt - now
     seconds = diff.total_seconds()
     if seconds < 60:
@@ -146,8 +146,11 @@ def configure_app():
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_recycle': 300,
         'pool_pre_ping': True,
-        'pool_size': 20,
-        'max_overflow': 30
+        'pool_size': 10,  # Reduced for better compatibility
+        'max_overflow': 20,
+        'poolclass': 'QueuePool',
+        'echo': False
+
     }
     
     # Email configuration
@@ -1030,7 +1033,7 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('index'))
 
-@app.route('/patient/dashboard')
+
 @login_required
 def patient_dashboard():
     try:
@@ -1040,7 +1043,8 @@ def patient_dashboard():
         
         print(f"Loading dashboard for patient: {current_user.id}")  # Debug log
         
-        patient = current_user.patient_profile
+        # Find patient by user_id, not patient.id
+        patient = Patient.query.filter_by(user_id=current_user.id).first()
         if not patient:
             print("Patient profile not found, creating one...")  # Debug log
             # Create patient profile if it doesn't exist
@@ -3887,68 +3891,80 @@ def get_doctor_appointments():
 @login_required
 def get_patient_appointments():
     """Get patient's appointments with doctor info and payment status"""
-    if current_user.role != 'patient':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    patient = Patient.query.filter_by(user_id=current_user.id).first()
-    if not patient:
-        return jsonify({'error': 'Patient profile not found'}), 404
-    
-    # Get appointments with doctor info and payment status
-    appointments = db.session.query(
-        Appointment,
-        Doctor,
-        User,
-        Payment
-    ).join(
-        Doctor, Appointment.doctor_id == Doctor.id
-    ).join(
-        User, Doctor.user_id == User.id
-    ).outerjoin(
-        Payment, Appointment.id == Payment.appointment_id
-    ).filter(
-        Appointment.patient_id == patient.id
-    ).order_by(Appointment.appointment_date.desc()).all()
-    
-    appointments_data = []
-    for appointment, doctor, user, payment in appointments:
-        # Get last message for preview
-        last_message = Communication.query.filter_by(
-            appointment_id=appointment.id
-        ).order_by(Communication.timestamp.desc()).first()
+    try:
+        if current_user.role != 'patient':
+            return jsonify({'error': 'Access denied'}), 403
         
-        # Determine payment status
-        payment_status = 'pending'
-        if payment:
-            payment_status = payment.status
-        elif appointment.status == 'completed':
-            payment_status = 'completed'
+        patient = Patient.query.filter_by(user_id=current_user.id).first()
+        if not patient:
+            return jsonify({'error': 'Patient profile not found'}), 404
         
-        appointments_data.append({
-            'appointment_id': appointment.id,
-            'doctor_id': doctor.id,
-            'doctor': {
-                'id': doctor.id,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'specialization': doctor.specialization,
-                'is_online': user.id in user_sockets
-            },
-            'appointment_date': appointment.appointment_date.isoformat(),
-            'appointment_time': appointment.appointment_date.strftime('%H:%M'),
-            'consultation_type': appointment.consultation_type,
-            'status': appointment.status,
-            'payment_status': payment_status,
-            'last_message': last_message.content if last_message else 'No messages yet',
-            'last_message_time': last_message.timestamp.strftime('%H:%M') if last_message else None,
-            'unread_count': Communication.query.filter_by(
-                appointment_id=appointment.id,
-                is_read=False
-            ).filter(Communication.sender_id != current_user.id).count()
-        })
+        # Get appointments with doctor info and payment status - FIXED QUERY
+        appointments = db.session.query(
+            Appointment,
+            Doctor,
+            User
+        ).join(
+            Doctor, Appointment.doctor_id == Doctor.id
+        ).join(
+            User, Doctor.user_id == User.id
+        ).filter(
+            Appointment.patient_id == patient.id
+        ).order_by(Appointment.appointment_date.desc()).all()
+        
+        appointments_data = []
+        for appointment, doctor, user in appointments:
+            # Get last message for preview
+            last_message = Communication.query.filter_by(
+                appointment_id=appointment.id
+            ).order_by(Communication.timestamp.desc()).first()
+            
+            # Get payment status
+            payment = Payment.query.filter_by(
+                appointment_id=appointment.id
+            ).order_by(Payment.created_at.desc()).first()
+            
+            payment_status = 'pending'
+            if payment:
+                payment_status = payment.status
+            elif appointment.status == 'completed':
+                payment_status = 'completed'
+            
+            # Check if doctor is online
+            doctor_online = user.id in user_sockets if user else False
+            
+            appointments_data.append({
+                'appointment_id': appointment.id,
+                'doctor_id': doctor.id,
+                'doctor': {
+                    'id': doctor.id,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'specialization': doctor.specialization,
+                    'is_online': doctor_online,
+                    'profile_picture_url': url_for('profile_picture', user_id=user.id, _external=True) if user else None
+                },
+                'appointment_date': appointment.appointment_date.isoformat() if appointment.appointment_date else None,
+                'appointment_time': appointment.appointment_date.strftime('%H:%M') if appointment.appointment_date else None,
+                'consultation_type': appointment.consultation_type,
+                'status': appointment.status,
+                'payment_status': payment_status,
+                'last_message': last_message.content if last_message else None,
+                'last_message_time': last_message.timestamp.strftime('%H:%M') if last_message else None,
+                'unread_count': Communication.query.filter_by(
+                    appointment_id=appointment.id,
+                    is_read=False
+                ).filter(Communication.sender_id != current_user.id).count()
+            })
+        
+        return jsonify(appointments_data), 200
+        
+    except Exception as e:
+        print(f"Error in get_patient_appointments: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
     
-    return jsonify(appointments_data)
-
 @app.route('/api/appointment/<int:appointment_id>/payment-status')
 @login_required
 def get_appointment_payment_status(appointment_id):
@@ -4862,7 +4878,7 @@ def handle_connect():
             return False
         
         user_sockets[current_user.id] = request.sid
-        user_last_seen[current_user.id] = datetime.utcnow().isoformat()
+        user_last_seen[current_user.id] = datetime.now(timezone.utc).isoformat()
         
         emit('connection_response', {'data': 'Connected to server'})
         print(f'User {current_user.id} connected: {request.sid}')
@@ -4870,7 +4886,7 @@ def handle_connect():
     except Exception as e:
         print(f'Error in handle_connect: {e}')
         return False
-
+    
 @socketio.on('message_delivered')
 def handle_message_delivered(data):
     """Mark a message as delivered"""
@@ -4919,7 +4935,7 @@ def handle_message_delivered(data):
             }, room=f'appointment_{appointment_id}')
 
 @socketio.on('disconnect')
-def handle_disconnect():
+def handle_disconnect(data=None):
     """Handle user disconnection with cleanup"""
     try:
         if current_user.is_authenticated:

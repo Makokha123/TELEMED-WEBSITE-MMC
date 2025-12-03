@@ -1027,7 +1027,9 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/emoji-picker-element@latest"></script>
+<script type="module">
+  import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@latest/dist/index.js';
+</script>
 <script>
 const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 const currentUserId = parseInt(document.getElementById('currentUserId').value);
@@ -1083,10 +1085,15 @@ function getInitials(name) {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
 }
 
-// Load patients with appointments
+// Load patients with appointments - add error handling
 function loadPatients() {
     fetch('/api/doctor/appointments')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             const list = document.getElementById('patientsList');
             list.innerHTML = '';
@@ -1133,12 +1140,14 @@ function loadPatients() {
                 <div class="empty-state">
                     <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
                     <div class="empty-state-text">Error loading patients</div>
-                    <div class="empty-state-subtext">${error.message}</div>
+                    <div class="empty-state-subtext">Unable to load patients. Please try again.</div>
                 </div>
             `;
+            
+            // Log detailed error for debugging
+            console.log('Detailed error:', error.message);
         });
 }
-
 // Create patient list item
 function createPatientItem(patient, patientData) {
     const div = document.createElement('div');

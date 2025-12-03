@@ -16,6 +16,7 @@
         min-height: 100vh;
         padding: 20px;
     }
+    body { margin: 0; padding: 0; }
 
     .whatsapp-container {
         display: flex;
@@ -1042,7 +1043,9 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/emoji-picker-element@latest"></script>
+<script type="module">
+  import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@latest/dist/index.js';
+</script>
 <script>
 const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 const currentUserId = parseInt(document.getElementById('currentUserId').value);
@@ -1095,11 +1098,29 @@ function loadUserProfilePicture() {
 }
 
 // Load doctors with appointments
+// Load doctors with appointments - with better error handling
 function loadDoctors() {
+    console.log('Loading doctors...');
+    
     fetch('/api/patient/appointments')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 500) {
+                    throw new Error('Server error loading appointments');
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
-            const list = document.getElementById('appointmentsList');
+            console.log('Doctors data received:', data);
+            const list = document.getElementById('doctorsList');
+            
+            if (!list) {
+                console.error('Doctors list element not found');
+                return;
+            }
+            
             list.innerHTML = '';
             
             if (!data || data.length === 0) {
@@ -1113,40 +1134,33 @@ function loadDoctors() {
                 return;
             }
 
-            // Group by doctor
-            const doctorsMap = new Map();
-            data.forEach(appointment => {
-                const doctor = appointment.doctor;
-                if (!doctorsMap.has(doctor.id)) {
-                    doctorsMap.set(doctor.id, {
-                        doctor: doctor,
-                        appointments: [],
-                        lastMessage: appointment.last_message,
-                        lastMessageTime: appointment.last_message_time,
-                        unreadCount: appointment.unread_count || 0,
-                        paymentStatus: appointment.payment_status
-                    });
-                }
-                doctorsMap.get(doctor.id).appointments.push(appointment);
-            });
-
             // Create doctor items
-            doctorsMap.forEach((doctorData, doctorId) => {
-                const doctor = doctorData.doctor;
-                const item = createDoctorItem(doctor, doctorData);
+            data.forEach(appointmentData => {
+                const doctor = appointmentData.doctor;
+                if (!doctor) {
+                    console.warn('Appointment data missing doctor:', appointmentData);
+                    return;
+                }
+                
+                const item = createDoctorItem(doctor, appointmentData);
                 list.appendChild(item);
             });
         })
         .catch(error => {
             console.error('Error loading doctors:', error);
-            const list = document.getElementById('appointmentsList');
-            list.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                    <div class="empty-state-text">Error loading doctors</div>
-                    <div class="empty-state-subtext">${error.message}</div>
-                </div>
-            `;
+            const list = document.getElementById('doctorsList');
+            if (list) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div class="empty-state-text">Error loading doctors</div>
+                        <div class="empty-state-subtext">Please try refreshing the page</div>
+                        <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">
+                            <i class="fas fa-sync me-1"></i>Refresh
+                        </button>
+                    </div>
+                `;
+            }
         });
 }
 

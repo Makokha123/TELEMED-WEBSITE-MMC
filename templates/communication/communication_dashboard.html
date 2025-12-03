@@ -1013,18 +1013,43 @@ let typingTimeout = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    loadUserProfilePicture();
-    loadAppointments();
-    setupEventListeners();
-    setupSocketIO();
-    setupEmojiPicker();
+    console.log('DOM loaded, initializing communication...');
     
-    // If there's a current appointment from URL, select it
-    if (currentAppointmentId) {
-        selectAppointment(currentAppointmentId);
+    // Check if required elements exist
+    const requiredElements = [
+        'userProfileAvatar', 
+        'appointmentsList',
+        'chatArea',
+        'sendMessageBtn'
+    ];
+    
+    let allElementsExist = true;
+    requiredElements.forEach(id => {
+        if (!document.getElementById(id)) {
+            console.error(`Element with id '${id}' not found`);
+            allElementsExist = false;
+        }
+    });
+    
+    if (!allElementsExist) {
+        console.error('Required elements missing, skipping initialization');
+        return;
+    }
+    
+    try {
+        loadUserProfilePicture();
+        if (currentUserRole === 'doctor') {
+            loadPatients();
+        } else {
+            loadDoctors();
+        }
+        setupEventListeners();
+        setupSocketIO();
+        setupEmojiPicker(); // or remove this line if disabling emoji picker
+    } catch (error) {
+        console.error('Error during initialization:', error);
     }
 });
-
 // Load user's profile picture
 function loadUserProfilePicture() {
     fetch(`/api/user/${currentUserId}/profile`)
