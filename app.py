@@ -1,6 +1,7 @@
-import eventlet
-eventlet.monkey_patch()
-from flask_socketio import SocketIO
+import gevent
+import gevent.monkey
+gevent.monkey.patch_all()
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import gc
 from flask import Flask
 from datetime import datetime, timedelta, timezone
@@ -37,7 +38,7 @@ app = Flask(__name__)
 socketio = SocketIO(
     app, 
     cors_allowed_origins="*",
-    async_mode='eventlet',
+    async_mode='gevent',
     logger=True,
     engineio_logger=True,
     ping_timeout=60,
@@ -46,6 +47,9 @@ socketio = SocketIO(
 )
 
 print("✓ Socket.IO initialized with eventlet")
+
+# Define SOCKETIO_AVAILABLE to indicate if socketio is available
+SOCKETIO_AVAILABLE = True
 
 # Twitter OAuth integration removed — disable related variables
 make_twitter_blueprint = None
@@ -187,23 +191,6 @@ mail = Mail(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 oauth = OAuth(app)
-
-# Initialize Socket.IO with eventlet for best performance
-try:
-    from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
-    SOCKETIO_AVAILABLE = True
-    socketio = SocketIO(
-        app, 
-        cors_allowed_origins="*",
-        async_mode='eventlet',  # Use eventlet for WebSocket support
-        logger=True,
-        engineio_logger=True
-    )
-    print("✓ Socket.IO initialized with eventlet")
-except ImportError as e:
-    print(f"⚠ Socket.IO not available: {e}")
-    SOCKETIO_AVAILABLE = False
-    socketio = None
 
 # ============================================
 # DATABASE INITIALIZATION
@@ -1033,6 +1020,7 @@ def logout():
     return redirect(url_for('index'))
 
 
+@app.route('/patient/dashboard')
 @login_required
 def patient_dashboard():
     try:
