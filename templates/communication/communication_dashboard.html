@@ -993,15 +993,67 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/emoji-picker-element@latest"></script>
+<!-- Updated emoji picker import with fallback -->
 <script>
-const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-const currentAppointmentId = document.getElementById('currentAppointmentId').value;
-const currentUserId = parseInt(document.getElementById('currentUserId').value);
-const currentUserRole = document.getElementById('currentUserRole').value;
+// Try to load emoji picker dynamically with error handling
+function loadEmojiPicker() {
+    const script = document.createElement('script');
+    script.type = 'module';
+    script.innerHTML = `
+        try {
+            import('https://cdn.jsdelivr.net/npm/emoji-picker-element@latest/dist/index.js')
+                .then(() => {
+                    console.log('Emoji picker loaded successfully');
+                    // Setup emoji picker after it's loaded
+                    if (typeof setupEmojiPicker === 'function') {
+                        setupEmojiPicker();
+                    }
+                })
+                .catch(error => {
+                    console.warn('Emoji picker failed to load, continuing without it:', error);
+                });
+        } catch (e) {
+            console.warn('Emoji picker import failed:', e);
+        }
+    `;
+    document.head.appendChild(script);
+}
+</script>
+
+<script>
+// Safely get CSRF token and user data
+function getCsrfToken() {
+    const csrfInput = document.querySelector('input[name="csrf_token"]');
+    return csrfInput ? csrfInput.value : '';
+}
+
+function getCurrentUserId() {
+    const userIdElement = document.getElementById('currentUserId');
+    return userIdElement ? parseInt(userIdElement.value) : null;
+}
+
+function getCurrentUserRole() {
+    const roleElement = document.getElementById('currentUserRole');
+    return roleElement ? roleElement.value : null;
+}
+
+const csrfToken = getCsrfToken();
+const currentUserId = getCurrentUserId();
+const currentUserRole = getCurrentUserRole();
+
+// Validate required data
+if (!currentUserId) {
+    console.error('Current user ID not found');
+}
+
+if (!currentUserRole) {
+    console.error('Current user role not found');
+}
 
 // Global state
 let selectedAppointmentId = null;
+let selectedDoctorId = null;
+let selectedDoctorData = null;
 let selectedAppointmentData = null;
 let isRecording = false;
 let recordingStartTime = null;
@@ -1010,282 +1062,392 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let isTyping = false;
 let typingTimeout = null;
+let paymentStatus = 'pending';
 
-// Initialize
+// Initialize with safety checks
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing communication...');
+    console.log('Communication page initializing...');
     
-    // Check if required elements exist
-    const requiredElements = [
-        'userProfileAvatar', 
-        'appointmentsList',
-        'chatArea',
-        'sendMessageBtn'
-    ];
-    
-    let allElementsExist = true;
-    requiredElements.forEach(id => {
-        if (!document.getElementById(id)) {
-            console.error(`Element with id '${id}' not found`);
-            allElementsExist = false;
-        }
-    });
-    
-    if (!allElementsExist) {
-        console.error('Required elements missing, skipping initialization');
+    if (!currentUserId || !currentUserRole) {
+        console.error('Missing user data, cannot initialize');
+        showErrorMessage('User data missing. Please refresh the page.');
         return;
     }
     
-    try {
-        loadUserProfilePicture();
-        if (currentUserRole === 'doctor') {
-            loadPatients();
-        } else {
-            loadDoctors();
-        }
-        setupEventListeners();
-        setupSocketIO();
-        setupEmojiPicker(); // or remove this line if disabling emoji picker
-    } catch (error) {
-        console.error('Error during initialization:', error);
-    }
+    loadUserProfilePicture();
+    loadDoctors();
+    setupEventListeners();
+    setupSocketIO();
+    
+    // Load emoji picker after a short delay
+    setTimeout(loadEmojiPicker, 500);
 });
-// Load user's profile picture
+
+// Load patient's profile picture with better error handling
 function loadUserProfilePicture() {
-    fetch(`/api/user/${currentUserId}/profile`)
-        .then(response => response.json())
-        .then(data => {
-            const profileAvatar = document.getElementById('userProfileAvatar');
-            if (data.profile_picture_url) {
-                profileAvatar.innerHTML = `<img src="${data.profile_picture_url}" alt="Profile">`;
+    if (!currentUserId) {
+        console.error('Cannot load profile picture: user ID missing');
+        return;
+    }
+    
+    const profileAvatar = document.getElementById('userProfileAvatar');
+    if (!profileAvatar) {
+        console.error('Profile avatar element not found');
+        return;
+    }
+    
+    // Show loading state
+    profileAvatar.innerHTML = '<div class="loading-spinner" style="width: 20px; height: 20px;"></div>';
+    
+    // Try multiple endpoints
+    const tryLoadProfile = async () => {
+        const endpoints = [
+            `/api/user/${currentUserId}/profile`,
+            `/profile_picture/${currentUserId}`,
+            `/api/user/${currentUserId}/basic-info`
+        ];
+        
+        for (const endpoint of endpoints) {
+            try {
+                console.log(`Trying endpoint: ${endpoint}`);
+                const response = await fetch(endpoint);
+                if (response.ok) {
+                    if (endpoint.includes('/api/')) {
+                        const data = await response.json();
+                        if (data.profile_picture_url) {
+                            return { type: 'image', url: data.profile_picture_url };
+                        } else if (data.name) {
+                            return { type: 'initials', name: data.name };
+                        }
+                    } else {
+                        // Direct profile picture endpoint
+                        return { type: 'image', url: endpoint };
+                    }
+                }
+            } catch (error) {
+                console.log(`Failed to load from ${endpoint}:`, error);
+            }
+        }
+        return null;
+    };
+    
+    tryLoadProfile().then(result => {
+        if (result) {
+            if (result.type === 'image' && result.url) {
+                profileAvatar.innerHTML = `<img src="${result.url}" alt="Profile" 
+                    onerror="this.onerror=null; this.parentElement.innerHTML='${getInitials(result.name || 'PT')}'; this.parentElement.classList.add('initials');">`;
                 profileAvatar.classList.remove('initials');
             } else {
-                const initials = getInitials(data.name || currentUserRole);
+                const initials = getInitials(result.name || 'PT');
                 profileAvatar.textContent = initials;
                 profileAvatar.classList.add('initials');
             }
-            
-            // Also set for chat avatar if user is in chat
-            const chatAvatar = document.getElementById('chatAvatar');
-            if (chatAvatar) {
-                if (data.profile_picture_url) {
-                    chatAvatar.innerHTML = `<img src="${data.profile_picture_url}" alt="Profile">`;
-                    chatAvatar.classList.remove('initials');
-                } else {
-                    const initials = getInitials(data.name || currentUserRole);
-                    chatAvatar.textContent = initials;
-                    chatAvatar.classList.add('initials');
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error loading profile picture:', error);
-            // Set default avatar
-            const profileAvatar = document.getElementById('userProfileAvatar');
-            const initials = getInitials(currentUserRole);
-            profileAvatar.textContent = initials;
+        } else {
+            // Fallback
+            profileAvatar.textContent = 'PT';
             profileAvatar.classList.add('initials');
-        });
+        }
+    }).catch(error => {
+        console.error('Error loading profile picture:', error);
+        profileAvatar.textContent = 'PT';
+        profileAvatar.classList.add('initials');
+    });
 }
 
-// Get initials from name
-function getInitials(name) {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
-}
-
-// Load appointments with profile pictures
-function loadAppointments() {
-    let apiUrl = '';
-    if (currentUserRole === 'patient') {
-        apiUrl = '/api/patient/appointments';
-    } else if (currentUserRole === 'doctor') {
-        apiUrl = '/api/doctor/appointments';
-    } else {
-        apiUrl = '/api/appointments';
+// Load doctors with appointments - with better error handling
+function loadDoctors() {
+    console.log('Loading doctors...');
+    
+    const list = document.getElementById('doctorsList');
+    if (!list) {
+        console.error('Doctors list element not found');
+        return;
     }
     
-    fetch(apiUrl)
-        .then(response => response.json())
+    // Show loading state
+    list.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+            <div class="empty-state-text">Loading doctors...</div>
+        </div>
+    `;
+    
+    fetch('/api/patient/appointments')
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 500) {
+                    throw new Error('Server error loading appointments');
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
-            const list = document.getElementById('appointmentsList');
+            console.log('Doctors data received:', data);
+            
             list.innerHTML = '';
             
-            if (!data || data.length === 0) {
+            if (!data || !Array.isArray(data) || data.length === 0) {
                 list.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon"><i class="fas fa-comments"></i></div>
-                        <div class="empty-state-text">No appointments yet</div>
-                        <div class="empty-state-subtext">Your consultation messages will appear here</div>
+                        <div class="empty-state-icon"><i class="fas fa-user-md"></i></div>
+                        <div class="empty-state-text">No doctors yet</div>
+                        <div class="empty-state-subtext">Your doctor consultations will appear here</div>
                     </div>
                 `;
                 return;
             }
 
-            data.forEach(appointment => {
-                const item = createAppointmentItem(appointment);
-                list.appendChild(item);
+            // Create doctor items
+            data.forEach(appointmentData => {
+                if (!appointmentData || typeof appointmentData !== 'object') {
+                    console.warn('Invalid appointment data:', appointmentData);
+                    return;
+                }
+                
+                const doctor = appointmentData.doctor;
+                if (!doctor) {
+                    console.warn('Appointment data missing doctor:', appointmentData);
+                    return;
+                }
+                
+                const item = createDoctorItem(doctor, appointmentData);
+                if (item) {
+                    list.appendChild(item);
+                }
             });
         })
         .catch(error => {
-            console.error('Error loading appointments:', error);
-            const list = document.getElementById('appointmentsList');
-            list.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                    <div class="empty-state-text">Error loading appointments</div>
-                    <div class="empty-state-subtext">${error.message}</div>
-                </div>
-            `;
+            console.error('Error loading doctors:', error);
+            if (list) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div class="empty-state-text">Error loading doctors</div>
+                        <div class="empty-state-subtext">Please try refreshing the page</div>
+                        <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">
+                            <i class="fas fa-sync me-1"></i>Refresh
+                        </button>
+                    </div>
+                `;
+            }
         });
 }
 
-// Create appointment list item
-function createAppointmentItem(appointment) {
-    const div = document.createElement('div');
-    div.className = 'appointment-item';
-    div.dataset.appointmentId = appointment.appointment_id || appointment.id;
-    div.dataset.paymentStatus = appointment.payment_status || 'pending';
-    
-    // Get display info based on user role
-    let name = '';
-    let avatarText = '';
-    let profilePictureUrl = '';
-    let isOnline = false;
-    
-    if (currentUserRole === 'patient') {
-        const doctor = appointment.doctor;
-        name = `Dr. ${doctor.first_name} ${doctor.last_name}`;
-        avatarText = getInitials(name);
-        profilePictureUrl = doctor.profile_picture_url;
-        isOnline = doctor.is_online || false;
-    } else if (currentUserRole === 'doctor') {
-        const patient = appointment.patient;
-        name = `${patient.first_name} ${patient.last_name}`;
-        avatarText = getInitials(name);
-        profilePictureUrl = patient.profile_picture_url;
-        isOnline = true; // Patients are always considered available
-    } else {
-        name = appointment.name || 'Appointment';
-        avatarText = getInitials(name);
-    }
-    
-    // Format time
-    const lastMessageTime = appointment.last_message_time || '';
-    const unreadCount = appointment.unread_count || 0;
-    const lastMessage = appointment.last_message || 'No messages yet';
-    
-    div.innerHTML = `
-        <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
-             data-profile-picture="${profilePictureUrl || ''}">
-            ${profilePictureUrl ? `<img src="${profilePictureUrl}" alt="${name}">` : avatarText}
-            ${isOnline ? '<div class="online-indicator"></div>' : '<div class="online-indicator offline"></div>'}
-        </div>
-        <div class="appointment-content">
-            <div class="appointment-header">
-                <span class="appointment-name">${name}</span>
-                <span class="appointment-time">${lastMessageTime}</span>
+// Create doctor list item with safe data access
+function createDoctorItem(doctor, doctorData) {
+    try {
+        const div = document.createElement('div');
+        div.className = 'appointment-item';
+        
+        // Safely get doctor ID
+        const doctorId = doctor?.id;
+        if (!doctorId) {
+            console.error('Doctor ID is missing:', doctor);
+            return null;
+        }
+        
+        div.dataset.doctorId = doctorId;
+        div.dataset.paymentStatus = doctorData?.paymentStatus || 'pending';
+        
+        // Safely get doctor name
+        const firstName = doctor?.first_name || '';
+        const lastName = doctor?.last_name || '';
+        const name = `Dr. ${firstName} ${lastName}`.trim();
+        const avatarText = getInitials(name);
+        
+        // Safely get profile picture
+        const profilePictureUrl = doctor?.profile_picture_url || 
+                                 doctorData?.doctor?.profile_picture_url;
+        
+        // Safely get appointments array
+        const appointments = doctorData?.appointments || [];
+        const lastAppointment = appointments[0] || doctorData;
+        
+        // Safely get online status
+        const isOnline = doctor?.is_online || false;
+        
+        // Safely get other data with defaults
+        const lastMessageTime = doctorData?.lastMessageTime || '';
+        const lastMessage = doctorData?.lastMessage || 'No messages yet';
+        const specialization = doctor?.specialization || 'General Practitioner';
+        const paymentStatus = doctorData?.paymentStatus || 'pending';
+        const unreadCount = doctorData?.unreadCount || 0;
+        
+        div.innerHTML = `
+            <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
+                 data-profile-picture="${profilePictureUrl || ''}">
+                ${profilePictureUrl ? `<img src="${profilePictureUrl}" alt="${name}" onerror="handleProfilePictureError(this)">` : avatarText}
+                ${isOnline ? '<div class="online-indicator"></div>' : '<div class="online-indicator offline"></div>'}
             </div>
-            <div class="appointment-preview">${lastMessage}</div>
-        </div>
-        ${unreadCount > 0 ? `<div class="unread-badge">${unreadCount}</div>` : ''}
-    `;
-    
-    // Load profile picture if available
-    if (profilePictureUrl) {
-        setTimeout(() => {
-            const avatar = div.querySelector('.appointment-avatar');
-            if (avatar.dataset.profilePicture) {
-                const img = document.createElement('img');
-                img.src = avatar.dataset.profilePicture;
-                img.alt = name;
-                img.onload = () => {
-                    avatar.innerHTML = '';
-                    avatar.appendChild(img);
-                    if (isOnline) {
-                        const indicator = document.createElement('div');
-                        indicator.className = 'online-indicator';
-                        avatar.appendChild(indicator);
-                    }
-                };
-                img.onerror = () => {
-                    avatar.textContent = avatarText;
-                    avatar.classList.add('initials');
-                };
+            <div class="appointment-content">
+                <div class="appointment-header">
+                    <span class="appointment-name">${escapeHtml(name)}</span>
+                    <span class="appointment-time">${escapeHtml(lastMessageTime)}</span>
+                </div>
+                <div class="appointment-preview">${escapeHtml(lastMessage)}</div>
+                <div class="appointment-details">
+                    <small class="text-muted">
+                        ${escapeHtml(specialization)}
+                        <span class="payment-badge ms-2 ${paymentStatus === 'paid' ? 'paid' : 'pending'}">
+                            ${paymentStatus === 'paid' ? '✓ Paid' : 'Payment Pending'}
+                        </span>
+                    </small>
+                </div>
+            </div>
+            ${unreadCount > 0 ? `<div class="unread-badge">${unreadCount}</div>` : ''}
+        `;
+        
+        // Load profile picture if available
+        if (profilePictureUrl) {
+            setTimeout(() => {
+                const avatar = div.querySelector('.appointment-avatar');
+                if (avatar && avatar.dataset.profilePicture) {
+                    const img = document.createElement('img');
+                    img.src = avatar.dataset.profilePicture;
+                    img.alt = name;
+                    img.onload = () => {
+                        if (avatar) {
+                            avatar.innerHTML = '';
+                            avatar.appendChild(img);
+                            const indicator = document.createElement('div');
+                            indicator.className = isOnline ? 'online-indicator' : 'online-indicator offline';
+                            avatar.appendChild(indicator);
+                        }
+                    };
+                    img.onerror = () => {
+                        if (avatar) {
+                            avatar.textContent = avatarText;
+                            avatar.classList.add('initials');
+                            const indicator = document.createElement('div');
+                            indicator.className = isOnline ? 'online-indicator' : 'online-indicator offline';
+                            avatar.appendChild(indicator);
+                        }
+                    };
+                }
+            }, 100);
+        }
+        
+        div.addEventListener('click', () => {
+            if (doctorId) {
+                selectDoctor(doctorId, doctor, lastAppointment);
             }
-        }, 100);
+        });
+        return div;
+    } catch (error) {
+        console.error('Error creating doctor item:', error);
+        return null;
     }
-    
-    div.addEventListener('click', () => selectAppointment(appointment.appointment_id || appointment.id, appointment));
-    return div;
 }
 
-// Select appointment
-function selectAppointment(appointmentId, appointmentData = null) {
+// Handle profile picture error
+function handleProfilePictureError(imgElement) {
+    const avatar = imgElement.parentElement;
+    if (avatar && avatar.classList.contains('appointment-avatar')) {
+        const name = imgElement.alt || 'Dr';
+        const initials = getInitials(name);
+        avatar.innerHTML = initials;
+        avatar.classList.add('initials');
+    }
+}
+
+// Select doctor
+function selectDoctor(doctorId, doctorData, appointmentData) {
+    console.log('Selecting doctor:', doctorId);
+    
+    selectedDoctorId = doctorId;
+    selectedDoctorData = doctorData;
+    
     // Update selected state
     document.querySelectorAll('.appointment-item').forEach(item => {
-        item.classList.remove('active');
-        if (item.dataset.appointmentId === appointmentId.toString()) {
-            item.classList.add('active');
+        if (item.dataset.doctorId) {
+            item.classList.remove('active');
+            if (item.dataset.doctorId === doctorId.toString()) {
+                item.classList.add('active');
+                paymentStatus = item.dataset.paymentStatus || 'pending';
+            }
         }
     });
     
-    selectedAppointmentId = appointmentId;
-    selectedAppointmentData = appointmentData;
-    
     // Update UI for mobile
     if (window.innerWidth <= 768) {
-        document.getElementById('appointmentsSidebar').style.display = 'none';
-        document.getElementById('chatArea').style.display = 'flex';
-        document.getElementById('backToList').style.display = 'flex';
+        const appointmentsSidebar = document.getElementById('appointmentsSidebar');
+        const chatArea = document.getElementById('chatArea');
+        const backToList = document.getElementById('backToList');
+        
+        if (appointmentsSidebar) appointmentsSidebar.style.display = 'none';
+        if (chatArea) chatArea.style.display = 'flex';
+        if (backToList) backToList.style.display = 'flex';
     }
     
-    // Load appointment details
-    loadAppointmentDetails(appointmentId);
+    // Get the latest appointment for this doctor
+    if (appointmentData) {
+        selectedAppointmentId = appointmentData.appointment_id || appointmentData.id;
+        selectedAppointmentData = appointmentData;
+        loadAppointmentDetails(selectedAppointmentId);
+    } else {
+        // Try to get latest appointment
+        fetch(`/api/patient/doctor/${doctorId}/latest-appointment`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data && data.appointment_id) {
+                    selectedAppointmentId = data.appointment_id;
+                    loadAppointmentDetails(selectedAppointmentId);
+                } else {
+                    // No appointment found, show message
+                    showNoAppointmentMessage();
+                }
+            })
+            .catch(error => {
+                console.error('Error getting latest appointment:', error);
+                showNoAppointmentMessage();
+            });
+    }
 }
 
-// Load appointment details with profile picture
+// Load appointment details
 function loadAppointmentDetails(appointmentId) {
+    console.log('Loading appointment details:', appointmentId);
+    
     fetch(`/api/appointment/${appointmentId}/details`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to load appointment details: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             // Update chat header
             const chatHeaderName = document.getElementById('chatHeaderName');
             const chatHeaderStatus = document.getElementById('chatHeaderStatus');
             const chatAvatar = document.getElementById('chatAvatar');
             
-            let name = '';
-            let status = '';
-            let avatarText = '';
-            let profilePictureUrl = '';
-            let isOnline = false;
-            
-            if (currentUserRole === 'patient') {
-                name = `Dr. ${data.doctor_first_name} ${data.doctor_last_name}`;
-                avatarText = getInitials(name);
-                profilePictureUrl = data.doctor_profile_picture;
-                isOnline = data.doctor_online || false;
-                status = isOnline ? 'Online' : 'Offline';
-            } else if (currentUserRole === 'doctor') {
-                name = `${data.patient_first_name} ${data.patient_last_name}`;
-                avatarText = getInitials(name);
-                profilePictureUrl = data.patient_profile_picture;
-                status = 'Available';
-                isOnline = true;
-            } else {
-                name = data.name || 'Appointment';
-                avatarText = getInitials(name);
-                status = 'Active';
+            if (!chatHeaderName || !chatHeaderStatus || !chatAvatar) {
+                console.error('Chat header elements not found');
+                return;
             }
+            
+            const firstName = data.doctor_first_name || '';
+            const lastName = data.doctor_last_name || '';
+            const name = `Dr. ${firstName} ${lastName}`.trim();
+            const avatarText = getInitials(name);
+            const isOnline = data.doctor_online || false;
+            const consultationType = data.consultation_type || 'Consultation';
             
             chatHeaderName.textContent = name;
             chatHeaderStatus.innerHTML = `
                 <span class="status-indicator ${isOnline ? 'online' : 'offline'}"></span>
-                ${status} • ${data.consultation_type || 'Consultation'}
+                ${isOnline ? 'Online' : 'Offline'} • ${escapeHtml(consultationType)}
             `;
             
-            // Load profile picture for chat avatar
-            if (profilePictureUrl) {
-                chatAvatar.innerHTML = `<img src="${profilePictureUrl}" alt="${name}">`;
+            // Load profile picture
+            if (data.doctor_profile_picture) {
+                chatAvatar.innerHTML = `<img src="${data.doctor_profile_picture}" alt="${name}" onerror="handleChatAvatarError(this)">`;
                 chatAvatar.classList.remove('initials');
             } else {
                 chatAvatar.textContent = avatarText;
@@ -1299,16 +1461,50 @@ function loadAppointmentDetails(appointmentId) {
             loadMessages(appointmentId);
             
             // Enable input
-            document.getElementById('messageInput').disabled = false;
-            document.getElementById('sendMessageBtn').disabled = false;
+            const messageInput = document.getElementById('messageInput');
+            const sendMessageBtn = document.getElementById('sendMessageBtn');
+            
+            if (messageInput) messageInput.disabled = false;
+            if (sendMessageBtn) sendMessageBtn.disabled = false;
             
             // Join socket room
-            socket.emit('join_appointment', { appointment_id: appointmentId });
+            if (typeof socket !== 'undefined' && socket.connected) {
+                socket.emit('join_appointment', { appointment_id: appointmentId });
+            }
         })
         .catch(error => {
             console.error('Error loading appointment details:', error);
-            alert('Error loading appointment details');
+            showErrorMessage('Failed to load appointment details. Please try again.');
         });
+}
+
+// Handle chat avatar error
+function handleChatAvatarError(imgElement) {
+    const avatar = imgElement.parentElement;
+    if (avatar && avatar.id === 'chatAvatar') {
+        const chatHeaderName = document.getElementById('chatHeaderName');
+        const name = chatHeaderName ? chatHeaderName.textContent : 'Dr';
+        const initials = getInitials(name);
+        avatar.innerHTML = initials;
+        avatar.classList.add('initials');
+    }
+}
+
+// Show error message
+function showErrorMessage(message) {
+    const messagesArea = document.getElementById('chatMessages');
+    if (messagesArea) {
+        messagesArea.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="empty-state-text">Error</div>
+                <div class="empty-state-subtext">${escapeHtml(message)}</div>
+                <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">
+                    <i class="fas fa-sync me-1"></i>Refresh
+                </button>
+            </div>
+        `;
+    }
 }
 
 // Check payment status
@@ -1316,29 +1512,40 @@ function checkPaymentStatus(appointmentId) {
     fetch(`/api/appointment/${appointmentId}/payment-status`)
         .then(response => response.json())
         .then(data => {
+            paymentStatus = data.payment_status || 'pending';
+            
             const paymentOverlay = document.getElementById('paymentOverlay');
             const messageInput = document.getElementById('messageInput');
             const sendMessageBtn = document.getElementById('sendMessageBtn');
             const attachBtn = document.getElementById('attachBtn');
             const voiceRecordBtn = document.getElementById('voiceRecordBtn');
+            const voiceCallBtn = document.getElementById('voiceCallBtn');
+            const videoCallBtn = document.getElementById('videoCallBtn');
             
-            if (data.payment_required && data.payment_status !== 'paid') {
-                paymentOverlay.style.display = 'flex';
-                messageInput.disabled = true;
-                sendMessageBtn.disabled = true;
-                attachBtn.disabled = true;
-                voiceRecordBtn.disabled = true;
+            if (data.payment_required && paymentStatus !== 'paid') {
+                if (paymentOverlay) paymentOverlay.style.display = 'flex';
+                if (messageInput) messageInput.disabled = true;
+                if (sendMessageBtn) sendMessageBtn.disabled = true;
+                if (attachBtn) attachBtn.disabled = true;
+                if (voiceRecordBtn) voiceRecordBtn.disabled = true;
+                if (voiceCallBtn) voiceCallBtn.disabled = true;
+                if (videoCallBtn) videoCallBtn.disabled = true;
                 
                 // Set payment URL
-                document.getElementById('goToPaymentBtn').onclick = () => {
-                    window.open(data.payment_url || `/payment/appointment/${appointmentId}`, '_blank');
-                };
+                const goToPaymentBtn = document.getElementById('goToPaymentBtn');
+                if (goToPaymentBtn) {
+                    goToPaymentBtn.onclick = () => {
+                        window.open(data.payment_url || `/payment/appointment/${appointmentId}`, '_blank');
+                    };
+                }
             } else {
-                paymentOverlay.style.display = 'none';
-                messageInput.disabled = false;
-                sendMessageBtn.disabled = false;
-                attachBtn.disabled = false;
-                voiceRecordBtn.disabled = false;
+                if (paymentOverlay) paymentOverlay.style.display = 'none';
+                if (messageInput) messageInput.disabled = false;
+                if (sendMessageBtn) sendMessageBtn.disabled = false;
+                if (attachBtn) attachBtn.disabled = false;
+                if (voiceRecordBtn) voiceRecordBtn.disabled = false;
+                if (voiceCallBtn) voiceCallBtn.disabled = false;
+                if (videoCallBtn) videoCallBtn.disabled = false;
             }
         })
         .catch(error => {
@@ -1349,6 +1556,11 @@ function checkPaymentStatus(appointmentId) {
 // Load messages with WhatsApp-style formatting
 function loadMessages(appointmentId) {
     const messagesArea = document.getElementById('chatMessages');
+    if (!messagesArea) {
+        console.error('Messages area not found');
+        return;
+    }
+    
     messagesArea.innerHTML = '<div class="loading-messages"><div class="loading-spinner"></div></div>';
     
     fetch(`/api/appointment/${appointmentId}/messages`)
@@ -1399,7 +1611,7 @@ function loadMessages(appointmentId) {
                 <div class="empty-state">
                     <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
                     <div class="empty-state-text">Error loading messages</div>
-                    <div class="empty-state-subtext">${error.message}</div>
+                    <div class="empty-state-subtext">${escapeHtml(error.message || 'Unknown error')}</div>
                 </div>
             `;
         });
@@ -1452,11 +1664,12 @@ function createMessageElement(message) {
 // Create voice message HTML
 function createVoiceMessageHTML(message) {
     const duration = message.duration || '0:00';
+    const fileUrl = message.file_url || '';
     return `
         <div class="voice-message">
-            <i class="fas fa-play-circle play-voice" data-url="${message.file_url || ''}"></i>
+            <i class="fas fa-play-circle play-voice" data-url="${escapeHtml(fileUrl)}"></i>
             <div class="voice-waveform"></div>
-            <span class="voice-duration">${duration}</span>
+            <span class="voice-duration">${escapeHtml(duration)}</span>
         </div>
     `;
 }
@@ -1466,14 +1679,15 @@ function createFileMessageHTML(message) {
     const fileName = message.file_name || 'File';
     const fileSize = message.file_size ? formatFileSize(message.file_size) : '';
     const isImage = message.message_type === 'image';
+    const fileUrl = message.file_url || '#';
     
     if (isImage) {
         return `
             <div class="message-file">
-                <img src="${message.file_url || ''}" alt="${fileName}" style="max-width: 200px; border-radius: 5px;" onerror="this.style.display='none'">
+                <img src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" style="max-width: 200px; border-radius: 5px;" onerror="this.style.display='none'">
                 <div>
                     <div><strong>${escapeHtml(fileName)}</strong></div>
-                    ${fileSize ? `<div><small>${fileSize}</small></div>` : ''}
+                    ${fileSize ? `<div><small>${escapeHtml(fileSize)}</small></div>` : ''}
                 </div>
             </div>
         `;
@@ -1482,8 +1696,8 @@ function createFileMessageHTML(message) {
             <div class="message-file">
                 <i class="fas fa-file"></i>
                 <div>
-                    <div><a href="${message.file_url || '#'}" target="_blank">${escapeHtml(fileName)}</a></div>
-                    ${fileSize ? `<div><small>${fileSize}</small></div>` : ''}
+                    <div><a href="${escapeHtml(fileUrl)}" target="_blank">${escapeHtml(fileName)}</a></div>
+                    ${fileSize ? `<div><small>${escapeHtml(fileSize)}</small></div>` : ''}
                 </div>
             </div>
         `;
@@ -1528,98 +1742,145 @@ function formatDate(date) {
     }
 }
 
-// Escape HTML to prevent XSS
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Mark messages as read
-function markMessagesAsRead(appointmentId) {
-    socket.emit('message_read', {
-        appointment_id: appointmentId
-    });
+// Show no appointment message
+function showNoAppointmentMessage() {
+    const messagesArea = document.getElementById('chatMessages');
+    if (!messagesArea) return;
     
-    // Update unread count in sidebar
-    document.querySelectorAll('.appointment-item').forEach(item => {
-        if (item.dataset.appointmentId === appointmentId.toString()) {
-            const badge = item.querySelector('.unread-badge');
-            if (badge) {
-                badge.remove();
-            }
-        }
-    });
+    messagesArea.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-calendar-plus"></i></div>
+            <div class="empty-state-text">No active consultation</div>
+            <div class="empty-state-subtext">Book an appointment with this doctor</div>
+            <button class="btn btn-primary mt-3" id="bookAppointmentBtn">
+                <i class="fas fa-calendar me-2"></i>Book Appointment
+            </button>
+        </div>
+    `;
+    
+    const bookAppointmentBtn = document.getElementById('bookAppointmentBtn');
+    if (bookAppointmentBtn) {
+        bookAppointmentBtn.addEventListener('click', bookAppointment);
+    }
 }
 
-// Setup event listeners
+// Book appointment
+function bookAppointment() {
+    if (!selectedDoctorId) return;
+    
+    window.location.href = `/patient/appointment?doctor_id=${selectedDoctorId}`;
+}
+
+// Setup event listeners with patient-specific features
 function setupEventListeners() {
-    // Send message
-    document.getElementById('sendMessageBtn').addEventListener('click', sendMessage);
-    document.getElementById('messageInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
+    console.log('Setting up event listeners...');
     
-    // Typing indicator
-    document.getElementById('messageInput').addEventListener('input', function(e) {
-        if (!selectedAppointmentId) return;
+    // Send message
+    const sendMessageBtn = document.getElementById('sendMessageBtn');
+    const messageInput = document.getElementById('messageInput');
+    
+    if (sendMessageBtn && messageInput) {
+        sendMessageBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
         
-        // Send typing indicator
-        if (!isTyping) {
-            isTyping = true;
-            socket.emit('typing', {
-                appointment_id: selectedAppointmentId
-            });
-        }
-        
-        // Clear existing timeout
-        clearTimeout(typingTimeout);
-        
-        // Set timeout to stop typing indicator
-        typingTimeout = setTimeout(() => {
-            isTyping = false;
-            socket.emit('stop_typing', {
-                appointment_id: selectedAppointmentId
-            });
-        }, 1000);
-    });
+        // Typing indicator
+        messageInput.addEventListener('input', function(e) {
+            if (!selectedAppointmentId) return;
+            
+            // Send typing indicator
+            if (!isTyping) {
+                isTyping = true;
+                if (typeof socket !== 'undefined' && socket.connected) {
+                    socket.emit('typing', {
+                        appointment_id: selectedAppointmentId
+                    });
+                }
+            }
+            
+            // Clear existing timeout
+            clearTimeout(typingTimeout);
+            
+            // Set timeout to stop typing indicator
+            typingTimeout = setTimeout(() => {
+                isTyping = false;
+                if (typeof socket !== 'undefined' && socket.connected) {
+                    socket.emit('stop_typing', {
+                        appointment_id: selectedAppointmentId
+                    });
+                }
+            }, 1000);
+        });
+    }
     
     // Voice recording
-    document.getElementById('voiceRecordBtn').addEventListener('click', toggleRecording);
-    document.getElementById('cancelRecordingBtn').addEventListener('click', cancelRecording);
-    document.getElementById('sendRecordingBtn').addEventListener('click', sendRecording);
+    const voiceRecordBtn = document.getElementById('voiceRecordBtn');
+    const cancelRecordingBtn = document.getElementById('cancelRecordingBtn');
+    const sendRecordingBtn = document.getElementById('sendRecordingBtn');
+    
+    if (voiceRecordBtn) voiceRecordBtn.addEventListener('click', toggleRecording);
+    if (cancelRecordingBtn) cancelRecordingBtn.addEventListener('click', cancelRecording);
+    if (sendRecordingBtn) sendRecordingBtn.addEventListener('click', sendRecording);
     
     // File attachment
-    document.getElementById('attachBtn').addEventListener('click', () => {
-        document.getElementById('fileInput').click();
-    });
+    const attachBtn = document.getElementById('attachBtn');
+    const fileInput = document.getElementById('fileInput');
     
-    document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+    if (attachBtn) {
+        attachBtn.addEventListener('click', () => {
+            if (fileInput) fileInput.click();
+        });
+    }
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', handleFileUpload);
+    }
     
     // Voice call
-    document.getElementById('voiceCallBtn').addEventListener('click', initiateVoiceCall);
+    const voiceCallBtn = document.getElementById('voiceCallBtn');
+    if (voiceCallBtn) voiceCallBtn.addEventListener('click', initiateVoiceCall);
     
     // Video call
-    document.getElementById('videoCallBtn').addEventListener('click', initiateVideoCall);
+    const videoCallBtn = document.getElementById('videoCallBtn');
+    if (videoCallBtn) videoCallBtn.addEventListener('click', initiateVideoCall);
     
     // Back to list (mobile)
-    document.getElementById('backToList').addEventListener('click', () => {
-        document.getElementById('appointmentsSidebar').style.display = 'flex';
-        document.getElementById('chatArea').style.display = 'none';
-        document.getElementById('backToList').style.display = 'none';
-    });
-    
-    // Search
-    document.getElementById('searchAppointments').addEventListener('input', function(e) {
-        const query = e.target.value.toLowerCase();
-        document.querySelectorAll('.appointment-item').forEach(item => {
-            const name = item.querySelector('.appointment-name').textContent.toLowerCase();
-            item.style.display = name.includes(query) ? 'flex' : 'none';
+    const backToList = document.getElementById('backToList');
+    if (backToList) {
+        backToList.addEventListener('click', () => {
+            const appointmentsSidebar = document.getElementById('appointmentsSidebar');
+            const chatArea = document.getElementById('chatArea');
+            
+            if (appointmentsSidebar) appointmentsSidebar.style.display = 'flex';
+            if (chatArea) chatArea.style.display = 'none';
+            backToList.style.display = 'none';
         });
-    });
+    }
+    
+    // Search - FIXED: searchDoctors instead of searchAppointments
+    const searchDoctors = document.getElementById('searchDoctors');
+    if (searchDoctors) {
+        searchDoctors.addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            document.querySelectorAll('.appointment-item').forEach(item => {
+                const nameElement = item.querySelector('.appointment-name');
+                if (nameElement) {
+                    const name = nameElement.textContent.toLowerCase();
+                    item.style.display = name.includes(query) ? 'flex' : 'none';
+                }
+            });
+        });
+    }
+    
+    // Add patient-specific event listeners
+    const infoBtn = document.getElementById('infoBtn');
+    if (infoBtn) {
+        infoBtn.addEventListener('click', showDoctorInfo);
+    }
     
     // Play voice messages
     document.addEventListener('click', function(e) {
@@ -1627,71 +1888,165 @@ function setupEventListeners() {
             const audioUrl = e.target.dataset.url;
             if (audioUrl) {
                 const player = document.getElementById('voicePlayer');
-                player.src = audioUrl;
-                player.play();
+                if (player) {
+                    player.src = audioUrl;
+                    player.play().catch(error => {
+                        console.error('Error playing voice message:', error);
+                    });
+                }
             }
         }
     });
+    
+    // Payment buttons
+    const goToPaymentBtn = document.getElementById('goToPaymentBtn');
+    const checkPaymentStatusBtn = document.getElementById('checkPaymentStatusBtn');
+    
+    if (goToPaymentBtn) {
+        goToPaymentBtn.addEventListener('click', function() {
+            if (selectedAppointmentId) {
+                window.open(`/payment/appointment/${selectedAppointmentId}`, '_blank');
+            }
+        });
+    }
+    
+    if (checkPaymentStatusBtn) {
+        checkPaymentStatusBtn.addEventListener('click', function() {
+            if (selectedAppointmentId) {
+                checkPaymentStatus(selectedAppointmentId);
+            }
+        });
+    }
+    
+    console.log('Event listeners setup complete');
+}
+
+// Show doctor info
+function showDoctorInfo() {
+    if (!selectedDoctorId) {
+        alert('Please select a doctor first');
+        return;
+    }
+    
+    window.location.href = `/doctor/${selectedDoctorId}`;
 }
 
 // Setup emoji picker
 function setupEmojiPicker() {
-    const picker = document.createElement('emoji-picker');
-    picker.style.position = 'absolute';
-    picker.style.bottom = '70px';
-    picker.style.right = '20px';
-    picker.style.zIndex = '1000';
-    picker.style.display = 'none';
-    document.getElementById('chatArea').appendChild(picker);
-    
-    document.getElementById('emojiBtn').addEventListener('click', function() {
-        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
-    });
-    
-    document.getElementById('emojiPickerBtn').addEventListener('click', function() {
-        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
-    });
-    
-    picker.addEventListener('emoji-click', event => {
-        const input = document.getElementById('messageInput');
-        input.value += event.detail.unicode;
-        input.focus();
-        picker.style.display = 'none';
-    });
-    
-    // Close picker when clicking outside
-    document.addEventListener('click', function(e) {
-        if (!picker.contains(e.target) && 
-            e.target.id !== 'emojiBtn' && 
-            e.target.id !== 'emojiPickerBtn' &&
-            !e.target.closest('#emojiBtn') &&
-            !e.target.closest('#emojiPickerBtn')) {
-            picker.style.display = 'none';
+    try {
+        const chatArea = document.getElementById('chatArea');
+        if (!chatArea) {
+            console.warn('Chat area not found for emoji picker');
+            return;
         }
-    });
+        
+        const picker = document.createElement('emoji-picker');
+        picker.style.position = 'absolute';
+        picker.style.bottom = '70px';
+        picker.style.right = '20px';
+        picker.style.zIndex = '1000';
+        picker.style.display = 'none';
+        chatArea.appendChild(picker);
+        
+        const emojiBtn = document.getElementById('emojiBtn');
+        const emojiPickerBtn = document.getElementById('emojiPickerBtn');
+        
+        if (emojiBtn) {
+            emojiBtn.addEventListener('click', function() {
+                picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+            });
+        }
+        
+        if (emojiPickerBtn) {
+            emojiPickerBtn.addEventListener('click', function() {
+                picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+            });
+        }
+        
+        picker.addEventListener('emoji-click', event => {
+            const input = document.getElementById('messageInput');
+            if (input) {
+                input.value += event.detail.unicode;
+                input.focus();
+                picker.style.display = 'none';
+            }
+        });
+        
+        // Close picker when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!picker.contains(e.target) && 
+                e.target.id !== 'emojiBtn' && 
+                e.target.id !== 'emojiPickerBtn' &&
+                !e.target.closest('#emojiBtn') &&
+                !e.target.closest('#emojiPickerBtn')) {
+                picker.style.display = 'none';
+            }
+        });
+        
+        console.log('Emoji picker setup complete');
+    } catch (error) {
+        console.warn('Failed to setup emoji picker:', error);
+    }
 }
 
 // Send message
 function sendMessage() {
     const input = document.getElementById('messageInput');
-    const content = input.value.trim();
+    const content = input ? input.value.trim() : '';
     
-    if (!content || !selectedAppointmentId) return;
+    if (!content || !selectedAppointmentId) {
+        console.warn('Cannot send message: missing content or appointment ID');
+        return;
+    }
     
     // Clear typing indicator
     clearTimeout(typingTimeout);
     isTyping = false;
-    socket.emit('stop_typing', { appointment_id: selectedAppointmentId });
+    if (typeof socket !== 'undefined' && socket.connected) {
+        socket.emit('stop_typing', { appointment_id: selectedAppointmentId });
+    }
     
-    // Send via Socket.IO
-    socket.emit('send_message', {
-        appointment_id: selectedAppointmentId,
-        content: content,
-        message_type: 'text'
-    });
+    // Send via Socket.IO if available
+    if (typeof socket !== 'undefined' && socket.connected) {
+        socket.emit('send_message', {
+            appointment_id: selectedAppointmentId,
+            content: content,
+            message_type: 'text'
+        });
+    } else {
+        console.warn('Socket.IO not available, using HTTP fallback');
+        // Fallback to HTTP request
+        fetch('/api/send-message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                appointment_id: selectedAppointmentId,
+                content: content
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Add message to UI
+                const messageData = {
+                    id: data.message_id,
+                    sender_id: currentUserId,
+                    content: content,
+                    message_type: 'text',
+                    timestamp: new Date().toISOString(),
+                    message_status: 'sent'
+                };
+                addMessageToUI(messageData);
+            }
+        })
+        .catch(error => console.error('Error sending message:', error));
+    }
     
     // Clear input
-    input.value = '';
+    if (input) input.value = '';
     
     // Add message to UI immediately (optimistic update)
     const messageData = {
@@ -1729,11 +2084,6 @@ async function startRecording() {
         };
         
         mediaRecorder.onstop = () => {
-            // Convert to blob
-            const audioBlob = new Blob(recordedChunks, { type: 'audio/webm' });
-            // Here you would upload the blob to server
-            console.log('Recording stopped, blob size:', audioBlob.size);
-            
             // Stop all tracks
             stream.getTracks().forEach(track => track.stop());
         };
@@ -1743,9 +2093,13 @@ async function startRecording() {
         recordingStartTime = Date.now();
         
         // Update UI
-        document.getElementById('voiceRecordBtn').classList.add('recording');
-        document.getElementById('chatInputArea').style.display = 'none';
-        document.getElementById('recordingUI').style.display = 'flex';
+        const voiceRecordBtn = document.getElementById('voiceRecordBtn');
+        const chatInputArea = document.getElementById('chatInputArea');
+        const recordingUI = document.getElementById('recordingUI');
+        
+        if (voiceRecordBtn) voiceRecordBtn.classList.add('recording');
+        if (chatInputArea) chatInputArea.style.display = 'none';
+        if (recordingUI) recordingUI.style.display = 'flex';
         
         // Start timer
         updateRecordingTimer();
@@ -1765,7 +2119,8 @@ function stopRecording() {
         clearInterval(recordingTimer);
         
         // Update UI
-        document.getElementById('voiceRecordBtn').classList.remove('recording');
+        const voiceRecordBtn = document.getElementById('voiceRecordBtn');
+        if (voiceRecordBtn) voiceRecordBtn.classList.remove('recording');
     }
 }
 
@@ -1774,9 +2129,13 @@ function cancelRecording() {
     stopRecording();
     
     // Reset UI
-    document.getElementById('chatInputArea').style.display = 'flex';
-    document.getElementById('recordingUI').style.display = 'none';
-    document.getElementById('recordingTimer').textContent = '00:00';
+    const chatInputArea = document.getElementById('chatInputArea');
+    const recordingUI = document.getElementById('recordingUI');
+    const recordingTimerElement = document.getElementById('recordingTimer');
+    
+    if (chatInputArea) chatInputArea.style.display = 'flex';
+    if (recordingUI) recordingUI.style.display = 'none';
+    if (recordingTimerElement) recordingTimerElement.textContent = '00:00';
 }
 
 // Send recording
@@ -1838,8 +2197,11 @@ function updateRecordingTimer() {
     const minutes = Math.floor(elapsed / 60);
     const seconds = elapsed % 60;
     
-    document.getElementById('recordingTimer').textContent = 
-        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const recordingTimerElement = document.getElementById('recordingTimer');
+    if (recordingTimerElement) {
+        recordingTimerElement.textContent = 
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
 }
 
 // Format duration
@@ -1872,13 +2234,15 @@ function handleFileUpload(event) {
     .then(data => {
         if (data.success) {
             // Send message about file
-            socket.emit('send_message', {
-                appointment_id: selectedAppointmentId,
-                content: file.name,
-                message_type: fileType,
-                file_url: data.file_url,
-                file_size: file.size
-            });
+            if (typeof socket !== 'undefined' && socket.connected) {
+                socket.emit('send_message', {
+                    appointment_id: selectedAppointmentId,
+                    content: file.name,
+                    message_type: fileType,
+                    file_url: data.file_url,
+                    file_size: file.size
+                });
+            }
             
             // Add to UI
             const messageData = {
@@ -1912,9 +2276,13 @@ function initiateVoiceCall() {
         return;
     }
     
-    socket.emit('initiate_voice_call', {
-        appointment_id: selectedAppointmentId
-    });
+    if (typeof socket !== 'undefined' && socket.connected) {
+        socket.emit('initiate_voice_call', {
+            appointment_id: selectedAppointmentId
+        });
+    } else {
+        alert('Connection not available. Please refresh the page.');
+    }
 }
 
 // Initiate video call
@@ -1924,14 +2292,19 @@ function initiateVideoCall() {
         return;
     }
     
-    socket.emit('initiate_video_call', {
-        appointment_id: selectedAppointmentId
-    });
+    if (typeof socket !== 'undefined' && socket.connected) {
+        socket.emit('initiate_video_call', {
+            appointment_id: selectedAppointmentId
+        });
+    } else {
+        alert('Connection not available. Please refresh the page.');
+    }
 }
 
 // Add message to UI
 function addMessageToUI(messageData) {
     const messagesArea = document.getElementById('chatMessages');
+    if (!messagesArea) return;
     
     // Remove empty state if present
     const emptyState = messagesArea.querySelector('.empty-state');
@@ -1951,10 +2324,10 @@ function addMessageToUI(messageData) {
 
 // Update sidebar preview
 function updateSidebarPreview(messageData) {
-    if (!selectedAppointmentId) return;
+    if (!selectedAppointmentId || !selectedDoctorId) return;
     
     document.querySelectorAll('.appointment-item').forEach(item => {
-        if (item.dataset.appointmentId === selectedAppointmentId.toString()) {
+        if (item.dataset.doctorId === selectedDoctorId.toString()) {
             const preview = item.querySelector('.appointment-preview');
             if (preview) {
                 let previewText = '';
@@ -1980,77 +2353,144 @@ function updateSidebarPreview(messageData) {
     });
 }
 
-// Setup Socket.IO
+// Setup Socket.IO with patient-specific handlers
 function setupSocketIO() {
-    // Make sure socket is defined (from base.html)
-    if (typeof socket === 'undefined') {
-        console.error('Socket.IO not loaded');
-        setTimeout(setupSocketIO, 1000);
+    // Check if socket is already defined globally
+    if (typeof io === 'undefined') {
+        console.warn('Socket.IO library not loaded, will retry...');
+        
+        // Try again after a delay
+        setTimeout(() => {
+            if (typeof io !== 'undefined') {
+                initializeSocket();
+            } else {
+                console.error('Socket.IO still not available after retry');
+            }
+        }, 1000);
         return;
     }
     
-    socket.on('connect', function() {
-        console.log('Connected to Socket.IO server');
+    initializeSocket();
+}
+
+function initializeSocket() {
+    try {
+        // Initialize socket with reconnection options
+        window.socket = io({
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 10000,
+            transports: ['polling', 'websocket']
+        });
         
-        // Join any existing appointment room
-        if (selectedAppointmentId) {
-            socket.emit('join_appointment', { appointment_id: selectedAppointmentId });
-        }
-    });
-    
-    // Handle incoming messages
-    socket.on('message_received', function(data) {
-        if (data.appointment_id === selectedAppointmentId) {
-            addMessageToUI(data);
+        socket.on('connect', function() {
+            console.log('Connected to Socket.IO server');
             
-            // Mark as delivered
-            if (data.sender_id !== currentUserId) {
-                socket.emit('message_delivered', {
-                    message_id: data.id,
-                    appointment_id: data.appointment_id
-                });
+            // Join any existing appointment room
+            if (selectedAppointmentId) {
+                socket.emit('join_appointment', { appointment_id: selectedAppointmentId });
             }
-        } else {
-            // Update unread count for other appointments
-            updateUnreadCount(data.appointment_id);
+        });
+        
+        // Handle incoming messages
+        socket.on('message_received', function(data) {
+            if (data.appointment_id === selectedAppointmentId) {
+                addMessageToUI(data);
+                
+                // Mark as delivered
+                if (data.sender_id !== currentUserId) {
+                    socket.emit('message_delivered', {
+                        message_id: data.id,
+                        appointment_id: data.appointment_id
+                    });
+                }
+            } else {
+                // Update unread count for other appointments
+                updateUnreadCount(data.appointment_id);
+            }
+        });
+        
+        // Handle message status updates
+        socket.on('message_status_updated', function(data) {
+            updateMessageStatus(data.message_id, data.status);
+        });
+        
+        // Handle typing indicators
+        socket.on('user_typing', function(data) {
+            if (data.appointment_id === selectedAppointmentId && data.user_id !== currentUserId) {
+                showTypingIndicator(data.user_name || 'Doctor');
+            }
+        });
+        
+        socket.on('user_stop_typing', function(data) {
+            if (data.appointment_id === selectedAppointmentId) {
+                hideTypingIndicator();
+            }
+        });
+        
+        // Handle calls
+        socket.on('incoming_voice_call', function(data) {
+            handleIncomingCall(data, 'voice');
+        });
+        
+        socket.on('incoming_video_call', function(data) {
+            handleIncomingCall(data, 'video');
+        });
+        
+        // Add patient-specific handlers
+        socket.on('doctor_online', function(data) {
+            updateDoctorOnlineStatus(data.doctor_id, true);
+        });
+        
+        socket.on('doctor_offline', function(data) {
+            updateDoctorOnlineStatus(data.doctor_id, false);
+        });
+        
+        // Listen for payment status updates
+        socket.on('payment_status_updated', function(data) {
+            if (data.appointment_id === selectedAppointmentId) {
+                paymentStatus = data.status;
+                checkPaymentStatus(selectedAppointmentId);
+                
+                // Update payment badge in sidebar
+                updatePaymentBadge(data.status);
+            }
+        });
+        
+        // Handle connection errors
+        socket.on('connect_error', function(error) {
+            console.error('Socket.IO connection error:', error);
+        });
+        
+        // Handle disconnection
+        socket.on('disconnect', function() {
+            console.log('Disconnected from Socket.IO server');
+        });
+        
+        console.log('Socket.IO setup complete');
+        
+    } catch (error) {
+        console.error('Error initializing Socket.IO:', error);
+    }
+}
+
+// Mark messages as read
+function markMessagesAsRead(appointmentId) {
+    if (typeof socket !== 'undefined' && socket.connected) {
+        socket.emit('message_read', {
+            appointment_id: appointmentId
+        });
+    }
+    
+    // Update unread count in sidebar
+    document.querySelectorAll('.appointment-item').forEach(item => {
+        if (item.dataset.doctorId === selectedDoctorId?.toString()) {
+            const badge = item.querySelector('.unread-badge');
+            if (badge) {
+                badge.remove();
+            }
         }
-    });
-    
-    // Handle message status updates
-    socket.on('message_status_updated', function(data) {
-        updateMessageStatus(data.message_id, data.status);
-    });
-    
-    // Handle typing indicators
-    socket.on('user_typing', function(data) {
-        if (data.appointment_id === selectedAppointmentId && data.user_id !== currentUserId) {
-            showTypingIndicator(data.user_name);
-        }
-    });
-    
-    socket.on('user_stop_typing', function(data) {
-        if (data.appointment_id === selectedAppointmentId) {
-            hideTypingIndicator();
-        }
-    });
-    
-    // Handle calls
-    socket.on('incoming_voice_call', function(data) {
-        handleIncomingCall(data, 'voice');
-    });
-    
-    socket.on('incoming_video_call', function(data) {
-        handleIncomingCall(data, 'video');
-    });
-    
-    // Handle connection errors
-    socket.on('connect_error', function(error) {
-        console.error('Socket.IO connection error:', error);
-    });
-    
-    // Handle disconnection
-    socket.on('disconnect', function() {
-        console.log('Disconnected from Socket.IO server');
     });
 }
 
@@ -2059,17 +2499,21 @@ function showTypingIndicator(userName) {
     const indicator = document.getElementById('typingIndicator');
     const typingUser = document.getElementById('typingUser');
     
-    typingUser.textContent = `${userName} is typing...`;
-    indicator.style.display = 'flex';
-    
-    // Auto-hide after 3 seconds
-    setTimeout(hideTypingIndicator, 3000);
+    if (indicator && typingUser) {
+        typingUser.textContent = `${userName} is typing...`;
+        indicator.style.display = 'flex';
+        
+        // Auto-hide after 3 seconds
+        setTimeout(hideTypingIndicator, 3000);
+    }
 }
 
 // Hide typing indicator
 function hideTypingIndicator() {
     const indicator = document.getElementById('typingIndicator');
-    indicator.style.display = 'none';
+    if (indicator) {
+        indicator.style.display = 'none';
+    }
 }
 
 // Update message status
@@ -2077,21 +2521,25 @@ function updateMessageStatus(messageId, status) {
     const messages = document.querySelectorAll('.message-wrapper');
     messages.forEach(wrapper => {
         const timeElement = wrapper.querySelector('.message-time');
-        if (timeElement && timeElement.textContent.includes(messageId)) {
-            // Update status in time element
+        if (timeElement) {
+            // Simple update - just replace the status
             const statusHTML = getMessageStatusHTML(status);
-            timeElement.innerHTML = timeElement.innerHTML.replace(
-                /<span class="tick[^>]*>[^<]*<\/span>/,
-                statusHTML
-            );
+            const currentHTML = timeElement.innerHTML;
+            // Remove existing status and add new one
+            const newHTML = currentHTML.replace(/<span class="tick[^>]*>[^<]*<\/span>/, statusHTML);
+            if (newHTML !== currentHTML) {
+                timeElement.innerHTML = newHTML;
+            }
         }
     });
 }
 
 // Update unread count
 function updateUnreadCount(appointmentId) {
+    // Find the doctor for this appointment and update their unread count
+    // This is a simplified implementation
     document.querySelectorAll('.appointment-item').forEach(item => {
-        if (item.dataset.appointmentId === appointmentId.toString()) {
+        if (item.dataset.doctorId === selectedDoctorId?.toString()) {
             let badge = item.querySelector('.unread-badge');
             if (!badge) {
                 badge = document.createElement('div');
@@ -2109,22 +2557,86 @@ function updateUnreadCount(appointmentId) {
 // Handle incoming call
 function handleIncomingCall(data, callType) {
     const callTypeName = callType === 'voice' ? 'Voice' : 'Video';
-    const callerName = data.caller_name || 'Someone';
+    const callerName = data.caller_name || 'Doctor';
     
     if (confirm(`${callerName} is calling you for a ${callTypeName} consultation. Accept?`)) {
-        socket.emit(`accept_${callType}_call`, {
-            appointment_id: data.appointment_id
-        });
+        if (typeof socket !== 'undefined' && socket.connected) {
+            socket.emit(`accept_${callType}_call`, {
+                appointment_id: data.appointment_id
+            });
+        }
         
         // Redirect to call page
         setTimeout(() => {
             window.location.href = `/${callType}-call/${data.appointment_id}`;
         }, 500);
     } else {
-        socket.emit(`reject_${callType}_call`, {
-            appointment_id: data.appointment_id
-        });
+        if (typeof socket !== 'undefined' && socket.connected) {
+            socket.emit(`reject_${callType}_call`, {
+                appointment_id: data.appointment_id
+            });
+        }
     }
+}
+
+// Update doctor online status
+function updateDoctorOnlineStatus(doctorId, isOnline) {
+    document.querySelectorAll('.appointment-item').forEach(item => {
+        if (item.dataset.doctorId === doctorId.toString()) {
+            const indicator = item.querySelector('.online-indicator');
+            if (indicator) {
+                indicator.className = isOnline ? 'online-indicator' : 'online-indicator offline';
+            }
+        }
+    });
+    
+    // Update chat header if this is the current doctor
+    if (selectedDoctorId === doctorId) {
+        const statusElement = document.getElementById('chatHeaderStatus');
+        if (statusElement) {
+            const currentText = statusElement.textContent;
+            const newText = currentText.replace(/Online|Offline/, isOnline ? 'Online' : 'Offline');
+            statusElement.textContent = newText;
+        }
+    }
+}
+
+// Update payment badge
+function updatePaymentBadge(status) {
+    document.querySelectorAll('.appointment-item').forEach(item => {
+        if (item.dataset.doctorId === selectedDoctorId?.toString()) {
+            const paymentBadge = item.querySelector('.payment-badge');
+            if (paymentBadge) {
+                if (status === 'paid') {
+                    paymentBadge.className = 'payment-badge ms-2 paid';
+                    paymentBadge.textContent = '✓ Paid';
+                } else {
+                    paymentBadge.className = 'payment-badge ms-2 pending';
+                    paymentBadge.textContent = 'Payment Pending';
+                }
+            }
+        }
+    });
+}
+
+// Helper functions
+function getInitials(name) {
+    if (!name) return 'PT';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Initialize on DOM load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM fully loaded, initializing communication...');
+    });
 }
 </script>
 {% endblock %}

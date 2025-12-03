@@ -291,11 +291,26 @@ def initialize_database():
             # Create default users
             create_default_users()
             
-            # Create uploads directory
+            # Create uploads directory ONLY if it doesn't exist
             uploads_dir = app.config['UPLOAD_FOLDER']
+            
+            # Create the full path if needed
             if not os.path.exists(uploads_dir):
                 os.makedirs(uploads_dir, exist_ok=True)
                 print(f"✓ Created uploads directory: {uploads_dir}")
+            else:
+                # Just list what's in the directory for debugging
+                existing_files = []
+                try:
+                    for root, dirs, files in os.walk(uploads_dir):
+                        for file in files:
+                            existing_files.append(os.path.join(root, file))
+                    if existing_files:
+                        print(f"✓ Uploads directory already exists with {len(existing_files)} files")
+                    else:
+                        print(f"✓ Uploads directory already exists (empty)")
+                except Exception as e:
+                    print(f"✓ Uploads directory exists (error checking contents: {e})")
                 
         except Exception as e:
             print(f"✗ Database initialization error: {e}")
@@ -3189,56 +3204,47 @@ if SOCKETIO_AVAILABLE:
 @login_required
 @csrf.exempt
 def upload_profile_picture():
-    # Accept multipart/form-data with key 'file' and optional 'user_id' for admin
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file provided'}), 400
-
+    
     file = request.files['file']
     if file.filename == '':
         return jsonify({'success': False, 'error': 'Empty filename'}), 400
-
+    
     # Determine target user
     target_user = current_user
     if current_user.role == 'admin' and request.form.get('user_id'):
         try:
             uid = int(request.form.get('user_id'))
-            try:
-                target_user = db.session.get(User, uid) or target_user
-            except Exception:
-                target_user = User.query.get(uid) or target_user
+            target_user = User.query.get(uid) or target_user
         except Exception:
             pass
-
+    
     if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        storage_name = f"{uuid4().hex}__{filename}.enc"
-
-        # Construct per-user uploads folder: static/uploads/<username>/profile_pictures/
-        username_for = safe_username(target_user)
-        rel_root = _uploads_rel_root() or 'uploads'
-        rel_dir = os.path.join(rel_root, username_for, 'profile_pictures').replace('\\', '/')
-        full_dir = os.path.join(app.root_path, rel_dir)
-        os.makedirs(full_dir, exist_ok=True)
-
-        full_path = os.path.join(full_dir, storage_name)
-        rel_path_for_db = os.path.join(rel_dir, storage_name).replace('\\', '/')
-
+        # Read and encrypt file
         raw = file.read()
         try:
             encrypted_bytes = encrypt_file_bytes(raw)
+            
+            # Store in user record as BLOB
+            target_user.profile_picture_blob = encrypted_bytes
+            target_user.profile_picture_mime = file.content_type
+            
+            # Also store original filename for reference
+            target_user.profile_picture_name = secure_filename(file.filename)
+            
+            db.session.add(target_user)
+            db.session.commit()
+            
+            return jsonify({
+                'success': True, 
+                'user_id': target_user.id,
+                'message': 'Profile picture stored in database'
+            }), 201
+            
         except Exception as e:
             return jsonify({'success': False, 'error': 'Encryption failed', 'detail': str(e)}), 500
-
-        with open(full_path, 'wb') as fh:
-            fh.write(encrypted_bytes)
-
-        # Save stored relative path on user record (relative to static)
-        target_user.profile_picture = rel_path_for_db
-        db.session.add(target_user)
-        db.session.commit()
-
-        return jsonify({'success': True, 'file_path': rel_path_for_db, 'user_id': target_user.id}), 201
-
+    
     return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
 
@@ -4069,6 +4075,55 @@ def get_patient_appointments_categorized():
         'rescheduled': rescheduled
     })
 
+# Add this route to handle profile picture errors gracefully
+@app.route('/api/user/<int:user_id>/basic-info')
+@login_required
+def get_user_basic_info(user_id):
+    """Get basic user info (name only)"""
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    return jsonify({
+        'name': user.get_display_name(),
+        'initials': user.get_initials()
+    })
+
+# Add fallback for patient appointments
+@app.route('/api/patient/appointments/fallback')
+@login_required
+def get_patient_appointments_fallback():
+    """Fallback endpoint for patient appointments"""
+    if current_user.role != 'patient':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    patient = Patient.query.filter_by(user_id=current_user.id).first()
+    if not patient:
+        return jsonify([])
+    
+    # Simple fallback query
+    appointments = Appointment.query.filter_by(patient_id=patient.id).all()
+    
+    appointments_data = []
+    for appointment in appointments:
+        doctor = Doctor.query.get(appointment.doctor_id)
+        if doctor:
+            doctor_user = User.query.get(doctor.user_id)
+            appointments_data.append({
+                'appointment_id': appointment.id,
+                'doctor': {
+                    'id': doctor.id,
+                    'first_name': doctor_user.first_name if doctor_user else '',
+                    'last_name': doctor_user.last_name if doctor_user else '',
+                    'specialization': doctor.specialization,
+                    'is_online': False
+                },
+                'appointment_date': appointment.appointment_date.isoformat() if appointment.appointment_date else None,
+                'status': appointment.status,
+                'paymentStatus': 'pending'
+            })
+    
+    return jsonify(appointments_data)
 
 # API to get all available doctors for booking
 @app.route('/api/doctors', methods=['GET'])
