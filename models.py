@@ -510,10 +510,8 @@ class Communication(db.Model):
     encrypted_file_blob = db.Column(db.LargeBinary)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False)
-    # WhatsApp-style message status: sent, delivered, read
-    message_status = db.Column(db.String(20), default='sent')  # sent, delivered, read
-    # For typing indicators (temporary, not stored in DB)
-    # We'll handle typing via Socket.IO events
+    message_status = db.Column(db.String(20), default='sent')
+
     
     sender = db.relationship('User', foreign_keys=[sender_id])
 

@@ -57,7 +57,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm import aliased
 from flask import Flask, g, render_template, request, jsonify, redirect, url_for, flash, session
 from sqlalchemy.orm import joinedload
-from sqlalchemy import func, distinct
+from sqlalchemy import QueuePool, func, distinct
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from werkzeug.utils import secure_filename
@@ -106,7 +106,6 @@ user_last_seen = {}
 active_calls = {}
 
 from sqlalchemy import event
-from sqlalchemy.pool import QueuePool
 
 @event.listens_for(QueuePool, "connect")
 def receive_connect(dbapi_connection, connection_record):
@@ -119,6 +118,7 @@ def receive_connect(dbapi_connection, connection_record):
             pass
     except ImportError:
         pass
+
 def configure_app():
     """Configure Flask application with environment variables"""
     # Security
@@ -148,9 +148,8 @@ def configure_app():
         'pool_pre_ping': True,
         'pool_size': 10,  # Reduced for better compatibility
         'max_overflow': 20,
-        'poolclass': 'QueuePool',
+        'poolclass': QueuePool,  # Use the imported class, not a string
         'echo': False
-
     }
     
     # Email configuration
@@ -4935,7 +4934,7 @@ def handle_message_delivered(data):
             }, room=f'appointment_{appointment_id}')
 
 @socketio.on('disconnect')
-def handle_disconnect(data=None):
+def handle_disconnect():
     """Handle user disconnection with cleanup"""
     try:
         if current_user.is_authenticated:
