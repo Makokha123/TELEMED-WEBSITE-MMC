@@ -8,6 +8,7 @@ import logging
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import gc
 from flask import Flask, g, render_template, request, jsonify, redirect, url_for, flash, session
+from flask import send_file, abort
 from datetime import datetime, timedelta, timezone, date
 
 import urllib
@@ -95,6 +96,7 @@ except Exception:
 # Import models (after attempting to load .env so ENCRYPTION_KEY can be read)
 from models import (
     Communication, PatientVital, Payment, Prescription, Report,
+    PrescriptionAudit, Notification, HealthTip,
     SocialAccount, db, User, Patient, Doctor, Appointment, AuditLog, 
     Testimonial, MedicalRecord, _hash_value, encrypt_file_bytes, decrypt_file_bytes
 )
@@ -109,7 +111,8 @@ s = URLSafeTimedSerializer(os.getenv('SECRET_KEY', 'dev-secret-key-change-in-pro
 user_sockets = {}
 user_last_seen = {}
 active_calls = {}
-
+call_rooms = {}  # Track call rooms: {call_id: {'caller': user_id, 'callee': user_id, 'appointment_id': apt_id}}
+incoming_call_notifications = {}  # Track incoming calls waiting for answer: {user_id: call_info}
 
 
 def configure_app():
@@ -378,7 +381,42 @@ import threading
 def schedule_cleanup():
     while True:
         threading.Event().wait(3600)  # Wait 1 hour
-        cleanup_old_sessions()
+
+
+# Prescription expiry worker: marks prescriptions expired when expiry_date is reached
+def prescription_expiry_worker(interval_seconds=600):
+    from time import sleep
+    while True:
+        try:
+            with app.app_context():
+                now = datetime.now(timezone.utc)
+                expiring = Prescription.query.filter(Prescription.expiry_date != None, Prescription.expiry_date < now, Prescription.is_expired == False).all()
+                for p in expiring:
+                    p.is_expired = True
+                    try:
+                        audit = PrescriptionAudit(prescription_id=p.id, user_id=None, action='auto_expired', extra_info='expiry_date passed')
+                        db.session.add(audit)
+                    except Exception:
+                        db.session.rollback()
+                if expiring:
+                    db.session.commit()
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+        sleep(interval_seconds)
+
+
+def start_background_workers():
+    t = threading.Thread(target=prescription_expiry_worker, kwargs={'interval_seconds':600}, daemon=True)
+    t.start()
+
+# Start background workers when app initializes (best-effort)
+try:
+    start_background_workers()
+except Exception:
+    pass
 
 # Social authentication success handler
 @oauth_authorized.connect_via(google_bp)
@@ -1618,86 +1656,112 @@ def doctor_dashboard():
         flash('Access denied', 'error')
         return redirect(url_for('index'))
 
-    # Load doctor profile
-    doctor = current_user.doctor_profile
-    if not doctor:
-        try:
-            doctor = Doctor.query.filter_by(user_id=current_user.id).first()
-        except Exception:
-            doctor = None
-
-    # Upcoming appointments for this doctor
     try:
-        appointments = Appointment.query.filter_by(doctor_id=doctor.id if doctor else None).order_by(Appointment.appointment_date).all()
-    except Exception:
-        appointments = []
+        # Load doctor profile
+        doctor = current_user.doctor_profile
+        if not doctor:
+            doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        
+        if not doctor:
+            flash('Doctor profile not found', 'error')
+            return redirect(url_for('index'))
 
-    # Patients seen this week
-    from datetime import datetime, timedelta, timezone
-    now_utc = datetime.now(timezone.utc)
-    start_week = now_utc - timedelta(days=now_utc.weekday())
-    if doctor:
-        # Use subquery to count unique patients for non-PostgreSQL backends
-        from sqlalchemy import func
-        patients_this_week = db.session.query(func.count(func.distinct(Appointment.patient_id))).filter(
-            Appointment.doctor_id == doctor.id,
-            Appointment.appointment_date >= start_week
-        ).scalar()
-    else:
-        patients_this_week = 0
+        # Upcoming appointments for this doctor
+        try:
+            appointments = Appointment.query.filter_by(doctor_id=doctor.id).order_by(Appointment.appointment_date).all()
+        except Exception as e:
+            print(f"Error loading appointments: {e}")
+            appointments = []
 
-    # Pending prescriptions (appointments with status 'scheduled' and not completed)
-    pending_prescriptions = Appointment.query.filter_by(doctor_id=doctor.id, status='scheduled').count() if doctor else 0
+        # Patients seen this week
+        from datetime import datetime, timedelta, timezone
+        now_utc = datetime.now(timezone.utc)
+        start_week = now_utc - timedelta(days=now_utc.weekday())
+        
+        try:
+            from sqlalchemy import func
+            patients_this_week_result = db.session.query(func.count(func.distinct(Appointment.patient_id))).filter(
+                Appointment.doctor_id == doctor.id,
+                Appointment.appointment_date >= start_week
+            ).scalar()
+            patients_this_week = int(patients_this_week_result) if patients_this_week_result else 0
+        except Exception as e:
+            print(f"Error counting patients this week: {e}")
+            patients_this_week = 0
 
-    # Urgent cases (appointments with status 'urgent')
-    urgent_cases = Appointment.query.filter_by(doctor_id=doctor.id, status='urgent').count() if doctor else 0
+        # Pending prescriptions (appointments with status 'scheduled' and not completed)
+        try:
+            pending_prescriptions = Appointment.query.filter_by(doctor_id=doctor.id, status='scheduled').count()
+        except Exception as e:
+            print(f"Error counting pending prescriptions: {e}")
+            pending_prescriptions = 0
 
-    # Helper to format last visit as 'time ago' string
-    def format_timeago(dt):
-        if not dt:
-            return "N/A"
-        now = datetime.now(timezone.utc)
-        diff = now - dt if now > dt else dt - now
-        seconds = diff.total_seconds()
-        if seconds < 60:
-            return f"{int(seconds)} seconds ago"
-        elif seconds < 3600:
-            return f"{int(seconds // 60)} minutes ago"
-        elif seconds < 86400:
-            return f"{int(seconds // 3600)} hours ago"
-        elif seconds < 604800:
-            return f"{int(seconds // 86400)} days ago"
-        else:
-            return dt.strftime('%b %d, %Y')
+        # Urgent cases (appointments with status 'urgent')
+        try:
+            urgent_cases = Appointment.query.filter_by(doctor_id=doctor.id, status='urgent').count()
+        except Exception as e:
+            print(f"Error counting urgent cases: {e}")
+            urgent_cases = 0
 
-    # Recent patients (last 6 unique patients by last appointment)
-    recent_patients = []
-    if doctor:
-        from sqlalchemy import desc
-        appts = Appointment.query.filter_by(doctor_id=doctor.id).order_by(desc(Appointment.appointment_date)).all()
-        seen = set()
-        for appt in appts:
-            pid = appt.patient_id
-            if pid not in seen:
-                patient = db.session.get(Patient, pid)
-                if patient:
-                    recent_patients.append({
-                        'user': patient.user,
-                        'last_visit': format_timeago(appt.appointment_date)
-                    })
-                    seen.add(pid)
-            if len(recent_patients) >= 6:
-                break
+        # Helper to format last visit as 'time ago' string
+        def format_timeago(dt):
+            if not dt:
+                return "N/A"
+            now = datetime.now(timezone.utc)
+            # Ensure dt is timezone-aware (convert if naive)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            diff = now - dt if now > dt else dt - now
+            seconds = diff.total_seconds()
+            if seconds < 60:
+                return f"{int(seconds)} seconds ago"
+            elif seconds < 3600:
+                return f"{int(seconds // 60)} minutes ago"
+            elif seconds < 86400:
+                return f"{int(seconds // 3600)} hours ago"
+            elif seconds < 604800:
+                return f"{int(seconds // 86400)} days ago"
+            else:
+                return dt.strftime('%b %d, %Y')
 
-    return render_template(
-        'doctor/doctor_dashboard.html',
-        doctor=doctor,
-        appointments=appointments,
-        patients_this_week=patients_this_week,
-        pending_prescriptions=pending_prescriptions,
-        urgent_cases=urgent_cases,
-        recent_patients=recent_patients
-    )
+        # Recent patients (last 6 unique patients by last appointment)
+        recent_patients = []
+        try:
+            from sqlalchemy import desc
+            appts = Appointment.query.filter_by(doctor_id=doctor.id).order_by(desc(Appointment.appointment_date)).all()
+            seen = set()
+            for appt in appts:
+                pid = appt.patient_id
+                if pid not in seen:
+                    patient = db.session.get(Patient, pid)
+                    if patient and patient.user:
+                        recent_patients.append({
+                            'user': patient.user,
+                            'last_visit': format_timeago(appt.appointment_date)
+                        })
+                        seen.add(pid)
+                if len(recent_patients) >= 6:
+                    break
+        except Exception as e:
+            print(f"Error loading recent patients: {e}")
+            recent_patients = []
+
+        return render_template(
+            'doctor/doctor_dashboard.html',
+            doctor=doctor,
+            appointments=appointments,
+            patients_this_week=patients_this_week,
+            pending_prescriptions=pending_prescriptions,
+            urgent_cases=urgent_cases,
+            recent_patients=recent_patients
+        )
+    
+    except Exception as e:
+        print(f"Critical error in doctor_dashboard: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Error loading dashboard. Please try again.', 'error')
+        return redirect(url_for('index'))
 @app.route('/admin/users')
 @login_required
 def admin_users():
@@ -2368,19 +2432,35 @@ def upload_recording():
     # Determine sender as current_user
     try:
         data = file.read()
-        encrypted = encrypt_file_bytes(data)
 
-        comm = Communication(
-            appointment_id=appointment.id,
-            sender_id=current_user.id,
-            message_type=message_type,
-            encrypted_file_blob=encrypted
-        )
-        db.session.add(comm)
-        db.session.commit()
-        return jsonify({'status': 'ok', 'comm_id': comm.id}), 201
+        # Offload encryption and DB save to background to avoid blocking the request thread
+        def _bg_http_save(app_obj, appointment_id, sender_id, message_type, raw_bytes):
+            with app_obj.app_context():
+                try:
+                    encrypted = encrypt_file_bytes(raw_bytes)
+                    comm = Communication(
+                        appointment_id=appointment_id,
+                        sender_id=sender_id,
+                        message_type=message_type,
+                        encrypted_file_blob=encrypted
+                    )
+                    db.session.add(comm)
+                    db.session.commit()
+                    # Notify appointment room about new message
+                    try:
+                        socketio.emit('new_communication', {
+                            'comm_id': comm.id,
+                            'appointment_id': appointment_id
+                        }, room=f'appointment_{appointment_id}')
+                    except Exception:
+                        pass
+                except Exception:
+                    db.session.rollback()
+
+        socketio.start_background_task(_bg_http_save, app, appointment.id, current_user.id, message_type, data)
+        # Return accepted so client can continue; final status will be emitted via Socket.IO
+        return jsonify({'status': 'processing'}), 202
     except Exception as e:
-        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 
@@ -2395,25 +2475,56 @@ if SOCKETIO_AVAILABLE:
         sender_id = data.get('sender_id')
         blob_b64 = data.get('blob_b64')
 
+        # Try to get the client's socket id so we can emit the result only to them
+        sid = None
+        try:
+            # flask-socketio exposes a request object with sid in this context
+            from flask import request as _flask_request
+            sid = getattr(_flask_request, 'sid', None)
+        except Exception:
+            sid = None
+
         if not appointment_id or not message_type or not blob_b64:
             emit('save_recording_response', {'error': 'missing parameters'})
             return
 
         try:
             raw = base64.b64decode(blob_b64)
-            encrypted = encrypt_file_bytes(raw)
-            comm = Communication(
-                appointment_id=appointment_id,
-                sender_id=sender_id or current_user.id,
-                message_type=message_type,
-                encrypted_file_blob=encrypted
-            )
-            db.session.add(comm)
-            db.session.commit()
-            emit('save_recording_response', {'status': 'ok', 'comm_id': comm.id})
         except Exception as e:
-            db.session.rollback()
-            emit('save_recording_response', {'error': str(e)})
+            emit('save_recording_response', {'error': 'invalid base64'})
+            return
+
+        # Offload encryption and DB work to a background task so the socket handler returns quickly
+        def _bg_save(app_obj, appointment_id, message_type, sender_id, raw_bytes, client_sid):
+            with app_obj.app_context():
+                try:
+                    encrypted = encrypt_file_bytes(raw_bytes)
+                    comm = Communication(
+                        appointment_id=appointment_id,
+                        sender_id=sender_id or getattr(current_user, 'id', None),
+                        message_type=message_type,
+                        encrypted_file_blob=encrypted
+                    )
+                    db.session.add(comm)
+                    db.session.commit()
+                    payload = {'status': 'ok', 'comm_id': comm.id}
+                except Exception as e:
+                    db.session.rollback()
+                    payload = {'error': str(e)}
+
+                try:
+                    if client_sid:
+                        socketio.emit('save_recording_response', payload, to=client_sid)
+                    else:
+                        # Fallback: broadcast to caller (may reach multiple clients)
+                        socketio.emit('save_recording_response', payload)
+                except Exception:
+                    pass
+
+        socketio.start_background_task(_bg_save, app, appointment_id, message_type, sender_id, raw, sid)
+
+        # Immediately acknowledge receipt so the client doesn't wait
+        emit('save_recording_response', {'status': 'processing'})
 
 # Communication Routes
 @app.route('/communication/<int:appointment_id>')
@@ -2460,10 +2571,16 @@ def communication_dashboard(appointment_id):
                 except Exception:
                     payment_url = url_for('patient_appointment')
 
-    # Load all messages for this appointment
-    messages = Communication.query.filter_by(
-        appointment_id=appointment_id
-    ).order_by(Communication.timestamp).all()
+    # Load recent messages for this appointment (limit to last 200 to avoid large queries)
+    try:
+        messages = Communication.query.filter_by(
+            appointment_id=appointment_id
+        ).order_by(Communication.timestamp.desc()).limit(200).all()
+        # reverse so template receives chronological order (oldest first)
+        messages = list(reversed(messages))
+    except Exception:
+        # fallback to safe query if something goes wrong
+        messages = Communication.query.filter_by(appointment_id=appointment_id).order_by(Communication.timestamp).all()
 
     return render_template('communication/communication_dashboard.html',
                          appointment=appointment,
@@ -3168,36 +3285,200 @@ def admin_view_patient(patient_id):
                            appointments=appts,
                            communications=comms)
 
-# Socket.IO handler to accept recording blobs as base64 (if client emits)
-if SOCKETIO_AVAILABLE:
-    @socketio.on('save_recording')
-    def handle_save_recording(data):
-        # data expected: { appointment_id, message_type, sender_id, blob_b64 }
-        import base64
-        appointment_id = data.get('appointment_id')
-        message_type = data.get('message_type')
-        sender_id = data.get('sender_id')
-        blob_b64 = data.get('blob_b64')
 
-        if not appointment_id or not message_type or not blob_b64:
-            emit('save_recording_response', {'error': 'missing parameters'})
-            return
+# Doctor view for a specific patient's medical records
+@app.route('/doctor/patient/<int:patient_id>/medical-records')
+@login_required
+def doctor_patient_medical_records(patient_id):
+    if current_user.role != 'doctor':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
 
-        try:
-            raw = base64.b64decode(blob_b64)
-            encrypted = encrypt_file_bytes(raw)
-            comm = Communication(
-                appointment_id=appointment_id,
-                sender_id=sender_id or current_user.id,
-                message_type=message_type,
-                encrypted_file_blob=encrypted
-            )
-            db.session.add(comm)
-            db.session.commit()
-            emit('save_recording_response', {'status': 'ok', 'comm_id': comm.id})
-        except Exception as e:
-            db.session.rollback()
-            emit('save_recording_response', {'error': str(e)})
+    doctor = Doctor.query.filter_by(user_id=current_user.id).first_or_404()
+    patient = Patient.query.options(joinedload(Patient.user)).get_or_404(patient_id)
+
+    # Optional: verify that doctor has seen this patient before or allow access
+    medical_records = MedicalRecord.query.filter_by(patient_id=patient.id).order_by(MedicalRecord.created_at.desc()).all()
+
+    return render_template('doctor/patient_medical_records.html', doctor=doctor, patient=patient, medical_records=medical_records)
+
+
+# Patient view for their own medical records
+@app.route('/patient/medical-records')
+@login_required
+def patient_medical_records():
+    if current_user.role != 'patient':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+
+    patient = Patient.query.filter_by(user_id=current_user.id).first_or_404()
+    medical_records = MedicalRecord.query.filter_by(patient_id=patient.id).order_by(MedicalRecord.created_at.desc()).all()
+    return render_template('patient/medical_records.html', patient=patient, medical_records=medical_records)
+
+
+# API to add a medical record (doctor or patient)
+@app.route('/api/medical_record/add', methods=['POST'])
+@login_required
+@csrf.exempt
+def api_add_medical_record():
+    # allowed for doctors and patients
+    if current_user.role not in ('doctor', 'patient', 'admin'):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    # multipart/form-data expected
+    patient_id = request.form.get('patient_id')
+    record_type = request.form.get('record_type') or request.form.get('type') or 'general'
+    description = request.form.get('description')
+    file = request.files.get('file')
+
+    if not patient_id:
+        return jsonify({'success': False, 'error': 'patient_id required'}), 400
+
+    patient = db.session.get(Patient, patient_id)
+    if not patient:
+        return jsonify({'success': False, 'error': 'Patient not found'}), 404
+
+    # If current_user is patient ensure they are adding to their own record
+    if current_user.role == 'patient' and patient.user_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    # Save file if provided
+    rel_path = None
+    if file and allowed_file(file.filename):
+        rel_path = handle_file_upload(current_user, file, upload_type='medical_records', encrypt=True)
+
+    mr = MedicalRecord(patient_id=patient.id, record_type=record_type, created_by=current_user.id)
+    if rel_path:
+        mr.file_path = rel_path
+    if description:
+        mr.description = description
+
+    db.session.add(mr)
+    db.session.commit()
+
+    # Optionally emit socket event to notify patient/doctor
+    return jsonify({'success': True, 'medical_record_id': mr.id})
+
+
+@app.route('/api/medical_record/<int:record_id>', methods=['GET'])
+@login_required
+def api_get_medical_record(record_id):
+    """Return medical record details as JSON for editing."""
+    mr = MedicalRecord.query.get_or_404(record_id)
+    # Permission: allow admin, doctor (if assigned/creator), or the patient owner
+    if current_user.role == 'patient':
+        patient = Patient.query.filter_by(user_id=current_user.id).first()
+        if not patient or mr.patient_id != patient.id:
+            return jsonify({'error': 'Access denied'}), 403
+    elif current_user.role == 'doctor':
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        patient = db.session.get(Patient, mr.patient_id)
+        allowed = False
+        if mr.created_by == current_user.id:
+            allowed = True
+        if doctor and Appointment.query.filter_by(doctor_id=doctor.id, patient_id=patient.id).count() > 0:
+            allowed = True
+        if not allowed:
+            return jsonify({'error': 'Access denied'}), 403
+    elif current_user.role != 'admin':
+        return jsonify({'error': 'Access denied'}), 403
+
+    return jsonify({
+        'id': mr.id,
+        'patient_id': mr.patient_id,
+        'record_type': mr.record_type,
+        'description': mr.description,
+        'has_file': bool(mr.file_path),
+        'created_by': mr.created_by,
+        'created_at': mr.created_at.isoformat() if mr.created_at else None
+    })
+
+
+# API to update a medical record (description or replace file)
+@app.route('/api/medical_record/<int:record_id>/update', methods=['POST'])
+@login_required
+@csrf.exempt
+def api_update_medical_record(record_id):
+    mr = MedicalRecord.query.get_or_404(record_id)
+
+    # Only creator, doctor, or admin can update
+    if current_user.role not in ('admin', 'doctor') and mr.created_by != current_user.id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    description = request.form.get('description')
+    file = request.files.get('file')
+
+    if description is not None:
+        mr.description = description
+
+    if file and allowed_file(file.filename):
+        rel_path = handle_file_upload(current_user, file, upload_type='medical_records', encrypt=True)
+        if rel_path:
+            mr.file_path = rel_path
+
+    db.session.add(mr)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# API to delete a medical record
+@app.route('/api/medical_record/<int:record_id>/delete', methods=['POST'])
+@login_required
+@csrf.exempt
+def api_delete_medical_record(record_id):
+    mr = MedicalRecord.query.get_or_404(record_id)
+    if current_user.role not in ('admin', 'doctor') and mr.created_by != current_user.id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    try:
+        db.session.delete(mr)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/medical_records/patient/<int:patient_id>', methods=['GET'])
+@login_required
+def api_get_medical_records_for_patient(patient_id):
+    """Return medical records for a patient as JSON. Accessible to patient owner, doctor (if linked), or admin."""
+    patient = db.session.get(Patient, patient_id)
+    if not patient:
+        return jsonify({'error': 'Patient not found'}), 404
+
+    # Authorization
+    if current_user.role == 'patient':
+        p = Patient.query.filter_by(user_id=current_user.id).first()
+        if not p or p.id != patient.id:
+            return jsonify({'error': 'Access denied'}), 403
+    elif current_user.role == 'doctor':
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        if not doctor:
+            return jsonify({'error': 'Doctor profile not found'}), 403
+        # ensure doctor has appointments with patient (or allow admin/creator later)
+        if Appointment.query.filter_by(doctor_id=doctor.id, patient_id=patient.id).count() == 0:
+            return jsonify({'error': 'Access denied'}), 403
+    elif current_user.role != 'admin':
+        return jsonify({'error': 'Access denied'}), 403
+
+    records = MedicalRecord.query.filter_by(patient_id=patient.id).order_by(MedicalRecord.created_at.desc()).all()
+    out = []
+    for r in records:
+        out.append({
+            'id': r.id,
+            'record_type': r.record_type,
+            'description': r.description,
+            'has_file': bool(r.file_path),
+            'created_by': r.created_by,
+            'created_at': r.created_at.isoformat() if r.created_at else None
+        })
+    return jsonify({'medical_records': out, 'total': len(out)})
+
+# Duplicate Socket.IO handler removed. The consolidated, non-blocking
+# `save_recording` handler is defined earlier in this file and uses a
+# background task to perform encryption and DB commits to avoid blocking
+# the Socket.IO event loop.
 
 
 # Profile picture upload (users can upload their own; admin may upload for others)
@@ -3401,6 +3682,45 @@ def get_user_profile_picture_url(user):
     
     # No profile picture, will fallback to SVG avatar
     return url_for('profile_picture', user_id=user.id, _external=True)
+
+
+@app.route('/api/user/<int:user_id>/set-availability', methods=['POST'])
+@login_required
+@csrf.exempt
+def api_set_user_availability(user_id):
+    """Set a simple availability flag for the current user (used by the communication UI).
+    This updates `show_availability` for doctors and will also allow patients to toggle a lightweight presence flag.
+    """
+    if current_user.id != user_id and current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    data = request.get_json() or {}
+    avail = data.get('available')
+    if avail is None:
+        return jsonify({'success': False, 'error': 'available boolean required'}), 400
+
+    try:
+        # For doctors we persist show_availability; for other users we reuse same column if present
+        try:
+            current_user.show_availability = bool(avail)
+        except Exception:
+            # Fallback: try to set attribute anyway
+            setattr(current_user, 'show_availability', bool(avail))
+
+        db.session.add(current_user)
+        db.session.commit()
+
+        # Emit socket event to notify presence change (best-effort)
+        try:
+            if SOCKETIO_AVAILABLE:
+                socketio.emit('user_availability_changed', {'user_id': current_user.id, 'available': bool(avail)})
+        except Exception:
+            pass
+
+        return jsonify({'success': True, 'available': bool(avail)})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
     
 # Admin Communication Dashboard
@@ -3765,13 +4085,22 @@ def upload_file_api():
             with open(full_path, 'wb') as fh:
                 fh.write(encrypted_bytes)
             
+            # Determine message type based on file content type or extension
+            message_type = 'document'
+            if file.content_type.startswith('image/'):
+                message_type = 'image'
+            elif file.content_type.startswith('audio/') or filename.endswith(('.webm', '.wav', '.mp3', '.m4a')):
+                message_type = 'audio'
+            
             # Create communication record
             comm = Communication(
                 appointment_id=appointment_id,
                 sender_id=current_user.id,
-                message_type='document' if not file.content_type.startswith('image/') else 'image',
+                message_type=message_type,
                 content=filename,
-                file_path=rel_path_for_db
+                file_path=rel_path_for_db,
+                message_status='sent',
+                is_read=False
             )
             db.session.add(comm)
             db.session.commit()
@@ -3779,17 +4108,55 @@ def upload_file_api():
             # Return file URL
             file_url = url_for('download_communication_file', communication_id=comm.id, _external=True)
             
+            # BROADCAST via Socket.IO immediately for real-time delivery
+            if SOCKETIO_AVAILABLE:
+                appointment_room = f'appointment_{appointment_id}'
+                message_data = {
+                    'id': comm.id,
+                    'appointment_id': appointment_id,
+                    'sender_id': current_user.id,
+                    'sender_name': safe_display_name(current_user),
+                    'message_type': message_type,
+                    'content': filename,
+                    'file_path': file_url,
+                    'timestamp': comm.timestamp.isoformat(),
+                    'message_status': 'sent',
+                    'is_sent': True,
+                    'is_read': False
+                }
+                socketio.emit('message_received', message_data, room=appointment_room)
+                
+                # Check if recipient is online for delivery status
+                recipient_id = None
+                if current_user.role == 'patient':
+                    doctor = db.session.get(Doctor, appointment.doctor_id)
+                    recipient_id = doctor.user_id if doctor else None
+                else:
+                    patient = db.session.get(Patient, appointment.patient_id)
+                    recipient_id = patient.user_id if patient else None
+                
+                if recipient_id and recipient_id in user_sockets:
+                    comm.message_status = 'delivered'
+                    db.session.commit()
+                    socketio.emit('message_status_updated', {
+                        'message_id': comm.id,
+                        'status': 'delivered',
+                        'appointment_id': appointment_id
+                    }, room=appointment_room)
+            
             return jsonify({
                 'success': True,
                 'file_url': file_url,
                 'filename': filename,
                 'file_size': len(raw),
-                'message_id': comm.id
+                'message_id': comm.id,
+                'message_type': message_type
             })
-            
+
         except Exception as e:
+            db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
 # Helper function to verify appointment access
@@ -3883,8 +4250,16 @@ def download_medical_record(record_id):
         if record.patient_id != patient.id:
             return abort(403)
     elif current_user.role == 'doctor':
-        # doctors may have created records; allow if they created it or admin/assigned
-        if record.created_by != current_user.id:
+        # Allow if doctor created the record or if the doctor is the patient's doctor
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        patient = db.session.get(Patient, record.patient_id)
+        allowed = False
+        if record.created_by == current_user.id:
+            allowed = True
+        # If doctor is assigned to this patient via any appointment, allow access
+        if doctor and Appointment.query.filter_by(doctor_id=doctor.id, patient_id=patient.id).count() > 0:
+            allowed = True
+        if not allowed:
             return abort(403)
     elif current_user.role != 'admin':
         return abort(403)
@@ -3919,7 +4294,7 @@ def download_medical_record(record_id):
 @app.route('/api/doctor/appointments')
 @login_required
 def get_doctor_appointments():
-    """Get doctor's appointments with patient info and payment status"""
+    """Get doctor's appointments grouped by patient with categorization: today, upcoming, completed, rescheduled, pending"""
     if current_user.role != 'doctor':
         return jsonify({'error': 'Access denied'}), 403
     
@@ -3941,10 +4316,35 @@ def get_doctor_appointments():
         Payment, Appointment.id == Payment.appointment_id
     ).filter(
         Appointment.doctor_id == doctor.id
-    ).order_by(Appointment.appointment_date.desc()).all()
+    ).order_by(Patient.id, Appointment.appointment_date.desc()).all()
     
-    appointments_data = []
+    # Group appointments by patient and categorize
+    patients_appointments = {}  # {patient_id: {'patient_info': ..., 'today': [...], 'upcoming': [...], etc}}
+    
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+    
     for appointment, patient, user, payment in appointments:
+        patient_id = patient.id
+        
+        # Initialize patient group if not exists
+        if patient_id not in patients_appointments:
+            patients_appointments[patient_id] = {
+                'patient': {
+                    'id': patient.id,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'email': user.email,
+                    'phone': user.phone
+                },
+                'today': [],
+                'upcoming': [],
+                'completed': [],
+                'rescheduled': [],
+                'pending': []
+            }
+        
         # Get last message for preview
         last_message = Communication.query.filter_by(
             appointment_id=appointment.id
@@ -3957,16 +4357,10 @@ def get_doctor_appointments():
         elif appointment.status == 'completed':
             payment_status = 'completed'
         
-        appointments_data.append({
+        appointment_data = {
             'appointment_id': appointment.id,
-            'patient_id': patient.id,
-            'patient': {
-                'id': patient.id,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'email': user.email
-            },
             'appointment_date': appointment.appointment_date.isoformat(),
+            'appointment_date_formatted': appointment.appointment_date.strftime('%d %b %Y'),
             'appointment_time': appointment.appointment_date.strftime('%H:%M'),
             'consultation_type': appointment.consultation_type,
             'status': appointment.status,
@@ -3977,9 +4371,39 @@ def get_doctor_appointments():
                 appointment_id=appointment.id,
                 is_read=False
             ).filter(Communication.sender_id != current_user.id).count()
-        })
+        }
+        
+        # Categorize appointment based on date and status
+        appt_date = appointment.appointment_date
+        # Ensure appointment datetime is timezone-aware for comparisons
+        if appt_date is not None and appt_date.tzinfo is None:
+            appt_date = appt_date.replace(tzinfo=timezone.utc)
+        
+        if appointment.status == 'completed':
+            patients_appointments[patient_id]['completed'].append(appointment_data)
+        elif appointment.status == 'rescheduled':
+            patients_appointments[patient_id]['rescheduled'].append(appointment_data)
+        elif appointment.status == 'pending' or (appointment.status not in ['confirmed', 'scheduled', 'completed', 'rescheduled', 'cancelled']):
+            patients_appointments[patient_id]['pending'].append(appointment_data)
+        elif appointment.status in ['confirmed', 'scheduled']:
+            if today_start <= appt_date < today_end:
+                patients_appointments[patient_id]['today'].append(appointment_data)
+            elif appt_date >= today_end:
+                patients_appointments[patient_id]['upcoming'].append(appointment_data)
+            else:
+                # Past appointments that aren't marked completed
+                patients_appointments[patient_id]['completed'].append(appointment_data)
+        elif appointment.status == 'cancelled':
+            # Skip cancelled appointments
+            pass
     
-    return jsonify(appointments_data)
+    # Convert to list format
+    appointments_by_patient = list(patients_appointments.values())
+    
+    return jsonify({
+        'appointments_by_patient': appointments_by_patient,
+        'total_patients': len(patients_appointments)
+    })
 
 @app.route('/api/patient/doctors-with-appointments')
 @login_required
@@ -4158,7 +4582,7 @@ def get_appointment_payment_status(appointment_id):
 @app.route('/api/patient/appointments/categorized')
 @login_required
 def get_patient_appointments_categorized():
-    """Get patient's appointments categorized by status"""
+    """Get patient's appointments grouped by doctor with categorization: today, upcoming, completed, rescheduled, pending"""
     if current_user.role != 'patient':
         return jsonify({'error': 'Access denied'}), 403
     
@@ -4180,15 +4604,38 @@ def get_patient_appointments_categorized():
         Payment, Appointment.id == Payment.appointment_id
     ).filter(
         Appointment.patient_id == patient.id
-    ).order_by(Appointment.appointment_date.desc()).all()
+    ).order_by(Doctor.id, Appointment.appointment_date.desc()).all()
     
-    # Categorize appointments
-    upcoming = []
-    pending_confirmation = []
-    completed = []
-    rescheduled = []
+    # Group appointments by doctor and categorize
+    doctors_appointments = {}  # {doctor_id: {'doctor_info': ..., 'today': [...], 'upcoming': [...], etc}}
+    
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
     
     for appointment, doctor, user, payment in appointments_data:
+        doctor_id = doctor.id
+        
+        # Initialize doctor group if not exists
+        if doctor_id not in doctors_appointments:
+            doctors_appointments[doctor_id] = {
+                'doctor': {
+                    'id': doctor.id,
+                    'user': {
+                        'id': user.id,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name
+                    },
+                    'specialization': doctor.specialization,
+                    'consultation_fee': float(doctor.consultation_fee) if doctor.consultation_fee else 0.0
+                },
+                'today': [],
+                'upcoming': [],
+                'completed': [],
+                'rescheduled': [],
+                'pending': []
+            }
+        
         # Determine payment status
         payment_status = 'pending'
         if payment:
@@ -4202,17 +4649,10 @@ def get_patient_appointments_categorized():
         
         appointment_data = {
             'id': appointment.id,
-            'doctor': {
-                'id': doctor.id,
-                'user': {
-                    'id': user.id,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name
-                },
-                'specialization': doctor.specialization,
-                'consultation_fee': float(doctor.consultation_fee) if doctor.consultation_fee else 0.0
-            },
+            'doctor_id': doctor_id,
             'appointment_date': appointment_date.isoformat() if appointment_date else None,
+            'appointment_date_formatted': appointment_date.strftime('%d %b %Y') if appointment_date else None,
+            'appointment_time': appointment_date.strftime('%H:%M') if appointment_date else None,
             'consultation_type': appointment.consultation_type,
             'symptoms': appointment.symptoms,
             'notes': appointment.notes,
@@ -4223,29 +4663,30 @@ def get_patient_appointments_categorized():
         }
         
         # Categorize based on status and date
-        now = datetime.now(timezone.utc)
-        
         if appointment.status == 'completed':
-            completed.append(appointment_data)
+            doctors_appointments[doctor_id]['completed'].append(appointment_data)
         elif appointment.status == 'rescheduled':
-            rescheduled.append(appointment_data)
-        elif appointment.status == 'pending':
-            pending_confirmation.append(appointment_data)
+            doctors_appointments[doctor_id]['rescheduled'].append(appointment_data)
+        elif appointment.status == 'pending' or (appointment.status not in ['confirmed', 'scheduled', 'completed', 'rescheduled', 'cancelled']):
+            doctors_appointments[doctor_id]['pending'].append(appointment_data)
         elif appointment.status in ['confirmed', 'scheduled']:
-            if appointment_date and appointment_date > now:
-                upcoming.append(appointment_data)
+            if today_start <= appointment_date < today_end:
+                doctors_appointments[doctor_id]['today'].append(appointment_data)
+            elif appointment_date >= today_end:
+                doctors_appointments[doctor_id]['upcoming'].append(appointment_data)
             else:
-                # Past confirmed appointments that aren't completed
-                completed.append(appointment_data)
+                # Past appointments that aren't marked completed
+                doctors_appointments[doctor_id]['completed'].append(appointment_data)
         elif appointment.status == 'cancelled':
-            # Skip cancelled appointments for these categories
+            # Skip cancelled appointments
             pass
     
+    # Convert to list format
+    appointments_by_doctor = list(doctors_appointments.values())
+    
     return jsonify({
-        'upcoming': upcoming,
-        'pending_confirmation': pending_confirmation,
-        'completed': completed,
-        'rescheduled': rescheduled
+        'appointments_by_doctor': appointments_by_doctor,
+        'total_doctors': len(doctors_appointments)
     })
 
 # Add this route to handle profile picture errors gracefully
@@ -4344,6 +4785,43 @@ def get_doctors():
         return jsonify({'error': str(e)}), 500
 
 # API to get appointments for a patient
+@app.route('/api/doctor-patients', methods=['GET'])
+@login_required
+def get_api_doctor_patients():
+    """Get all patients for doctor as JSON API"""
+    if current_user.role != 'doctor':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+    if not doctor:
+        return jsonify({'error': 'Doctor profile not found'}), 404
+    
+    # Get unique patients for this doctor
+    patients_data = db.session.query(
+        Patient,
+        User
+    ).join(
+        User, Patient.user_id == User.id
+    ).join(
+        Appointment, Appointment.patient_id == Patient.id
+    ).filter(
+        Appointment.doctor_id == doctor.id
+    ).distinct(Patient.id).all()
+    
+    patient_list = []
+    for patient, user in patients_data:
+        patient_list.append({
+            'id': patient.id,
+            'user_id': user.id,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'email': user.email,
+            'phone': user.phone
+        })
+    
+    return jsonify({'patients': patient_list, 'total': len(patient_list)})
+
+
 @app.route('/doctor/patients', methods=['GET'])
 def get_doctor_patients():
     """Render all patients for a doctor in HTML"""
@@ -5129,6 +5607,232 @@ def save_prescription():
         'prescription_id': prescription.id,
         'message': 'Prescription saved successfully'
     })
+
+
+@app.route('/prescription/<int:prescription_id>')
+@login_required
+def view_prescription(prescription_id):
+    """Render a prescription for viewing (patient/doctor/admin)."""
+    prescription = Prescription.query.get_or_404(prescription_id)
+
+    # Access control: allow patient owner, prescribing doctor, or admin
+    if current_user.role == 'patient' and prescription.patient.user_id != current_user.id:
+        return redirect(url_for('index'))
+    if current_user.role == 'doctor' and prescription.doctor.user_id != current_user.id:
+        # allow doctor to view only their own prescriptions
+        return redirect(url_for('index'))
+
+    # Determine expiry
+    now = datetime.now(timezone.utc)
+    prescription_expired = bool(prescription.is_expired or (prescription.expiry_date and prescription.expiry_date < now))
+
+    # Log audit: viewed
+    try:
+        audit = PrescriptionAudit(prescription_id=prescription.id, user_id=(current_user.id if current_user.is_authenticated else None), action='viewed')
+        db.session.add(audit)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return render_template('patient/prescription.html', prescription=prescription, prescription_expired=prescription_expired)
+
+
+@app.route('/prescription/<int:prescription_id>/print')
+@login_required
+def print_prescription(prescription_id):
+    prescription = Prescription.query.get_or_404(prescription_id)
+
+    # Access control similar to view_prescription
+    if current_user.role == 'patient' and prescription.patient.user_id != current_user.id:
+        return redirect(url_for('index'))
+    if current_user.role == 'doctor' and prescription.doctor.user_id != current_user.id:
+        return redirect(url_for('index'))
+
+    now = datetime.now(timezone.utc)
+    prescription_expired = bool(prescription.is_expired or (prescription.expiry_date and prescription.expiry_date < now))
+
+    # Render same template but include print-on-load in the template
+    # Audit print action
+    try:
+        audit = PrescriptionAudit(prescription_id=prescription.id, user_id=(current_user.id if current_user.is_authenticated else None), action='printed')
+        db.session.add(audit)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return render_template('patient/prescription.html', prescription=prescription, prescription_expired=prescription_expired, print_mode=True)
+
+
+@app.route('/prescription/<int:prescription_id>/download')
+@login_required
+def download_prescription_pdf(prescription_id):
+    """Generate a PDF for the prescription and send it to the user."""
+    prescription = Prescription.query.get_or_404(prescription_id)
+
+    # Access control
+    if current_user.role == 'patient' and prescription.patient.user_id != current_user.id:
+        return redirect(url_for('index'))
+    if current_user.role == 'doctor' and prescription.doctor.user_id != current_user.id:
+        return redirect(url_for('index'))
+
+    # Richer PDF: include logo, clinic header, doctor's signature (if available) and QR code
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.utils import ImageReader
+    import io, qrcode
+
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # Clinic logo
+    try:
+        logo_path = os.path.join(app.root_path, app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'logo.png')
+        if os.path.exists(logo_path):
+            logo = ImageReader(logo_path)
+            c.drawImage(logo, 50, height - 90, width=120, preserveAspectRatio=True, mask='auto')
+    except Exception:
+        pass
+
+    # Clinic header
+    c.setFont('Helvetica-Bold', 18)
+    c.drawString(200, height - 60, 'Makokha Medical Centre')
+    c.setFont('Helvetica', 11)
+    c.drawString(200, height - 76, 'Telemedicine & Clinical Services')
+
+    y = height - 110
+    c.setFont('Helvetica', 11)
+    c.drawString(50, y, f'Date: {prescription.created_at.strftime("%Y-%m-%d %H:%M UTC")}')
+    y -= 18
+    doctor_name = getattr(prescription.doctor.user, 'first_name', '') or ''
+    doctor_last = getattr(prescription.doctor.user, 'last_name', '') or ''
+    c.drawString(50, y, f'Prescribed by: Dr. {doctor_name} {doctor_last}')
+    y -= 26
+
+    # Medication details
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(50, y, 'Medication:')
+    c.setFont('Helvetica', 12)
+    c.drawString(150, y, prescription.medication)
+    y -= 20
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(50, y, 'Dosage:')
+    c.setFont('Helvetica', 12)
+    c.drawString(150, y, prescription.dosage)
+    y -= 24
+
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(50, y, 'Instructions:')
+    y -= 16
+    text = c.beginText(50, y)
+    text.setFont('Helvetica', 11)
+    for line in (prescription.instructions or '').split('\n'):
+        text.textLine(line)
+    c.drawText(text)
+
+    # QR code linking to the prescription verify/view URL
+    try:
+        verify_url = request.host_url.rstrip('/') + url_for('view_prescription', prescription_id=prescription.id)
+        qr = qrcode.make(verify_url)
+        qr_buf = io.BytesIO()
+        qr.save(qr_buf, format='PNG')
+        qr_buf.seek(0)
+        qr_img = ImageReader(qr_buf)
+        c.drawImage(qr_img, width - 150, 80, width=90, preserveAspectRatio=True, mask='auto')
+    except Exception:
+        pass
+
+    # Signature image if available under uploads/signatures/doctor_{id}.png
+    try:
+        sig_path = os.path.join(app.root_path, app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'signatures', f'doctor_{prescription.doctor.id}.png')
+        if os.path.exists(sig_path):
+            sig = ImageReader(sig_path)
+            c.drawImage(sig, 50, 80, width=180, preserveAspectRatio=True, mask='auto')
+        else:
+            c.setFont('Helvetica-Oblique', 12)
+            c.drawString(50, 110, f'Signed: Dr. {doctor_name} {doctor_last}')
+    except Exception:
+        c.setFont('Helvetica-Oblique', 12)
+        c.drawString(50, 110, f'Signed: Dr. {doctor_name} {doctor_last}')
+
+    # If expired, add red rubber-stamp
+    now = datetime.now(timezone.utc)
+    expired = bool(prescription.is_expired or (prescription.expiry_date and prescription.expiry_date < now))
+    if expired:
+        c.setFillColorRGB(1, 0, 0)
+        c.setFont('Helvetica-Bold', 48)
+        c.saveState()
+        c.translate(300, 300)
+        c.rotate(30)
+        c.drawCentredString(0, 0, 'EXPIRED')
+        c.restoreState()
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+
+    # Audit download
+    try:
+        audit = PrescriptionAudit(prescription_id=prescription.id, user_id=(current_user.id if current_user.is_authenticated else None), action='downloaded')
+        db.session.add(audit)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return send_file(buffer, as_attachment=True, download_name=f'prescription_{prescription.id}.pdf', mimetype='application/pdf')
+
+
+@app.route('/prescription/<int:prescription_id>/expire', methods=['POST'])
+@login_required
+def expire_prescription(prescription_id):
+    """Mark a prescription as expired (e.g., by dispensing person)."""
+    prescription = Prescription.query.get_or_404(prescription_id)
+    # Access control -- allow admin or doctor or designated staff
+    if current_user.role not in ('admin', 'doctor'):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    prescription.is_expired = True
+    prescription.expired_by = current_user.id
+    prescription.dispensed_at = datetime.now(timezone.utc)
+    db.session.commit()
+    try:
+        audit = PrescriptionAudit(prescription_id=prescription.id, user_id=current_user.id, action='expired')
+        db.session.add(audit)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return jsonify({'success': True})
+
+
+@app.route('/prescription/<int:prescription_id>/dispense', methods=['POST'])
+@login_required
+def dispense_prescription(prescription_id):
+    """Mark prescription as dispensed/signed by dispensing person."""
+    prescription = Prescription.query.get_or_404(prescription_id)
+    if current_user.role not in ('admin', 'doctor'):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    prescription.dispensed_by = current_user.id
+    prescription.dispensed_at = datetime.now(timezone.utc)
+    db.session.commit()
+    try:
+        audit = PrescriptionAudit(prescription_id=prescription.id, user_id=current_user.id, action='dispensed')
+        db.session.add(audit)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return jsonify({'success': True})
+
+
+@app.route('/doctor/prescribed')
+@login_required
+def doctor_prescribed_list():
+    if current_user.role != 'doctor':
+        return redirect(url_for('index'))
+
+    doctor = Doctor.query.filter_by(user_id=current_user.id).first_or_404()
+    prescriptions = Prescription.query.filter_by(doctor_id=doctor.id).order_by(Prescription.created_at.desc()).all()
+    return render_template('doctor/prescribed.html', prescriptions=prescriptions)
 # ============================================
 # SOCKET.IO EVENT HANDLERS - REAL-TIME COMMUNICATION
 # ============================================
@@ -5207,8 +5911,8 @@ def handle_message_delivered(data):
             }, room=f'appointment_{appointment_id}')
 
 @socketio.on('disconnect')
-def handle_disconnect():
-    """Handle user disconnection with cleanup"""
+def handle_disconnect(sid):
+    """Handle user disconnection with cleanup. Accepts the socket id passed by Socket.IO."""
     try:
         if current_user.is_authenticated:
             user_id = current_user.id
@@ -5970,6 +6674,366 @@ def handle_leave_appointment(data):
     
     print(f'User {current_user.id} left appointment room {appointment_id}')
 
+# ============================================
+# NOTIFICATION EVENTS (WITH SOUND)
+# ============================================
+
+@socketio.on('send_notification')
+def handle_send_notification(data):
+    """Send a notification with optional sound"""
+    if not current_user.is_authenticated:
+        return
+    
+    try:
+        recipient_id = data.get('recipient_id')
+        notification_type = data.get('type')  # message, voice_call, video_call
+        title = data.get('title')
+        body = data.get('body')
+        sound_enabled = data.get('sound_enabled', True)
+        appointment_id = data.get('appointment_id')
+        
+        # Create notification in database
+        notification = Notification(
+            user_id=recipient_id,
+            notification_type=notification_type,
+            sender_id=current_user.id,
+            title=title,
+            body=body,
+            sound_enabled=sound_enabled,
+            appointment_id=appointment_id
+        )
+        db.session.add(notification)
+        db.session.commit()
+        
+        # Send to recipient if online
+        recipient_socket_id = user_sockets.get(recipient_id)
+        if recipient_socket_id:
+            emit('notification_received', {
+                'notification_id': notification.id,
+                'type': notification_type,
+                'title': title,
+                'body': body,
+                'sender_id': current_user.id,
+                'sender_name': safe_display_name(current_user),
+                'sound_enabled': sound_enabled,
+                'appointment_id': appointment_id,
+                'timestamp': notification.created_at.isoformat()
+            }, room=recipient_socket_id)
+            
+            return {'success': True, 'sent_immediately': True}
+        else:
+            return {'success': True, 'sent_immediately': False, 'queued': True}
+    
+    except Exception as e:
+        print(f'Error sending notification: {str(e)}')
+        emit('notification_error', {'error': str(e)})
+        return {'success': False, 'error': str(e)}
+
+@socketio.on('play_notification_sound')
+def handle_play_notification_sound(data):
+    """Trigger sound notification on client"""
+    if not current_user.is_authenticated:
+        return
+    
+    notification_type = data.get('type')  # message, voice_call, video_call
+    
+    # Broadcast sound event to the specific user
+    recipient_id = data.get('recipient_id')
+    recipient_socket_id = user_sockets.get(recipient_id)
+    
+    if recipient_socket_id:
+        emit('play_sound', {
+            'type': notification_type,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }, room=recipient_socket_id)
+
+@socketio.on('mark_notification_read')
+def handle_mark_notification_read(data):
+    """Mark notification as read"""
+    if not current_user.is_authenticated:
+        return
+    
+    try:
+        notification_id = data.get('notification_id')
+        notification = db.session.get(Notification, notification_id)
+        
+        if notification and notification.user_id == current_user.id:
+            notification.is_read = True
+            db.session.commit()
+            return {'success': True}
+    
+    except Exception as e:
+        print(f'Error marking notification as read: {str(e)}')
+    
+    return {'success': False}
+
+@app.route('/api/notifications', methods=['GET'])
+@login_required
+def get_notifications():
+    """Get user's notifications"""
+    try:
+        limit = int(request.args.get('limit', 50))
+        include_read = request.args.get('include_read', 'false').lower() == 'true'
+        
+        query = Notification.query.filter_by(user_id=current_user.id)
+        
+        if not include_read:
+            query = query.filter_by(is_read=False)
+        
+        notifications = query.order_by(Notification.created_at.desc()).limit(limit).all()
+        
+        data = [{
+            'id': n.id,
+            'type': n.notification_type,
+            'title': n.title,
+            'body': n.body,
+            'sender_id': n.sender_id,
+            'sender_name': safe_display_name(n.sender) if n.sender else None,
+            'appointment_id': n.appointment_id,
+            'is_read': n.is_read,
+            'created_at': n.created_at.isoformat()
+        } for n in notifications]
+        
+        return jsonify({'success': True, 'notifications': data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+@login_required
+def mark_notification_read(notification_id):
+    """Mark a single notification as read"""
+    try:
+        notification = db.session.get(Notification, notification_id)
+        
+        if not notification or notification.user_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        notification.is_read = True
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notifications/read-all', methods=['POST'])
+@login_required
+def mark_all_notifications_read():
+    """Mark all notifications as read"""
+    try:
+        Notification.query.filter_by(user_id=current_user.id, is_read=False).update({'is_read': True})
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== HEALTH TIPS ENDPOINTS ====================
+
+@app.route('/api/health-tips/patient/<int:patient_id>', methods=['GET'])
+@login_required
+def get_patient_health_tips(patient_id):
+    """Get all health tips for a patient (accessible by doctor and patient)"""
+    try:
+        patient = db.session.get(Patient, patient_id)
+        if not patient:
+            return jsonify({'error': 'Patient not found'}), 404
+        
+        # Check authorization: patient can view own tips, doctor can view tips for their patients
+        if current_user.id != patient.user_id and current_user.role == 'patient':
+            return jsonify({'error': 'Access denied'}), 403
+        
+        if current_user.role == 'doctor':
+            doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+            if not doctor:
+                return jsonify({'error': 'Doctor profile not found'}), 403
+        
+        # Get all health tips for this patient
+        health_tips = HealthTip.query.filter_by(patient_id=patient_id).order_by(
+            HealthTip.created_at.desc()
+        ).all()
+        
+        tips_data = []
+        for tip in health_tips:
+            tips_data.append({
+                'id': tip.id,
+                'title': tip.title,
+                'description': tip.description,
+                'doctor_id': tip.doctor_id,
+                'doctor_name': tip.doctor.user.first_name + ' ' + tip.doctor.user.last_name,
+                'appointment_id': tip.appointment_id,
+                'created_at': tip.created_at.isoformat(),
+                'updated_at': tip.updated_at.isoformat()
+            })
+        
+        return jsonify({'health_tips': tips_data, 'total': len(tips_data)})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/health-tips', methods=['POST'])
+@login_required
+def create_health_tip():
+    """Create a new health tip (doctor only)"""
+    try:
+        if current_user.role != 'doctor':
+            return jsonify({'error': 'Only doctors can create health tips'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        required_fields = ['patient_id', 'title', 'description']
+        if not all(field in data for field in required_fields):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        if not doctor:
+            return jsonify({'error': 'Doctor profile not found'}), 404
+        
+        patient = db.session.get(Patient, data['patient_id'])
+        if not patient:
+            return jsonify({'error': 'Patient not found'}), 404
+        
+        # Create new health tip
+        health_tip = HealthTip(
+            doctor_id=doctor.id,
+            patient_id=patient.id,
+            appointment_id=data.get('appointment_id'),
+            title=data['title'],
+            description=data['description']
+        )
+        
+        db.session.add(health_tip)
+        db.session.commit()
+        
+        # Emit real-time notification to patient
+        patient_user = db.session.get(User, patient.user_id)
+        if patient_user and patient_user.id in user_sockets:
+            emit('new_health_tip', {
+                'tip_id': health_tip.id,
+                'title': health_tip.title,
+                'doctor_name': current_user.first_name + ' ' + current_user.last_name
+            }, room=user_sockets[patient_user.id])
+        
+        return jsonify({
+            'success': True,
+            'health_tip_id': health_tip.id,
+            'message': 'Health tip created successfully'
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/health-tips/<int:tip_id>', methods=['PUT'])
+@login_required
+def update_health_tip(tip_id):
+    """Update a health tip (doctor only)"""
+    try:
+        if current_user.role != 'doctor':
+            return jsonify({'error': 'Only doctors can update health tips'}), 403
+        
+        health_tip = db.session.get(HealthTip, tip_id)
+        if not health_tip:
+            return jsonify({'error': 'Health tip not found'}), 404
+        
+        # Check authorization: only creator doctor can update
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        if health_tip.doctor_id != doctor.id:
+            return jsonify({'error': 'You can only edit your own health tips'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Update fields
+        if 'title' in data:
+            health_tip.title = data['title']
+        if 'description' in data:
+            health_tip.description = data['description']
+        
+        health_tip.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+        
+        # Emit real-time notification to patient
+        patient = db.session.get(Patient, health_tip.patient_id)
+        patient_user = db.session.get(User, patient.user_id)
+        if patient_user and patient_user.id in user_sockets:
+            emit('health_tip_updated', {
+                'tip_id': health_tip.id,
+                'title': health_tip.title,
+                'doctor_name': current_user.first_name + ' ' + current_user.last_name
+            }, room=user_sockets[patient_user.id])
+        
+        return jsonify({'success': True, 'message': 'Health tip updated successfully'})
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/health-tips/<int:tip_id>', methods=['DELETE'])
+@login_required
+def delete_health_tip(tip_id):
+    """Delete a health tip (doctor only)"""
+    try:
+        if current_user.role != 'doctor':
+            return jsonify({'error': 'Only doctors can delete health tips'}), 403
+        
+        health_tip = db.session.get(HealthTip, tip_id)
+        if not health_tip:
+            return jsonify({'error': 'Health tip not found'}), 404
+        
+        # Check authorization: only creator doctor can delete
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        if health_tip.doctor_id != doctor.id:
+            return jsonify({'error': 'You can only delete your own health tips'}), 403
+        
+        patient_id = health_tip.patient_id
+        db.session.delete(health_tip)
+        db.session.commit()
+        
+        # Emit real-time notification to patient
+        patient = db.session.get(Patient, patient_id)
+        patient_user = db.session.get(User, patient.user_id)
+        if patient_user and patient_user.id in user_sockets:
+            emit('health_tip_deleted', {
+                'tip_id': tip_id,
+                'doctor_name': current_user.first_name + ' ' + current_user.last_name
+            }, room=user_sockets[patient_user.id])
+        
+        return jsonify({'success': True, 'message': 'Health tip deleted successfully'})
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@socketio.on('health_tip_viewed')
+def handle_health_tip_viewed(data):
+    """Handle when patient views a health tip"""
+    try:
+        tip_id = data.get('tip_id')
+        health_tip = db.session.get(HealthTip, tip_id)
+        
+        if health_tip:
+            patient = db.session.get(Patient, health_tip.patient_id)
+            if patient.user_id == current_user.id:
+                # Emit to doctor that patient viewed the tip
+                doctor_user = db.session.get(User, health_tip.doctor.user_id)
+                if doctor_user and doctor_user.id in user_sockets:
+                    emit('patient_viewed_health_tip', {
+                        'tip_id': tip_id,
+                        'patient_name': current_user.first_name + ' ' + current_user.last_name
+                    }, room=user_sockets[doctor_user.id])
+    except Exception as e:
+        print(f"Error handling health tip viewed: {e}")
 
 
 if __name__ == '__main__':

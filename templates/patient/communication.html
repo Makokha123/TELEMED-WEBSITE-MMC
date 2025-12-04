@@ -894,15 +894,15 @@
                             <!-- Profile picture will be loaded here -->
                         </div>
                     </div>
-                    <button class="sidebar-action-btn" title="Status">
-                        <i class="fas fa-circle"></i>
-                    </button>
-                    <button class="sidebar-action-btn" title="Book appointment">
-                        <i class="fas fa-calendar-plus"></i>
-                    </button>
-                    <button class="sidebar-action-btn" title="Menu">
-                        <i class="fas fa-ellipsis-v"></i>
-                    </button>
+                            <button class="sidebar-action-btn" title="Status" id="statusBtn">
+                                <i class="fas fa-circle" id="statusIcon"></i>
+                            </button>
+                            <button class="sidebar-action-btn" title="Book appointment" id="bookBtn">
+                                <i class="fas fa-calendar-plus"></i>
+                            </button>
+                            <button class="sidebar-action-btn" title="Menu" id="menuBtn">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
                 </div>
             </div>
             <div class="search-container">
@@ -1038,6 +1038,15 @@
 <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
 <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<!-- User menu (small) -->
+<div class="dropdown" id="userMenuDropdown" style="position: absolute; z-index: 1050; display:none;">
+    <div class="card p-2">
+        <a href="/profile" class="d-block mb-1">View profile</a>
+        <a href="/settings" class="d-block mb-1">Settings</a>
+        <a href="/logout" class="d-block">Logout</a>
+    </div>
+</div>
 
 <!-- Audio element for voice messages -->
 <audio id="voicePlayer" style="display: none;"></audio>
@@ -1603,6 +1612,48 @@ function setupEventListeners() {
             });
         }, 1000);
     });
+
+    // Topbar actions
+    const statusBtn = document.getElementById('statusBtn');
+    const statusIcon = document.getElementById('statusIcon');
+    const bookBtn = document.getElementById('bookBtn');
+    const menuBtn = document.getElementById('menuBtn');
+    const userMenu = document.getElementById('userMenuDropdown');
+
+    // Toggle availability (simple UX: toggle persistent show_availability)
+    statusBtn.addEventListener('click', async function(){
+        try{
+            // Flip current state locally
+            const currentlyOnline = statusIcon.classList.contains('fa-circle') && !statusIcon.classList.contains('text-muted');
+            const newState = !currentlyOnline;
+            // optimistic UI
+            if (newState) { statusIcon.classList.remove('text-muted'); statusIcon.style.color = '#31a24c'; }
+            else { statusIcon.classList.add('text-muted'); statusIcon.style.color = '#a0a0a0'; }
+
+            const res = await fetch(`/api/user/${currentUserId}/set-availability`, { method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify({available: newState})});
+            const j = await res.json(); if (!j.success) {
+                alert('Could not update availability');
+            }
+        }catch(e){ console.error(e); alert('Failed to update availability'); }
+    });
+
+    // Book appointment - go to booking page
+    bookBtn.addEventListener('click', function(){
+        window.location.href = '/patient/appointment';
+    });
+
+    // Menu button
+    menuBtn.addEventListener('click', function(e){
+        const rect = menuBtn.getBoundingClientRect();
+        userMenu.style.left = (rect.right - 160) + 'px';
+        userMenu.style.top = (rect.bottom + 8) + 'px';
+        userMenu.style.display = userMenu.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Close menu on outside click
+    document.addEventListener('click', function(ev){
+        if (!menuBtn.contains(ev.target) && !userMenu.contains(ev.target)) userMenu.style.display = 'none';
+    });
     
     // Voice recording (same as doctor)
     document.getElementById('voiceRecordBtn').addEventListener('click', toggleRecording);
@@ -1669,6 +1720,16 @@ function showDoctorInfo() {
     }
     
     window.location.href = `/doctor/${selectedDoctorId}`;
+}
+
+// View prescription (patient)
+function viewPrescription(prescriptionId) {
+    window.open(`/prescription/${prescriptionId}`, '_blank');
+}
+
+// Print prescription (patient)
+function printPrescription(prescriptionId) {
+    window.open(`/prescription/${prescriptionId}/print`, '_blank');
 }
 
 // Setup emoji picker

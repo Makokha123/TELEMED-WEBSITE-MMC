@@ -18,6 +18,14 @@
       </div>
     </div>
     <a href="{{ url_for('download_prescription_pdf', prescription_id=prescription.id) }}" class="btn btn-secondary">Download PDF</a>
+    {% if print_mode %}
+    <script>
+      // Auto-print mode
+      window.addEventListener('load', function() {
+        setTimeout(function(){ window.print(); }, 300);
+      });
+    </script>
+    {% endif %}
   {% else %}
     <p>No prescription found.</p>
   {% endif %}

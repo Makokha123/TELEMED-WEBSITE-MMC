@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Prescriptions</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Patient</th>
+        <th>Medication</th>
+        <th>Diagnosis / Notes</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in prescriptions %}
+      <tr>
+        <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ p.patient.user.get_display_name() }}</td>
+        <td>{{ p.medication }}</td>
+        <td>{{ p.instructions or '-' }}</td>
+        <td>
+          <a href="{{ url_for('view_prescription', prescription_id=p.id) }}" class="btn btn-sm btn-outline-primary" target="_blank">View</a>
+          <a href="{{ url_for('download_prescription_pdf', prescription_id=p.id) }}" class="btn btn-sm btn-secondary">PDF</a>
+          <button class="btn btn-sm btn-warning ms-1 mark-expired-btn" data-id="{{ p.id }}">Mark Expired</button>
+          <button class="btn btn-sm btn-success ms-1 mark-dispensed-btn" data-id="{{ p.id }}">Mark Dispensed</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('mark-expired-btn')) {
+    const id = e.target.dataset.id;
+    if (!confirm('Mark prescription #' + id + ' as expired?')) return;
+    fetch('/prescription/' + id + '/expire', { method:'POST', headers: {'X-CSRFToken': csrf_token} })
+      .then(r=>r.json()).then(j=>{
+        if (j.success) { alert('Marked expired'); location.reload(); } else alert('Error: ' + (j.error||'unknown'));
+      }).catch(err=>alert('Request failed'));
+  }
+
+  if (e.target.classList.contains('mark-dispensed-btn')) {
+    const id = e.target.dataset.id;
+    if (!confirm('Mark prescription #' + id + ' as dispensed/signed?')) return;
+    fetch('/prescription/' + id + '/dispense', { method:'POST', headers: {'X-CSRFToken': csrf_token} })
+      .then(r=>r.json()).then(j=>{
+        if (j.success) { alert('Marked dispensed'); location.reload(); } else alert('Error: ' + (j.error||'unknown'));
+      }).catch(err=>alert('Request failed'));
+  }
+});
+</script>
+{% endblock %}

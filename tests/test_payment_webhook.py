@@ -74,7 +74,7 @@ def test_mpesa_webhook_marks_payment_paid(client):
         try:
             p = db.session.get(Payment, payment.id)
         except Exception:
-            p = Payment.query.get(payment.id)
+            p = db.session.get(Payment, payment.id)
         assert p is not None
         assert p.status == 'paid'
         assert p.provider_reference == 'tx123'

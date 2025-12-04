@@ -1024,7 +1024,26 @@
         </div>
     </div>
 </div>
-{% endblock %}
+            <!-- Patient info modal -->
+            <div class="modal fade" id="patientInfoModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Patient Info</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body" id="patientInfoBody">
+                            <!-- Filled dynamically -->
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <a href="#" id="patientRecordsLink" class="btn btn-primary">View Medical Records</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% endblock %}
 
 {% block extra_js %}
 <script type="module">
@@ -1098,7 +1117,10 @@ function loadPatients() {
             const list = document.getElementById('patientsList');
             list.innerHTML = '';
             
-            if (!data || data.length === 0) {
+            // Handle the API response structure: {appointments_by_patient: [...], total_patients: N}
+            const appointmentsByPatient = data.appointments_by_patient || data || [];
+            
+            if (!appointmentsByPatient || appointmentsByPatient.length === 0) {
                 list.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon"><i class="fas fa-user-injured"></i></div>
@@ -1109,27 +1131,29 @@ function loadPatients() {
                 return;
             }
 
-            // Group by patient
-            const patientsMap = new Map();
-            data.forEach(appointment => {
-                const patient = appointment.patient;
-                if (!patientsMap.has(patient.id)) {
-                    patientsMap.set(patient.id, {
-                        patient: patient,
-                        appointments: [],
-                        lastMessage: appointment.last_message,
-                        lastMessageTime: appointment.last_message_time,
-                        unreadCount: appointment.unread_count || 0,
-                        paymentStatus: appointment.payment_status || 'pending'
-                    });
-                }
-                patientsMap.get(patient.id).appointments.push(appointment);
-            });
-
-            // Create patient items
-            patientsMap.forEach((patientData, patientId) => {
-                const patient = patientData.patient;
-                const item = createPatientItem(patient, patientData);
+            // Create patient items directly from the grouped data
+            appointmentsByPatient.forEach(patientGroup => {
+                // Get the most recent appointment for preview
+                const allAppointments = [
+                    ...patientGroup.today,
+                    ...patientGroup.upcoming,
+                    ...patientGroup.completed,
+                    ...patientGroup.rescheduled,
+                    ...patientGroup.pending
+                ];
+                
+                const latestAppointment = allAppointments[0] || {};
+                
+                const patientData = {
+                    patient: patientGroup.patient,
+                    appointments: allAppointments,
+                    lastMessage: latestAppointment.last_message || 'No messages yet',
+                    lastMessageTime: latestAppointment.last_message_time || '',
+                    unreadCount: latestAppointment.unread_count || 0,
+                    paymentStatus: latestAppointment.payment_status || 'pending'
+                };
+                
+                const item = createPatientItem(patientGroup.patient, patientData);
                 list.appendChild(item);
             });
         })
@@ -2111,12 +2135,33 @@ function openMedicalRecordModal() {
 
 // Show patient info
 function showPatientInfo() {
-    if (!selectedPatientId) {
+    if (!selectedAppointmentId) {
         alert('Please select a patient first');
         return;
     }
-    
-    window.location.href = `/admin/patient/${selectedPatientId}`;
+
+    fetch(`/api/appointment/${selectedAppointmentId}/details`)
+        .then(res => res.json())
+        .then(data => {
+            const body = document.getElementById('patientInfoBody');
+            const avatar = data.patient_profile_picture ? `<img src="${data.patient_profile_picture}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin-right:12px">` : `<div style="width:80px;height:80px;border-radius:50%;background:#ddd;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;margin-right:12px">${(data.patient_first_name||'')[0]||'P'}</div>`;
+            body.innerHTML = `
+                <div style="display:flex;align-items:center">
+                    ${avatar}
+                    <div>
+                        <h5 style="margin:0">${data.patient_first_name} ${data.patient_last_name}</h5>
+                        <div class="text-muted">Patient ID: ${data.patient_id}</div>
+                    </div>
+                </div>
+                <hr>
+                <div><strong>Appointment:</strong> ${data.consultation_type || 'Consultation'}</div>
+                <div><strong>Symptoms:</strong> ${data.symptoms || '-'}</div>
+            `;
+            document.getElementById('patientRecordsLink').href = `/doctor/patient/${data.patient_id}/medical-records`;
+            const modal = new bootstrap.Modal(document.getElementById('patientInfoModal'));
+            modal.show();
+        })
+        .catch(err => { console.error(err); alert('Could not load patient info'); });
 }
 
 // Setup Socket.IO

@@ -501,26 +501,79 @@
 
     function uploadDocuments() {
         const form = document.getElementById('uploadForm');
-        if (form.checkValidity()) {
-            // Show loading state
-            const submitBtn = document.querySelector('#uploadModal .btn-primary');
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Uploading...';
-            submitBtn.disabled = true;
-
-            // Simulate upload process
-            setTimeout(() => {
-                alert('Documents uploaded successfully!');
-                $('#uploadModal').modal('hide');
-                form.reset();
-                document.getElementById('filePreview').style.display = 'none';
-                
-                // Reset button
+        const fileInput = document.getElementById('fileInput');
+        const files = fileInput.files;
+        
+        if (!files.length) {
+            alert('Please select at least one file to upload');
+            return;
+        }
+        
+        const appointmentId = getAppointmentIdFromContext();
+        if (!appointmentId) {
+            alert('No appointment context found. Please navigate from a messaging window.');
+            return;
+        }
+        
+        const submitBtn = document.querySelector('#uploadModal .btn-primary');
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Uploading...';
+        submitBtn.disabled = true;
+        
+        uploadFilesSequentially(files, appointmentId, 0, submitBtn, form);
+    }
+    
+    function uploadFilesSequentially(files, appointmentId, index, submitBtn, form) {
+        if (index >= files.length) {
+            alert('All documents uploaded successfully!');
+            bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+            form.reset();
+            document.getElementById('filePreview').style.display = 'none';
+            submitBtn.innerHTML = 'Upload Documents';
+            submitBtn.disabled = false;
+            return;
+        }
+        
+        const file = files[index];
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('appointment_id', appointmentId);
+        
+        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+        
+        fetch('/api/upload-file', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log(`Uploaded: ${data.filename}`);
+                uploadFilesSequentially(files, appointmentId, index + 1, submitBtn, form);
+            } else {
+                alert(`Failed to upload ${file.name}: ${data.error}`);
                 submitBtn.innerHTML = 'Upload Documents';
                 submitBtn.disabled = false;
-            }, 2000);
-        } else {
-            form.reportValidity();
-        }
+            }
+        })
+        .catch(error => {
+            console.error('Upload error:', error);
+            alert(`Error uploading ${file.name}: ${error.message}`);
+            submitBtn.innerHTML = 'Upload Documents';
+            submitBtn.disabled = false;
+        });
+    }
+    
+    function getAppointmentIdFromContext() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('appointment_id')) return params.get('appointment_id');
+        
+        const stored = sessionStorage.getItem('current_appointment_id');
+        if (stored) return stored;
+        
+        return null;
     }
 
     function viewDocument(docId) {

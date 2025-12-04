@@ -35,6 +35,12 @@ class Prescription(db.Model):
     dosage = db.Column(db.String(255), nullable=False)
     instructions = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # Expiry and dispensing fields
+    is_expired = db.Column(db.Boolean, default=False, nullable=False)
+    expiry_date = db.Column(db.DateTime, nullable=True)
+    expired_by = db.Column(db.Integer, nullable=True)
+    dispensed_by = db.Column(db.Integer, nullable=True)
+    dispensed_at = db.Column(db.DateTime, nullable=True)
 
     doctor = db.relationship('Doctor', foreign_keys=[doctor_id])
     patient = db.relationship('Patient', foreign_keys=[patient_id])
@@ -238,6 +244,20 @@ class User(UserMixin, db.Model):
                 return 'U'
         except Exception:
             return 'U'
+
+
+class PrescriptionAudit(db.Model):
+    __tablename__ = 'prescription_audit'
+
+    id = db.Column(db.Integer, primary_key=True)
+    prescription_id = db.Column(db.Integer, db.ForeignKey('prescriptions.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    action = db.Column(db.String(64), nullable=False)  # e.g., 'viewed','downloaded','printed','expired','dispensed'
+    extra_info = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    prescription = db.relationship('Prescription', foreign_keys=[prescription_id])
+    user = db.relationship('User', foreign_keys=[user_id])
         
 class Patient(db.Model):
     __tablename__ = 'patients'
@@ -511,6 +531,8 @@ class Appointment(db.Model):
     rating = db.Column(db.Integer, nullable=True)  # 1-5 stars
     encrypted_feedback = db.Column(db.LargeBinary)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    call_initiated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Track who initiated call
+    call_status = db.Column(db.String(20), default='idle')  # idle, ringing, ongoing, missed, ended
 
     communications = db.relationship('Communication', backref='appointment', lazy=True)
 
@@ -544,14 +566,16 @@ class Communication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    message_type = db.Column(db.String(20), nullable=False)  # text, voice_note, document, system, image
+    message_type = db.Column(db.String(20), nullable=False)  # text, voice_note, document, system, image, voice_call, video_call
     encrypted_content = db.Column(db.LargeBinary)
     encrypted_file_path = db.Column(db.LargeBinary)
     # Store binary blobs (encrypted) for recordings/uploads when needed
     encrypted_file_blob = db.Column(db.LargeBinary)
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     is_read = db.Column(db.Boolean, default=False)
-    message_status = db.Column(db.String(20), default='sent')
+    message_status = db.Column(db.String(20), default='sent')  # sent, delivered, read
+    notification_sent = db.Column(db.Boolean, default=False)  # Whether notification was sent to recipient
+    sound_enabled = db.Column(db.Boolean, default=True)  # Whether sound notification is enabled
 
     sender = db.relationship('User', foreign_keys=[sender_id])
 
@@ -697,6 +721,26 @@ class Payment(db.Model):
         except Exception:
             return False
 
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=True)
+    notification_type = db.Column(db.String(50), nullable=False)  # message, voice_call, video_call
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    title = db.Column(db.String(255))
+    body = db.Column(db.Text)
+    is_read = db.Column(db.Boolean, default=False)
+    sound_enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('notifications', lazy=True))
+    sender = db.relationship('User', foreign_keys=[sender_id])
+    appointment = db.relationship('Appointment', backref=db.backref('notifications', lazy=True))
+
+
 class CallSession(db.Model):
     __tablename__ = 'call_sessions'
     
@@ -710,3 +754,31 @@ class CallSession(db.Model):
     
     # Relationship
     appointment = db.relationship('Appointment', backref=db.backref('call_sessions', lazy=True))
+
+
+class HealthTip(db.Model):
+    __tablename__ = 'health_tips'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    doctor_id = db.Column(db.Integer, db.ForeignKey('doctors.id'), nullable=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
+    appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=True)
+    title = db.Column(db.String(255), nullable=False)
+    encrypted_description = db.Column(db.LargeBinary, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    doctor = db.relationship('Doctor', backref=db.backref('health_tips', lazy=True))
+    patient = db.relationship('Patient', backref=db.backref('health_tips', lazy=True))
+    appointment = db.relationship('Appointment', backref=db.backref('health_tips', lazy=True))
+    
+    @property
+    def description(self):
+        """Decrypt description when accessed"""
+        return _decrypt_text(self.encrypted_description) if self.encrypted_description else None
+    
+    @description.setter
+    def description(self, value):
+        """Encrypt description when set"""
+        self.encrypted_description = _encrypt_text(value) if value is not None else None

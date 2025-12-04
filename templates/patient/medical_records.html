@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+{% block title %}My Medical Records{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h3>My Medical Records</h3>
+  <div class="mb-3 text-end">
+    <button class="btn btn-primary" id="addRecordBtn">Add Record</button>
+  </div>
+  <div id="recordsList">
+    {% for r in medical_records %}
+      <div class="card mb-2">
+        <div class="card-body d-flex justify-content-between">
+          <div>
+            <h5>{{ r.record_type }}</h5>
+            <p class="small text-muted">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+            <p>{{ r.description or '-' }}</p>
+          </div>
+          <div>
+            {% if r.file_path %}
+              <a href="{{ url_for('download_medical_record', record_id=r.id) }}" class="btn btn-sm btn-outline-secondary">Download</a>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-primary ms-1 edit-record-btn" data-id="{{ r.id }}">Edit</button>
+            <button class="btn btn-sm btn-danger ms-1 delete-record-btn" data-id="{{ r.id }}">Delete</button>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <p>No records yet.</p>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Modal for add/edit -->
+<div class="modal fade" id="recordModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Medical Record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="recordForm" enctype="multipart/form-data">
+          <input type="hidden" name="patient_id" value="{{ patient.id }}">
+          <input type="hidden" name="record_id" id="record_id" value="">
+          <div class="mb-3">
+            <label class="form-label">Type</label>
+            <input class="form-control" name="record_type" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" name="description" rows="4"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">File (optional)</label>
+            <input type="file" name="file" class="form-control">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="saveRecordBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% block extra_js %}
+<script>
+const recordModal = new bootstrap.Modal(document.getElementById('recordModal'));
+document.getElementById('addRecordBtn').addEventListener('click', function(){ document.getElementById('recordForm').reset(); recordModal.show(); });
+
+document.getElementById('saveRecordBtn').addEventListener('click', async function(){
+  const btn = this;
+  const recordId = document.getElementById('record_id').value;
+  const fd = new FormData(document.getElementById('recordForm'));
+  try{
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Saving...';
+    let url = '/api/medical_record/add';
+    if (recordId) url = `/api/medical_record/${recordId}/update`;
+    const res = await fetch(url, { method:'POST', body: fd, headers: {'X-CSRFToken': csrf_token}});
+    const j = await res.json();
+    if (j.success) {
+      // refresh list via API and re-render
+      await refreshRecords();
+      const modalEl = document.getElementById('recordModal');
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.hide();
+    } else {
+      alert('Error: ' + (j.error||'unknown'));
+    }
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }catch(e){
+    btn.disabled = false;
+    btn.textContent = 'Save';
+    alert('Request failed');
+  }
+});
+
+async function refreshRecords(){
+  try{
+    const patientId = document.querySelector('#recordForm [name="patient_id"]').value;
+    const res = await fetch(`/api/medical_records/patient/${patientId}`);
+    if (!res.ok) throw new Error('Failed to fetch records');
+    const data = await res.json();
+    renderRecordsList(data.medical_records || []);
+  }catch(err){ console.error('Refresh failed', err); }
+}
+
+function renderRecordsList(records){
+  const container = document.getElementById('recordsList');
+  if (!records || records.length === 0){
+    container.innerHTML = '<p>No records yet.</p>';
+    return;
+  }
+  let html = '';
+  for (const r of records){
+    html += `
+      <div class="card mb-2">
+        <div class="card-body d-flex justify-content-between">
+          <div>
+            <h5>${escapeHtml(r.record_type)}</h5>
+            <p class="small text-muted">${r.created_at ? new Date(r.created_at).toLocaleString() : ''}</p>
+            <p>${escapeHtml(r.description || '-')}</p>
+          </div>
+          <div>
+            ${r.has_file ? `<a href="/download/medical_record/${r.id}" class="btn btn-sm btn-outline-secondary">Download</a>` : ''}
+            <button class="btn btn-sm btn-outline-primary ms-1 edit-record-btn" data-id="${r.id}">Edit</button>
+            <button class="btn btn-sm btn-danger ms-1 delete-record-btn" data-id="${r.id}">Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+}
+
+document.addEventListener('click', async function(e){
+  if (e.target.classList.contains('delete-record-btn')){
+    const id = e.target.dataset.id; if (!confirm('Delete record?')) return;
+    const res = await fetch(`/api/medical_record/${id}/delete`, { method:'POST', headers: {'X-CSRFToken': csrf_token}});
+    const j = await res.json(); if (j.success) location.reload(); else alert('Error');
+  }
+  if (e.target.classList.contains('edit-record-btn')){
+    const id = e.target.dataset.id;
+    try{
+      const res = await fetch(`/api/medical_record/${id}`);
+      if (!res.ok) throw new Error('Fetch failed');
+      const data = await res.json();
+      document.querySelector('#recordForm [name="record_type"]').value = data.record_type || '';
+      document.querySelector('#recordForm [name="description"]').value = data.description || '';
+      document.getElementById('record_id').value = data.id;
+      recordModal.show();
+    }catch(err){ alert('Unable to load record for editing'); }
+  }
+});
+</script>
+{% endblock %}
+{% endblock %}

@@ -27,10 +27,13 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="fas fa-hospital-alt"></i>
-                MAKOKHA MEDICAL CENTRE
-            </a>
+                        <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                                <img src="{{ url_for('static', filename='uploads/logo.png') }}" alt="Makokha MC" style="height:36px; margin-right:10px; object-fit:contain;"/>
+                                <div>
+                                    <div style="line-height:1; font-weight:700;">Makokha Medical Centre</div>
+                                    <div style="font-size:11px; margin-top:2px; opacity:0.85;">Telemedicine & Clinical Services</div>
+                                </div>
+                        </a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>

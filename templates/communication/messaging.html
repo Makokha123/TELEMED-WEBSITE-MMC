@@ -609,32 +609,106 @@ function selectAppointment(appointmentId, patientId, doctor, appointment) {
     loadMessages(appointmentId);
 }
 
-// Load messages
+// Load messages once on appointment select (cached in UI)
 function loadMessages(appointmentId) {
-    fetch(`/api/appointment/${appointmentId}/messages`)
-        .then(response => response.json())
-        .then(data => {
-            const messagesArea = document.getElementById('chatMessages');
-            messagesArea.innerHTML = '';
-            
-            data.forEach(message => {
-                const group = document.createElement('div');
-                group.className = `message-group ${message.is_sent ? 'sent' : 'received'}`;
-                const timestamp = new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                group.innerHTML = `
-                    <div>
-                        <div class="message-bubble ${message.is_sent ? 'sent' : 'received'}">
-                            ${message.content}
-                        </div>
-                        <div class="message-time">${timestamp}</div>
-                    </div>
-                `;
-                messagesArea.appendChild(group);
-            });
-            
-            messagesArea.scrollTop = messagesArea.scrollHeight;
-        })
-        .catch(error => console.error('Error loading messages:', error));
+    const messagesArea = document.getElementById('chatMessages');
+    
+    // Only load if messages area is empty (first load)
+    if (messagesArea.children.length === 0 || messagesArea.querySelector('.empty-state')) {
+        fetch(`/api/appointment/${appointmentId}/messages?limit=50`)
+            .then(response => response.json())
+            .then(data => {
+                messagesArea.innerHTML = '';
+                
+                if (data.length === 0) {
+                    messagesArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><i class="fas fa-inbox"></i></div><div class="empty-state-text">No messages yet. Start the conversation!</div></div>';
+                    return;
+                }
+                
+                data.forEach(message => {
+                    addMessageToUIFast(message);
+                });
+                
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            })
+            .catch(error => console.error('Error loading messages:', error));
+    }
+}
+
+// Optimized message rendering without re-rendering entire list
+function addMessageToUIFast(message) {
+    const messagesArea = document.getElementById('chatMessages');
+    
+    // Remove empty state if present
+    const emptyState = messagesArea.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+    
+    const group = document.createElement('div');
+    group.className = `message-group ${message.is_sent ? 'sent' : 'received'}`;
+    group.dataset.messageId = message.id;
+    
+    const timestamp = new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    let messageContent = message.content || '';
+    
+    // Handle file/media messages
+    if (message.file_path) {
+        messageContent = renderMediaMessage(message);
+    }
+    
+    const status = message.is_sent ? `<small class="message-status ms-2" data-status="${message.message_status || 'sent'}">${getStatusIcon(message.message_status)}</small>` : '';
+    
+    group.innerHTML = `
+        <div>
+            <div class="message-bubble ${message.is_sent ? 'sent' : 'received'}">
+                ${messageContent}
+            </div>
+            <div class="message-time">${timestamp}${status}</div>
+        </div>
+    `;
+    messagesArea.appendChild(group);
+}
+
+// Get status icon for messages
+function getStatusIcon(status) {
+    switch(status) {
+        case 'sent': return '✓';
+        case 'delivered': return '✓✓';
+        case 'read': return '<span style="color: #667eea;">✓✓</span>';
+        default: return '⏱';
+    }
+}
+
+// Render media messages with proper formatting
+function renderMediaMessage(message) {
+    const filename = message.content || 'Unnamed file';
+    const messageType = message.message_type || 'document';
+    
+    if (messageType === 'image') {
+        return `
+            <div class="media-message">
+                <img src="${message.file_path}" alt="${filename}" style="max-width: 200px; border-radius: 4px;">
+                <p class="small mt-2 mb-0">${filename}</p>
+            </div>
+        `;
+    } else if (messageType === 'audio' || filename.endsWith('.webm') || filename.endsWith('.wav')) {
+        return `
+            <div class="media-message">
+                <i class="fas fa-microphone me-2"></i><strong>Voice Note</strong>
+                <audio controls style="display: block; width: 100%; margin-top: 8px; height: 32px;">
+                    <source src="${message.file_path}" type="audio/webm">
+                    Your browser does not support audio playback.
+                </audio>
+            </div>
+        `;
+    } else {
+        return `
+            <div class="media-message">
+                <i class="fas fa-file me-2"></i>
+                <a href="${message.file_path}" download="${filename}">📎 ${filename}</a>
+            </div>
+        `;
+    }
 }
 
 // Setup event listeners
@@ -651,10 +725,15 @@ function setupEventListeners() {
         document.getElementById('fileInput').click();
     });
 
-    document.getElementById('fileInput').addEventListener('change', function() {
-        const modal = new bootstrap.Modal(document.getElementById('fileUploadModal'));
-        modal.show();
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        handleFileUpload(e);
     });
+    
+    // Initialize emoji picker once on button click
+    const emojiIcon = document.querySelector('[data-emoji-btn]') || document.querySelector('.emoji-btn');
+    if (emojiIcon) {
+        emojiIcon.addEventListener('click', initEmojiPickerOnce);
+    }
 
     document.getElementById('videoCallBtn').addEventListener('click', initiateVideoCall);
     document.getElementById('voiceCallBtn').addEventListener('click', initiateVoiceCall);
@@ -717,6 +796,78 @@ function initiateVoiceCall() {
     });
 }
 
+// File upload handler for messaging - non-blocking with direct Socket.IO
+function handleFileUpload(event) {
+    const files = event.target.files;
+    if (!files.length || !currentAppointmentId) return;
+    
+    const file = files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('appointment_id', currentAppointmentId);
+    
+    const uploadBtn = document.getElementById('attachFileBtn');
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    
+    // Send file upload without blocking message display
+    fetch('/api/upload-file', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Message will appear via socket.io message_received event
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="fas fa-paperclip"></i>';
+        } else {
+            alert('Failed to upload file: ' + data.error);
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="fas fa-paperclip"></i>';
+        }
+    })
+    .catch(error => {
+        console.error('Upload error:', error);
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-paperclip"></i>';
+    });
+    
+    // Reset file input
+    event.target.value = '';
+}
+
+// One-time emoji picker initialization
+let emojiPickerInitialized = false;
+function initEmojiPickerOnce(event) {
+    if (emojiPickerInitialized) return;
+    
+    emojiPickerInitialized = true;
+    
+    const input = document.getElementById('messageInput');
+    const emojis = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '👏', '💯', '😍', '😢', '🤔', '😎'];
+    const emojiMenu = document.createElement('div');\n    emojiMenu.className = 'emoji-menu';
+    emojiMenu.style.cssText = 'position: absolute; background: white; border: 1px solid #ccc; border-radius: 4px; padding: 8px; bottom: 50px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; z-index: 1000;';
+    
+    emojis.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.textContent = emoji;
+        btn.style.cssText = 'background: none; border: none; cursor: pointer; font-size: 20px; padding: 4px;';
+        btn.addEventListener('click', () => {
+            input.value += emoji;
+            input.focus();
+            emojiMenu.remove();
+        });
+        emojiMenu.appendChild(btn);
+    });
+    
+    document.body.appendChild(emojiMenu);
+    setTimeout(() => emojiMenu.remove(), 5000);
+}
+
 // Voice recording functions
 function startRecording() {
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -735,26 +886,33 @@ function startRecording() {
 
             recordingTimer = setInterval(updateRecordingTime, 100);
         })
-        .catch(error => console.error('Error accessing microphone:', error));
+        .catch(error => {
+            console.error('Error accessing microphone:', error);
+            alert('Unable to access microphone. Please check permissions.');
+        });
 }
 
 function stopRecording() {
-    if (mediaRecorder) {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
         clearInterval(recordingTimer);
         document.getElementById('recordBtn').style.display = 'inline-block';
         document.getElementById('stopBtn').style.display = 'none';
 
         mediaRecorder.addEventListener('stop', () => {
-            const blob = new Blob(recordedChunks, { type: 'audio/wav' });
+            const blob = new Blob(recordedChunks, { type: 'audio/webm' });
             const url = URL.createObjectURL(blob);
             document.getElementById('voiceNotePlayback').innerHTML = `
-                <audio controls style="width: 100%;">
-                    <source src="${url}" type="audio/wav">
-                </audio>
+                <div class="alert alert-info mb-0">
+                    <small>Preview: </small>
+                    <audio controls style="width: 100%; height: 32px;" class="mt-2">
+                        <source src="${url}" type="audio/webm">
+                        Your browser does not support audio playback.
+                    </audio>
+                </div>
             `;
             mediaRecorder.stream.getTracks().forEach(track => track.stop());
-        });
+        }, { once: true });
     }
 }
 
@@ -767,14 +925,22 @@ function updateRecordingTime() {
 }
 
 function sendVoiceNote() {
-    if (recordedChunks.length === 0 || !currentAppointmentId) return;
+    if (recordedChunks.length === 0 || !currentAppointmentId) {
+        alert('Please record a voice note first');
+        return;
+    }
 
-    const blob = new Blob(recordedChunks, { type: 'audio/wav' });
+    const blob = new Blob(recordedChunks, { type: 'audio/webm' });
     const formData = new FormData();
     formData.append('appointment_id', currentAppointmentId);
-    formData.append('audio', blob, 'voice-note.wav');
+    formData.append('file', blob, 'voice-note.webm');
 
-    fetch('/api/send-voice-note', {
+    const sendBtn = document.getElementById('sendVoiceNoteBtn');
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sending...';
+
+    // Send voice note without blocking - Socket.IO will broadcast it
+    fetch('/api/upload-file', {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrfToken
@@ -784,42 +950,64 @@ function sendVoiceNote() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            // Reset form - message will appear via socket event
             bootstrap.Modal.getInstance(document.getElementById('voiceNoteModal')).hide();
             recordedChunks = [];
             document.getElementById('recordingTime').textContent = '00:00';
             document.getElementById('voiceNotePlayback').innerHTML = '';
-            loadMessages(currentAppointmentId);
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = 'Send';
+        } else {
+            alert('Failed to send voice note: ' + data.error);
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = 'Send';
         }
     })
-    .catch(error => console.error('Error sending voice note:', error));
+    .catch(error => {
+        console.error('Error sending voice note:', error);
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = 'Send';
+    });
 }
 
-// Real-time Socket.IO setup
+// Real-time Socket.IO setup for FAST messaging
 function setupSocketIO() {
     // Join room when appointment is selected
     socket.on('connect', function() {
         console.log('Socket connected for messaging');
     });
 
-    // Receive real-time messages
+    // Receive real-time messages - ADD INCREMENTALLY (no reload)
     socket.on('message_received', function(data) {
         console.log('Message received:', data);
-        if (data.appointment_id === currentAppointmentId) {
-            addMessageToUI(data);
-            loadMessages(currentAppointmentId);
+        if (data.appointment_id === parseInt(currentAppointmentId)) {
+            // Add message to UI immediately without reloading all
+            addMessageToUIFast(data);
+            // Update appointment list but DON'T reload messages
+            loadAppointmentsQuick();
         }
-        loadAppointments();
+    });
+
+    // Update message status in real-time
+    socket.on('message_status_updated', function(data) {
+        if (data.appointment_id === parseInt(currentAppointmentId)) {
+            const messageEl = document.querySelector(`[data-message-id="${data.message_id}"] .message-status`);
+            if (messageEl) {
+                messageEl.dataset.status = data.status;
+                messageEl.innerHTML = getStatusIcon(data.status);
+            }
+        }
     });
 
     // Typing indicators
     socket.on('user_typing', function(data) {
-        if (data.appointment_id === currentAppointmentId && data.user_id !== currentAppointmentId) {
+        if (data.appointment_id === parseInt(currentAppointmentId) && data.user_id !== currentAppointmentId) {
             showTypingIndicator(data.user_name);
         }
     });
 
     socket.on('user_stop_typing', function(data) {
-        if (data.appointment_id === currentAppointmentId) {
+        if (data.appointment_id === parseInt(currentAppointmentId)) {
             hideTypingIndicator();
         }
     });
@@ -865,25 +1053,27 @@ function setupSocketIO() {
     });
 }
 
+// Quick refresh of appointment list without reloading messages
+function loadAppointmentsQuick() {
+    fetch('/api/appointments')
+        .then(response => response.json())
+        .then(data => {
+            // Update last message preview only, don't reload messages
+            data.forEach(apt => {
+                const item = document.querySelector(`[data-appointment-id="${apt.id}"]`);
+                if (item && apt.last_message) {
+                    const preview = item.querySelector('.conversation-preview');
+                    if (preview) {
+                        preview.textContent = apt.last_message.substring(0, 50) + '...';
+                    }
+                }
+            });
+        })
+        .catch(error => console.error('Error loading appointments:', error));
+}
+
 function addMessageToUI(messageData) {
-    const messagesArea = document.getElementById('chatMessages');
-    const isSent = messageData.sender_id !== currentAppointmentId;
-    
-    const group = document.createElement('div');
-    group.className = `message-group ${isSent ? 'sent' : 'received'}`;
-    const timestamp = new Date(messageData.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    
-    group.innerHTML = `
-        <div>
-            <div class="message-bubble ${isSent ? 'sent' : 'received'}">
-                ${messageData.content}
-            </div>
-            <div class="message-time">${timestamp}</div>
-        </div>
-    `;
-    
-    messagesArea.appendChild(group);
-    messagesArea.scrollTop = messagesArea.scrollHeight;
+    addMessageToUIFast(messageData);
 }
 
 function showTypingIndicator(userName) {

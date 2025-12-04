@@ -462,23 +462,16 @@
                 </div>
             </div>
 
-            <!-- Quick Health Tips -->
+            <!-- Quick Health Tips from Doctors -->
             <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Health Tips</h5>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Health Tips from Your Doctors</h5>
+                    <span class="badge bg-primary" id="healthTipsCount">0</span>
                 </div>
-                <div class="card-body">
-                    <div class="alert alert-info">
-                        <h6><i class="fas fa-heart me-2"></i>Stay Hydrated</h6>
-                        <p class="mb-0 small">Drink at least 8 glasses of water daily to maintain optimal health.</p>
-                    </div>
-                    <div class="alert alert-success">
-                        <h6><i class="fas fa-walking me-2"></i>Daily Exercise</h6>
-                        <p class="mb-0 small">30 minutes of moderate exercise can improve cardiovascular health.</p>
-                    </div>
-                    <div class="alert alert-warning">
-                        <h6><i class="fas fa-bed me-2"></i>Sleep Well</h6>
-                        <p class="mb-0 small">Aim for 7-9 hours of quality sleep each night for better recovery.</p>
+                <div class="card-body" id="healthTipsContainer">
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-inbox fa-2x mb-3 opacity-50"></i>
+                        <p>No health tips yet. Your doctors will share personalized health tips here.</p>
                     </div>
                 </div>
             </div>
@@ -489,6 +482,130 @@
 
 {% block extra_js %}
 <script>
+    // Load health tips on page load
+    function loadHealthTips() {
+        fetch('/api/health-tips/patient/{{ current_user.patient.id if current_user.patient else 0 }}')
+            .then(response => response.json())
+            .then(data => {
+                displayHealthTips(data.health_tips);
+            })
+            .catch(error => console.error('Error loading health tips:', error));
+    }
+
+    function displayHealthTips(tips) {
+        const container = document.getElementById('healthTipsContainer');
+        const countBadge = document.getElementById('healthTipsCount');
+        
+        countBadge.textContent = tips.length;
+        
+        if (tips.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4">
+                    <i class="fas fa-inbox fa-2x mb-3 opacity-50"></i>
+                    <p>No health tips yet. Your doctors will share personalized health tips here.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = '';
+        
+        tips.forEach(tip => {
+            const dateStr = new Date(tip.created_at).toLocaleDateString();
+            const colors = ['info', 'success', 'warning', 'danger'];
+            const color = colors[tips.indexOf(tip) % colors.length];
+            
+            const tipElement = document.createElement('div');
+            tipElement.className = `alert alert-${color} mb-3`;
+            tipElement.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <h6 class="alert-heading mb-1">
+                            <i class="fas fa-stethoscope me-2"></i>${escapeHtml(tip.title)}
+                        </h6>
+                        <p class="mb-2">${escapeHtml(tip.description)}</p>
+                        <small class="d-block text-muted">
+                            <i class="fas fa-user-md me-1"></i> Dr. ${escapeHtml(tip.doctor_name)}
+                            <br>
+                            <i class="fas fa-calendar me-1"></i> ${dateStr}
+                        </small>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(tipElement);
+        });
+    }
+
+    function escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // Load health tips when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        loadHealthTips();
+        
+        // Listen for real-time health tip updates via Socket.IO
+        if (typeof socket !== 'undefined') {
+            socket.on('new_health_tip', function(data) {
+                // Reload health tips when a new one is added
+                loadHealthTips();
+                // Show toast notification
+                showNotification('New Health Tip', `Dr. ${data.doctor_name} shared a new tip: ${data.title}`);
+            });
+            
+            socket.on('health_tip_updated', function(data) {
+                // Reload health tips when one is updated
+                loadHealthTips();
+                showNotification('Health Tip Updated', `Dr. ${data.doctor_name} updated a tip`);
+            });
+            
+            socket.on('health_tip_deleted', function(data) {
+                // Reload health tips when one is deleted
+                loadHealthTips();
+                showNotification('Health Tip Removed', `Dr. ${data.doctor_name} removed a health tip`);
+            });
+        }
+    });
+
+    function showNotification(title, message) {
+        // Toast notification function
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-info alert-dismissible fade show';
+        alertDiv.setAttribute('role', 'alert');
+        alertDiv.innerHTML = `
+            <strong>${escapeHtml(title)}:</strong> ${escapeHtml(message)}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // Find or create notifications container
+        let container = document.getElementById('notificationsContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notificationsContainer';
+            container.style.position = 'fixed';
+            container.style.top = '20px';
+            container.style.right = '20px';
+            container.style.zIndex = '9999';
+            container.style.maxWidth = '400px';
+            document.body.appendChild(container);
+        }
+        
+        container.appendChild(alertDiv);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+
     function joinConsultation(appointmentId) {
         window.location.href = `/communication/appointment/${appointmentId}`;
     }
@@ -498,8 +615,8 @@
     }
 
     function viewMedicalRecords() {
-        alert('View medical records functionality');
-        // Implement medical records view
+        // Redirect to patient medical records page
+        window.location.href = '/patient/medical-records';
     }
 
     function findDoctors() {
