@@ -46,25 +46,15 @@ from authlib.integrations.flask_client import OAuth
 
 app = Flask(__name__)
 
+
 preferred_async = os.getenv('ASYNC_MODE', '').lower() or None
 debug_mode = os.getenv('ENVIRONMENT', '') == 'development' or os.getenv('FLASK_DEBUG', '') == '1'
 
-
 detected_async = None
 if preferred_async == 'gevent' or preferred_async is None:
-    try:
-        import gevent
-        # Test if gevent works properly
-        gevent.monkey.patch_all()
-        detected_async = 'gevent'
-        print("✓ Gevent async mode selected")
-    except Exception as e:
-        print(f"⚠ Gevent failed ({e}), falling back to eventlet")
-        detected_async = 'eventlet'
+    detected_async = 'gevent'
+    print("✓ Gevent async mode selected")
 else:
-    detected_async = 'eventlet'
-
-if detected_async is None:
     detected_async = 'eventlet'
 
 # Allow CORS origins to be configured via env var (comma-separated), default to '*'
