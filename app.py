@@ -1,6 +1,7 @@
 import gevent
 import gevent.monkey
 gevent.monkey.patch_all()
+
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import gc
 from flask import Flask
@@ -39,14 +40,14 @@ socketio = SocketIO(
     app, 
     cors_allowed_origins="*",
     async_mode='gevent',
-    logger=True,
-    engineio_logger=True,
+    logger=False,  # Disable for production
+    engineio_logger=False,  # Disable for production
     ping_timeout=60,
     ping_interval=25,
     max_http_buffer_size=1e8
 )
 
-print("✓ Socket.IO initialized with eventlet")
+print("✓ Socket.IO initialized with gevent")
 
 # Define SOCKETIO_AVAILABLE to indicate if socketio is available
 SOCKETIO_AVAILABLE = True
@@ -109,28 +110,17 @@ user_sockets = {}
 user_last_seen = {}
 active_calls = {}
 
-from sqlalchemy import event
 
-@event.listens_for(QueuePool, "connect")
-def receive_connect(dbapi_connection, connection_record):
-    """Patch SQLAlchemy connection for eventlet compatibility"""
-    try:
-        import eventlet
-        if eventlet.patcher.is_monkey_patched('thread'):
-            # If eventlet has monkey-patched threading,
-            # ensure the connection uses green threads
-            pass
-    except ImportError:
-        pass
 
 def configure_app():
     """Configure Flask application with environment variables"""
     # Security
+    app.config['ASYNC_MODE'] = os.getenv('ASYNC_MODE', 'gevent')
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production-12345')
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_UPLOAD_SIZE', 5 * 1024 * 1024))
     
     # Database configuration with URL decoding
-    database_url = os.getenv("DATABASE_URL") or 'sqlite:///clinic.db'
+    database_url = os.getenv("DATABASE_URL")
     
     # Fix for Neon/Heroku: Decode URL-encoded characters in database name
     if database_url.startswith('postgresql://') or database_url.startswith('postgres://'):
@@ -3251,57 +3241,42 @@ def upload_profile_picture():
 # Serve decrypted profile picture for a user
 @app.route('/profile_picture/<int:user_id>')
 def profile_picture(user_id):
-    user = User.query.get_or_404(user_id)
-    stored_path = user.profile_picture
-    if not stored_path:
-        return ('', 404)
-
-    # If profile_picture is an external URL (from OAuth), redirect to it
-    if isinstance(stored_path, str) and stored_path.startswith('http'):
-        return redirect(stored_path)
-
-    # Resolve stored path relative to application root if necessary
-    full_path = resolve_stored_path(stored_path)
-    if not full_path or not os.path.exists(full_path):
-        # try as relative under UPLOAD_FOLDER
-        alt = os.path.join(app.root_path, app.config.get('UPLOAD_FOLDER', 'static/uploads'), os.path.basename(stored_path))
-        if os.path.exists(alt):
-            full_path = alt
-
-    if not full_path or not os.path.exists(full_path):
-        return ('', 404)
-
+    """Serve profile picture with fallback"""
     try:
-        with open(full_path, 'rb') as fh:
-            encrypted = fh.read()
-        decrypted = decrypt_file_bytes(encrypted)
-    except Exception:
-        return ('', 500)
-
-    # Guess mimetype from original filename
-    orig_name = os.path.basename(stored_path)
-    if '__' in orig_name:
-        orig_part = orig_name.split('__', 1)[1]
-        if orig_part.endswith('.enc'):
-            orig_name = orig_part[:-4]
-
-    # simple mimetype mapping
-    ext = os.path.splitext(orig_name)[1].lower()
-    mime = 'application/octet-stream'
-    if ext in ('.jpg', '.jpeg'):
-        mime = 'image/jpeg'
-    elif ext == '.png':
-        mime = 'image/png'
-    elif ext == '.gif':
-        mime = 'image/gif'
-
-    bio = BytesIO(decrypted)
-    bio.seek(0)
-    try:
-        return send_file(bio, mimetype=mime)
-    except TypeError:
-        return send_file(bio, attachment_filename=orig_name, mimetype=mime)
-
+        user = User.query.get(user_id)
+        if not user:
+            # Return SVG default avatar
+            return '''
+            <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="50" fill="#667eea"/>
+                <text x="50" y="60" text-anchor="middle" fill="white" font-size="40" font-family="Arial">U</text>
+            </svg>
+            ''', 200, {'Content-Type': 'image/svg+xml'}
+        
+        # Check if profile picture exists
+        if user.profile_picture:
+            # Check if it's a URL or local path
+            if user.profile_picture.startswith('http'):
+                return redirect(user.profile_picture)
+            else:
+                # Try to serve local file
+                import os
+                file_path = os.path.join(app.root_path, 'static', 'uploads', user.profile_picture)
+                if os.path.exists(file_path):
+                    return send_file(file_path)
+        
+        # Fallback to default avatar
+        return redirect(url_for('static', filename='img/default-avatar.png'))
+        
+    except Exception as e:
+        # Return SVG default avatar on error
+        return '''
+        <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="50" fill="#667eea"/>
+            <text x="50" y="60" text-anchor="middle" fill="white" font-size="40" font-family="Arial">E</text>
+        </svg>
+        ''', 200, {'Content-Type': 'image/svg+xml'}
+    
 # Admin Communication Dashboard
 @app.route('/admin/communication')
 @login_required
@@ -3879,6 +3854,78 @@ def get_doctor_appointments():
         })
     
     return jsonify(appointments_data)
+
+@app.route('/api/patient/doctors-with-appointments')
+@login_required
+def get_patient_doctors_with_appointments():
+    """Get doctors with appointments for patient communication page"""
+    if current_user.role != 'patient':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    patient = Patient.query.filter_by(user_id=current_user.id).first()
+    if not patient:
+        return jsonify({'error': 'Patient profile not found'}), 404
+    
+    try:
+        # Get all appointments with doctor info
+        appointments = db.session.query(
+            Appointment,
+            Doctor,
+            User
+        ).join(
+            Doctor, Appointment.doctor_id == Doctor.id
+        ).join(
+            User, Doctor.user_id == User.id
+        ).filter(
+            Appointment.patient_id == patient.id
+        ).order_by(Appointment.appointment_date.desc()).all()
+        
+        # Group by doctor and get latest info
+        doctors_map = {}
+        for appointment, doctor, user in appointments:
+            if doctor.id not in doctors_map:
+                # Get last message for this doctor-patient
+                last_message = Communication.query.filter_by(
+                    appointment_id=appointment.id
+                ).order_by(Communication.timestamp.desc()).first()
+                
+                # Get unread count
+                unread_count = Communication.query.join(
+                    Appointment, Communication.appointment_id == Appointment.id
+                ).filter(
+                    Appointment.patient_id == patient.id,
+                    Appointment.doctor_id == doctor.id,
+                    Communication.is_read == False,
+                    Communication.sender_id != current_user.id
+                ).count()
+                
+                # Get payment status
+                payment = Payment.query.filter_by(
+                    appointment_id=appointment.id
+                ).order_by(Payment.created_at.desc()).first()
+                
+                # Check if doctor is online
+                is_online = user.id in user_sockets if user else False
+                
+                doctors_map[doctor.id] = {
+                    'id': doctor.id,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'specialization': doctor.specialization,
+                    'profile_picture_url': url_for('profile_picture', user_id=user.id, _external=True) if user else None,
+                    'is_online': is_online,
+                    'last_message': last_message.content if last_message else None,
+                    'last_message_time': last_message.timestamp.strftime('%H:%M') if last_message else None,
+                    'unread_count': unread_count,
+                    'paymentStatus': payment.status if payment else 'pending'
+                }
+        
+        return jsonify(list(doctors_map.values()))
+        
+    except Exception as e:
+        print(f"Error in get_patient_doctors_with_appointments: {str(e)}")
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+    
 
 @app.route('/api/patient/appointments')
 @login_required
@@ -4514,10 +4561,10 @@ def send_doctor_message():
     return jsonify({'success': True, 'message_id': communication.id})
 
 # API for patient communication
-@app.route('/api/patient/doctors', methods=['GET'])
+@app.route('/api/patient/doctors')
 @login_required
 def get_patient_doctors():
-    """Get all doctors patient has appointments with"""
+    """Get doctors for patient communication page"""
     if current_user.role != 'patient':
         return jsonify({'error': 'Access denied'}), 403
     
@@ -4525,48 +4572,82 @@ def get_patient_doctors():
     if not patient:
         return jsonify({'error': 'Patient profile not found'}), 404
     
-    # Get unique doctors who have appointments with this patient
-    doctors = db.session.query(Doctor, User, Appointment).join(
-        Appointment, Doctor.id == Appointment.doctor_id
-    ).join(
-        User, Doctor.user_id == User.id
-    ).filter(Appointment.patient_id == patient.id).distinct(Doctor.id).order_by(
-        Appointment.appointment_date.desc()
-    ).all()
+    try:
+        # Get appointments with doctor info
+        appointments = db.session.query(
+            Appointment,
+            Doctor,
+            User
+        ).join(
+            Doctor, Appointment.doctor_id == Doctor.id
+        ).join(
+            User, Doctor.user_id == User.id
+        ).filter(
+            Appointment.patient_id == patient.id
+        ).order_by(Appointment.appointment_date.desc()).all()
+        
+        # Group by doctor and get latest info
+        doctors_map = {}
+        for appointment, doctor, user in appointments:
+            if doctor.id not in doctors_map:
+                # Get last message
+                last_message = Communication.query.filter_by(
+                    appointment_id=appointment.id
+                ).order_by(Communication.timestamp.desc()).first()
+                
+                # Check if doctor is online
+                is_online = user.id in user_sockets
+                
+                # Get payment status
+                payment = Payment.query.filter_by(
+                    appointment_id=appointment.id
+                ).order_by(Payment.created_at.desc()).first()
+                
+                doctors_map[doctor.id] = {
+                    'doctor': {
+                        'id': doctor.id,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'specialization': doctor.specialization,
+                        'is_online': is_online,
+                        'profile_picture_url': url_for('profile_picture', user_id=user.id, _external=True) if user else None
+                    },
+                    'last_appointment': {
+                        'id': appointment.id,
+                        'date': appointment.appointment_date.isoformat() if appointment.appointment_date else None,
+                        'status': appointment.status
+                    },
+                    'last_message': last_message.content if last_message else None,
+                    'last_message_time': last_message.timestamp.strftime('%H:%M') if last_message else None,
+                    'unread_count': Communication.query.join(
+                        Appointment, Communication.appointment_id == Appointment.id
+                    ).filter(
+                        Appointment.patient_id == patient.id,
+                        Appointment.doctor_id == doctor.id,
+                        Communication.is_read == False,
+                        Communication.sender_id != current_user.id
+                    ).count(),
+                    'payment_status': payment.status if payment else 'pending'
+                }
+        
+        return jsonify(list(doctors_map.values()))
+        
+    except Exception as e:
+        print(f"Error in get_patient_doctors: {str(e)}")
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+
+@app.route('/api/user/<int:user_id>/basic')
+@login_required
+def get_user_basic(user_id):
+    """Get basic user info for avatar"""
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'name': 'User', 'initials': 'U'})
     
-    doctors_data = []
-    seen = set()
-    for doctor, user, appointment in doctors:
-        if doctor.id not in seen:
-            seen.add(doctor.id)
-            # Get last message
-            last_message = Communication.query.filter_by(
-                appointment_id=appointment.id
-            ).order_by(Communication.timestamp.desc()).first()
-            
-            doctors_data.append({
-                'id': doctor.id,
-                'user_id': user.id,
-                'first_name': getattr(user, 'first_name', ''),
-                'last_name': getattr(user, 'last_name', ''),
-                'phone': user.phone,
-                'email': user.email,
-                'specialization': doctor.specialization,
-                'is_online': user.id in user_sockets,
-                'last_seen': user_last_seen.get(user.id),
-                'last_message': last_message.content if last_message else None,
-                'last_message_time': last_message.timestamp.strftime('%H:%M') if last_message else None,
-                'unread_count': Communication.query.join(
-                    Appointment, Communication.appointment_id == Appointment.id
-                ).filter(
-                    Appointment.patient_id == patient.id,
-                    Appointment.doctor_id == doctor.id,
-                    Communication.is_read == False,
-                    Communication.sender_id != current_user.id
-                ).count()
-            })
-    
-    return jsonify(doctors_data)
+    return jsonify({
+        'name': user.get_display_name(),
+        'initials': user.get_display_name()[:2].upper() if user.get_display_name() else 'U'
+    })
 
 @app.route('/api/patient/doctor/<int:doctor_id>/messages', methods=['GET'])
 @login_required
@@ -4911,23 +4992,24 @@ def default_error_handler(e):
     import traceback
     traceback.print_exc()
 
+# Add this route BEFORE your main Socket.IO event handlers
 @socketio.on('connect')
 def handle_connect():
-    """Handle user connection with better error handling"""
-    try:
-        if not current_user.is_authenticated:
-            print("Unauthenticated connection attempt")
-            return False
-        
+    """Handle Socket.IO connection"""
+    if current_user.is_authenticated:
         user_sockets[current_user.id] = request.sid
-        user_last_seen[current_user.id] = datetime.now(timezone.utc).isoformat()
+        user_last_seen[current_user.id] = datetime.utcnow().isoformat()
         
         emit('connection_response', {'data': 'Connected to server'})
         print(f'User {current_user.id} connected: {request.sid}')
-        
-    except Exception as e:
-        print(f'Error in handle_connect: {e}')
-        return False
+        return True
+    return False
+
+# Also add this route for health check
+@app.route('/socket.io/')
+def socketio_health():
+    """Handle Socket.IO health check"""
+    return jsonify({'status': 'ok', 'socketio': 'enabled'})
     
 @socketio.on('message_delivered')
 def handle_message_delivered(data):
@@ -5744,20 +5826,25 @@ def handle_leave_appointment(data):
 if __name__ == '__main__':
     cleanup_thread = threading.Thread(target=schedule_cleanup, daemon=True)
     cleanup_thread.start()
-    # Get port from environment or use default
+    
     port = int(os.environ.get('PORT', 5000))
     
-    # Run application with Socket.IO if available
+    print(f"🚀 Starting application on port {port} with Gevent")
+    
+    # For development vs production
+    debug_mode = os.environ.get('ENVIRONMENT') == 'development'
+    
     if SOCKETIO_AVAILABLE:
-        print(f"🚀 Starting application on port {port} with Socket.IO support")
-        
-        # For development
-        if os.environ.get('ENVIRONMENT') == 'development':
-            socketio.run(app, host='0.0.0.0', port=port, debug=True)
-        else:
-            # For production (Render)
-            socketio.run(app, host='0.0.0.0', port=port, debug=False, 
-                        log_output=True, allow_unsafe_werkzeug=True)
+        socketio.run(
+            app, 
+            host='0.0.0.0', 
+            port=port, 
+            debug=debug_mode,
+            log_output=debug_mode,
+            allow_unsafe_werkzeug=debug_mode
+        )
     else:
-        print(f"🚀 Starting application on port {port}")
-        app.run(host='0.0.0.0', port=port, debug=False)
+        from gevent.pywsgi import WSGIServer
+        http_server = WSGIServer(('0.0.0.0', port), app)
+        print(f"Server starting on port {port}")
+        http_server.serve_forever()

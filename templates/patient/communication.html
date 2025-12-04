@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block title %}My Communications - MAKOKHA MEDICAL CENTRE{% endblock %}
@@ -1055,7 +1056,6 @@ const currentUserRole = document.getElementById('currentUserRole').value;
 let selectedAppointmentId = null;
 let selectedDoctorId = null;
 let selectedDoctorData = null;
-let selectedAppointmentData = null;
 let isRecording = false;
 let recordingStartTime = null;
 let recordingTimer = null;
@@ -1063,18 +1063,19 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let isTyping = false;
 let typingTimeout = null;
+let emojiPicker = null;
 let paymentStatus = 'pending';
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     loadUserProfilePicture();
-    loadDoctors();
+    loadDoctorsWithAppointments(); // Changed from loadDoctors()
     setupEventListeners();
     setupSocketIO();
     setupEmojiPicker();
 });
 
-// Load patient's profile picture
+// Load patient's profile picture (same as doctor version but for patient)
 function loadUserProfilePicture() {
     fetch(`/api/user/${currentUserId}/profile`)
         .then(response => response.json())
@@ -1097,30 +1098,17 @@ function loadUserProfilePicture() {
         });
 }
 
-// Load doctors with appointments
-// Load doctors with appointments - with better error handling
-function loadDoctors() {
-    console.log('Loading doctors...');
-    
-    fetch('/api/patient/appointments')
+// Load doctors with appointments (similar to loadPatients() in doctor version)
+function loadDoctorsWithAppointments() {
+    fetch('/api/patient/doctors-with-appointments') // Need to create this endpoint
         .then(response => {
             if (!response.ok) {
-                if (response.status === 500) {
-                    throw new Error('Server error loading appointments');
-                }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             return response.json();
         })
         .then(data => {
-            console.log('Doctors data received:', data);
             const list = document.getElementById('doctorsList');
-            
-            if (!list) {
-                console.error('Doctors list element not found');
-                return;
-            }
-            
             list.innerHTML = '';
             
             if (!data || data.length === 0) {
@@ -1135,53 +1123,48 @@ function loadDoctors() {
             }
 
             // Create doctor items
-            data.forEach(appointmentData => {
-                const doctor = appointmentData.doctor;
-                if (!doctor) {
-                    console.warn('Appointment data missing doctor:', appointmentData);
-                    return;
-                }
-                
-                const item = createDoctorItem(doctor, appointmentData);
+            data.forEach(doctorData => {
+                const item = createDoctorItem(doctorData);
                 list.appendChild(item);
             });
         })
         .catch(error => {
             console.error('Error loading doctors:', error);
             const list = document.getElementById('doctorsList');
-            if (list) {
-                list.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                        <div class="empty-state-text">Error loading doctors</div>
-                        <div class="empty-state-subtext">Please try refreshing the page</div>
-                        <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">
-                            <i class="fas fa-sync me-1"></i>Refresh
-                        </button>
-                    </div>
-                `;
-            }
+            list.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="empty-state-text">Error loading doctors</div>
+                    <div class="empty-state-subtext">${error.message}</div>
+                    <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">
+                        <i class="fas fa-sync me-1"></i>Refresh
+                    </button>
+                </div>
+            `;
         });
 }
 
-// Create doctor list item
-function createDoctorItem(doctor, doctorData) {
+// Create doctor list item (similar to createPatientItem() but for doctors)
+function createDoctorItem(doctorData) {
     const div = document.createElement('div');
     div.className = 'appointment-item';
-    div.dataset.doctorId = doctor.id;
+    div.dataset.doctorId = doctorData.id;
     div.dataset.paymentStatus = doctorData.paymentStatus || 'pending';
     
-    const name = `Dr. ${doctor.first_name} ${doctor.last_name}`;
+    const name = `Dr. ${doctorData.first_name} ${doctorData.last_name}`;
     const avatarText = getInitials(name);
-    const profilePictureUrl = doctor.profile_picture_url;
-    const lastAppointment = doctorData.appointments[0];
-    const isOnline = doctor.is_online || false;
+    const profilePictureUrl = doctorData.profile_picture_url;
+    
+    // Payment badge
+    const paymentBadge = doctorData.paymentStatus === 'paid' ? 
+        '<span class="badge bg-success ms-2">Paid</span>' : 
+        '<span class="badge bg-warning ms-2">Pending</span>';
     
     div.innerHTML = `
         <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
              data-profile-picture="${profilePictureUrl || ''}">
             ${profilePictureUrl ? `<img src="${profilePictureUrl}" alt="${name}">` : avatarText}
-            ${isOnline ? '<div class="online-indicator"></div>' : '<div class="online-indicator offline"></div>'}
+            <div class="online-indicator ${doctorData.is_online ? '' : 'offline'}"></div>
         </div>
         <div class="appointment-content">
             <div class="appointment-header">
@@ -1191,10 +1174,7 @@ function createDoctorItem(doctor, doctorData) {
             <div class="appointment-preview">${doctorData.lastMessage || 'No messages yet'}</div>
             <div class="appointment-details">
                 <small class="text-muted">
-                    ${doctor.specialization || 'General Practitioner'}
-                    <span class="payment-badge ms-2 ${doctorData.paymentStatus === 'paid' ? 'paid' : 'pending'}">
-                        ${doctorData.paymentStatus === 'paid' ? '✓ Paid' : 'Payment Pending'}
-                    </span>
+                    ${doctorData.specialization || 'General Practitioner'} ${paymentBadge}
                 </small>
             </div>
         </div>
@@ -1213,26 +1193,26 @@ function createDoctorItem(doctor, doctorData) {
                     avatar.innerHTML = '';
                     avatar.appendChild(img);
                     const indicator = document.createElement('div');
-                    indicator.className = isOnline ? 'online-indicator' : 'online-indicator offline';
+                    indicator.className = doctorData.is_online ? 'online-indicator' : 'online-indicator offline';
                     avatar.appendChild(indicator);
                 };
                 img.onerror = () => {
                     avatar.textContent = avatarText;
                     avatar.classList.add('initials');
                     const indicator = document.createElement('div');
-                    indicator.className = isOnline ? 'online-indicator' : 'online-indicator offline';
+                    indicator.className = doctorData.is_online ? 'online-indicator' : 'online-indicator offline';
                     avatar.appendChild(indicator);
                 };
             }
         }, 100);
     }
     
-    div.addEventListener('click', () => selectDoctor(doctor.id, doctor, lastAppointment));
+    div.addEventListener('click', () => selectDoctor(doctorData.id, doctorData));
     return div;
 }
 
 // Select doctor
-function selectDoctor(doctorId, doctorData, appointmentData) {
+function selectDoctor(doctorId, doctorData) {
     selectedDoctorId = doctorId;
     selectedDoctorData = doctorData;
     
@@ -1253,27 +1233,22 @@ function selectDoctor(doctorId, doctorData, appointmentData) {
     }
     
     // Get the latest appointment for this doctor
-    if (appointmentData) {
-        selectedAppointmentId = appointmentData.appointment_id || appointmentData.id;
-        selectedAppointmentData = appointmentData;
-        loadAppointmentDetails(selectedAppointmentId);
-    } else {
-        // Try to get latest appointment
-        fetch(`/api/patient/doctor/${doctorId}/latest-appointment`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.appointment_id) {
-                    selectedAppointmentId = data.appointment_id;
-                    loadAppointmentDetails(selectedAppointmentId);
-                } else {
-                    // No appointment found, create one or show message
-                    showNoAppointmentMessage();
-                }
-            });
-    }
+    fetch(`/api/patient/doctor/${doctorId}/latest-appointment`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.appointment_id) {
+                selectedAppointmentId = data.appointment_id;
+                loadAppointmentDetails(selectedAppointmentId);
+            } else {
+                showNoAppointmentMessage();
+            }
+        })
+        .catch(() => {
+            showNoAppointmentMessage();
+        });
 }
 
-// Load appointment details
+// Load appointment details (similar to doctor version)
 function loadAppointmentDetails(appointmentId) {
     fetch(`/api/appointment/${appointmentId}/details`)
         .then(response => response.json())
@@ -1285,12 +1260,11 @@ function loadAppointmentDetails(appointmentId) {
             
             const name = `Dr. ${data.doctor_first_name} ${data.doctor_last_name}`;
             const avatarText = getInitials(name);
-            const isOnline = data.doctor_online || false;
             
             chatHeaderName.textContent = name;
             chatHeaderStatus.innerHTML = `
-                <span class="status-indicator ${isOnline ? 'online' : 'offline'}"></span>
-                ${isOnline ? 'Online' : 'Offline'} • ${data.consultation_type || 'Consultation'}
+                <span class="status-indicator ${data.doctor_online ? 'online' : 'offline'}"></span>
+                ${data.doctor_online ? 'Online' : 'Offline'} • ${data.consultation_type || 'Consultation'}
             `;
             
             // Load profile picture
@@ -1313,9 +1287,7 @@ function loadAppointmentDetails(appointmentId) {
             document.getElementById('sendMessageBtn').disabled = false;
             
             // Join socket room
-            if (typeof socket !== 'undefined') {
-                socket.emit('join_appointment', { appointment_id: appointmentId });
-            }
+            socket.emit('join_appointment', { appointment_id: appointmentId });
         })
         .catch(error => {
             console.error('Error loading appointment details:', error);
@@ -1349,6 +1321,11 @@ function checkPaymentStatus(appointmentId) {
                 // Set payment URL
                 document.getElementById('goToPaymentBtn').onclick = () => {
                     window.open(data.payment_url || `/payment/appointment/${appointmentId}`, '_blank');
+                };
+                
+                // Check payment status button
+                document.getElementById('checkPaymentStatusBtn').onclick = () => {
+                    checkPaymentStatus(appointmentId);
                 };
             } else {
                 paymentOverlay.style.display = 'none';
@@ -1443,6 +1420,8 @@ function createMessageElement(message) {
         bubble.innerHTML = createVoiceMessageHTML(message);
     } else if (message.message_type === 'document' || message.message_type === 'image') {
         bubble.innerHTML = createFileMessageHTML(message);
+    } else if (message.message_type === 'prescription') {
+        bubble.innerHTML = createPrescriptionMessageHTML(message);
     } else {
         bubble.innerHTML = `<div class="message-text">${escapeHtml(message.content || '')}</div>`;
     }
@@ -1468,7 +1447,6 @@ function createMessageElement(message) {
     return wrapper;
 }
 
-// Create voice message HTML
 function createVoiceMessageHTML(message) {
     const duration = message.duration || '0:00';
     return `
@@ -1480,7 +1458,6 @@ function createVoiceMessageHTML(message) {
     `;
 }
 
-// Create file message HTML
 function createFileMessageHTML(message) {
     const fileName = message.file_name || 'File';
     const fileSize = message.file_size ? formatFileSize(message.file_size) : '';
@@ -1509,7 +1486,28 @@ function createFileMessageHTML(message) {
     }
 }
 
-// Get message status HTML (WhatsApp-style ticks)
+function createPrescriptionMessageHTML(message) {
+    return `
+        <div class="message-prescription">
+            <div class="prescription-header">
+                <i class="fas fa-prescription-bottle-alt"></i>
+                <strong>New Prescription</strong>
+            </div>
+            <div class="prescription-content">
+                ${message.content || 'Prescription details'}
+            </div>
+            <div class="prescription-actions">
+                <button class="btn btn-sm btn-outline-primary view-prescription-btn" data-id="${message.prescription_id || ''}">
+                    <i class="fas fa-eye me-1"></i>View Details
+                </button>
+                <button class="btn btn-sm btn-outline-success print-prescription-btn" data-id="${message.prescription_id || ''}">
+                    <i class="fas fa-print me-1"></i>Print
+                </button>
+            </div>
+        </div>
+    `;
+}
+
 function getMessageStatusHTML(status) {
     switch(status) {
         case 'sent':
@@ -1525,14 +1523,13 @@ function getMessageStatusHTML(status) {
 
 // Format file size
 function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Format date for separator
 function formatDate(date) {
     const today = new Date();
     const yesterday = new Date(today);
@@ -1546,6 +1543,7 @@ function formatDate(date) {
         return date.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
     }
 }
+
 
 // Show no appointment message
 function showNoAppointmentMessage() {
@@ -1573,7 +1571,7 @@ function bookAppointment() {
 
 // Setup event listeners with patient-specific features
 function setupEventListeners() {
-    // Send message
+    // Send message (same as doctor)
     document.getElementById('sendMessageBtn').addEventListener('click', sendMessage);
     document.getElementById('messageInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1582,18 +1580,16 @@ function setupEventListeners() {
         }
     });
     
-    // Typing indicator
+    // Typing indicator (same as doctor)
     document.getElementById('messageInput').addEventListener('input', function(e) {
         if (!selectedAppointmentId) return;
         
         // Send typing indicator
         if (!isTyping) {
             isTyping = true;
-            if (typeof socket !== 'undefined') {
-                socket.emit('typing', {
-                    appointment_id: selectedAppointmentId
-                });
-            }
+            socket.emit('typing', {
+                appointment_id: selectedAppointmentId
+            });
         }
         
         // Clear existing timeout
@@ -1602,41 +1598,38 @@ function setupEventListeners() {
         // Set timeout to stop typing indicator
         typingTimeout = setTimeout(() => {
             isTyping = false;
-            if (typeof socket !== 'undefined') {
-                socket.emit('stop_typing', {
-                    appointment_id: selectedAppointmentId
-                });
-            }
+            socket.emit('stop_typing', {
+                appointment_id: selectedAppointmentId
+            });
         }, 1000);
     });
     
-    // Voice recording
+    // Voice recording (same as doctor)
     document.getElementById('voiceRecordBtn').addEventListener('click', toggleRecording);
     document.getElementById('cancelRecordingBtn').addEventListener('click', cancelRecording);
     document.getElementById('sendRecordingBtn').addEventListener('click', sendRecording);
     
-    // File attachment
+    // File attachment (same as doctor)
     document.getElementById('attachBtn').addEventListener('click', () => {
         document.getElementById('fileInput').click();
     });
     
     document.getElementById('fileInput').addEventListener('change', handleFileUpload);
     
-    // Voice call
+    // Patient-specific buttons
     document.getElementById('voiceCallBtn').addEventListener('click', initiateVoiceCall);
-    
-    // Video call
     document.getElementById('videoCallBtn').addEventListener('click', initiateVideoCall);
+    document.getElementById('infoBtn').addEventListener('click', showDoctorInfo);
     
-    // Back to list (mobile)
+    // Back to list (mobile) - same as doctor
     document.getElementById('backToList').addEventListener('click', () => {
         document.getElementById('appointmentsSidebar').style.display = 'flex';
         document.getElementById('chatArea').style.display = 'none';
         document.getElementById('backToList').style.display = 'none';
     });
     
-    // Search
-    document.getElementById('searchAppointments').addEventListener('input', function(e) {
+    // Search (same as doctor)
+    document.getElementById('searchDoctors').addEventListener('input', function(e) {
         const query = e.target.value.toLowerCase();
         document.querySelectorAll('.appointment-item').forEach(item => {
             const name = item.querySelector('.appointment-name').textContent.toLowerCase();
@@ -1644,10 +1637,7 @@ function setupEventListeners() {
         });
     });
     
-    // Add patient-specific event listeners
-    document.getElementById('infoBtn').addEventListener('click', showDoctorInfo);
-    
-    // Play voice messages
+    // Play voice messages (same as doctor)
     document.addEventListener('click', function(e) {
         if (e.target.classList.contains('play-voice')) {
             const audioUrl = e.target.dataset.url;
@@ -1656,6 +1646,17 @@ function setupEventListeners() {
                 player.src = audioUrl;
                 player.play();
             }
+        }
+        
+        // Prescription buttons (for viewing prescriptions sent by doctors)
+        if (e.target.closest('.view-prescription-btn')) {
+            const prescriptionId = e.target.closest('.view-prescription-btn').dataset.id;
+            viewPrescription(prescriptionId);
+        }
+        
+        if (e.target.closest('.print-prescription-btn')) {
+            const prescriptionId = e.target.closest('.print-prescription-btn').dataset.id;
+            printPrescription(prescriptionId);
         }
     });
 }
@@ -1708,6 +1709,7 @@ function setupEmojiPicker() {
 }
 
 // Send message
+// Send message (same as doctor version)
 function sendMessage() {
     const input = document.getElementById('messageInput');
     const content = input.value.trim();
@@ -1717,18 +1719,14 @@ function sendMessage() {
     // Clear typing indicator
     clearTimeout(typingTimeout);
     isTyping = false;
-    if (typeof socket !== 'undefined') {
-        socket.emit('stop_typing', { appointment_id: selectedAppointmentId });
-    }
+    socket.emit('stop_typing', { appointment_id: selectedAppointmentId });
     
     // Send via Socket.IO
-    if (typeof socket !== 'undefined') {
-        socket.emit('send_message', {
-            appointment_id: selectedAppointmentId,
-            content: content,
-            message_type: 'text'
-        });
-    }
+    socket.emit('send_message', {
+        appointment_id: selectedAppointmentId,
+        content: content,
+        message_type: 'text'
+    });
     
     // Clear input
     input.value = '';
@@ -1883,7 +1881,6 @@ function formatDuration(seconds) {
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
-
 // Handle file upload
 function handleFileUpload(event) {
     const file = event.target.files[0];
@@ -1992,10 +1989,10 @@ function addMessageToUI(messageData) {
 
 // Update sidebar preview
 function updateSidebarPreview(messageData) {
-    if (!selectedAppointmentId) return;
+    if (!selectedDoctorId) return;
     
     document.querySelectorAll('.appointment-item').forEach(item => {
-        if (item.dataset.doctorId === selectedDoctorId?.toString()) {
+        if (item.dataset.doctorId === selectedDoctorId.toString()) {
             const preview = item.querySelector('.appointment-preview');
             if (preview) {
                 let previewText = '';
@@ -2007,8 +2004,10 @@ function updateSidebarPreview(messageData) {
                     previewText = '📷 Photo';
                 } else if (messageData.message_type === 'document') {
                     previewText = '📄 ' + (messageData.file_name || 'Document');
+                } else if (messageData.message_type === 'prescription') {
+                    previewText = '💊 Prescription';
                 }
-                preview.textContent = previewText;
+                preview.textContent = previewText.length > 30 ? previewText.substring(0, 30) + '...' : previewText;
                 
                 // Update time
                 const timeElement = item.querySelector('.appointment-time');
@@ -2025,21 +2024,24 @@ function updateSidebarPreview(messageData) {
 function setupSocketIO() {
     // Make sure socket is defined (from base.html)
     if (typeof socket === 'undefined') {
-        console.warn('Socket.IO not loaded, retrying in 1 second...');
+        console.error('Socket.IO not loaded');
         setTimeout(setupSocketIO, 1000);
         return;
     }
     
     socket.on('connect', function() {
-        console.log('Connected to Socket.IO server');
+        console.log('Patient connected to Socket.IO server');
         
         // Join any existing appointment room
         if (selectedAppointmentId) {
             socket.emit('join_appointment', { appointment_id: selectedAppointmentId });
         }
+        
+        // Set patient as online
+        socket.emit('user_online_status', { is_online: true });
     });
     
-    // Handle incoming messages
+    // Handle incoming messages (same as doctor version)
     socket.on('message_received', function(data) {
         if (data.appointment_id === selectedAppointmentId) {
             addMessageToUI(data);
@@ -2057,15 +2059,15 @@ function setupSocketIO() {
         }
     });
     
-    // Handle message status updates
+    // Handle message status updates (same as doctor version)
     socket.on('message_status_updated', function(data) {
         updateMessageStatus(data.message_id, data.status);
     });
     
-    // Handle typing indicators
+    // Handle typing indicators (same as doctor version)
     socket.on('user_typing', function(data) {
         if (data.appointment_id === selectedAppointmentId && data.user_id !== currentUserId) {
-            showTypingIndicator(data.user_name || 'Doctor');
+            showTypingIndicator(data.user_name);
         }
     });
     
@@ -2075,7 +2077,16 @@ function setupSocketIO() {
         }
     });
     
-    // Handle calls
+    // Handle online/offline status (patient-specific)
+    socket.on('doctor_online', function(data) {
+        updateDoctorOnlineStatus(data.doctor_id, true);
+    });
+    
+    socket.on('doctor_offline', function(data) {
+        updateDoctorOnlineStatus(data.doctor_id, false);
+    });
+    
+    // Handle calls (same as doctor version)
     socket.on('incoming_voice_call', function(data) {
         handleIncomingCall(data, 'voice');
     });
@@ -2083,6 +2094,7 @@ function setupSocketIO() {
     socket.on('incoming_video_call', function(data) {
         handleIncomingCall(data, 'video');
     });
+    
     
     // Add patient-specific handlers
     socket.on('doctor_online', function(data) {
@@ -2111,17 +2123,17 @@ function setupSocketIO() {
     
     // Handle disconnection
     socket.on('disconnect', function() {
-        console.log('Disconnected from Socket.IO server');
+        console.log('Patient disconnected from Socket.IO server');
+        // Set patient as offline
+        socket.emit('user_online_status', { is_online: false });
     });
 }
 
 // Mark messages as read
 function markMessagesAsRead(appointmentId) {
-    if (typeof socket !== 'undefined') {
-        socket.emit('message_read', {
-            appointment_id: appointmentId
-        });
-    }
+    socket.emit('message_read', {
+        appointment_id: appointmentId
+    });
     
     // Update unread count in sidebar
     document.querySelectorAll('.appointment-item').forEach(item => {
@@ -2263,5 +2275,6 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
 </script>
 {% endblock %}
