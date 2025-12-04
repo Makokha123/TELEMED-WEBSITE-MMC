@@ -183,13 +183,11 @@
                         <div class="list-group-item">
                             <div class="row align-items-center">
                                 <div class="col-auto">
-                                    <div class="doctor-avatar">
-                                        {% if appointment.doctor and appointment.doctor.user %}
-                                            {{ appointment.doctor.user.first_name[0] }}{{ appointment.doctor.user.last_name[0] }}
-                                        {% else %}
-                                            DR
-                                        {% endif %}
-                                    </div>
+                                    {% if appointment.doctor and appointment.doctor.user %}
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                                    {% else %}
+                                        <div class="doctor-avatar">DR</div>
+                                    {% endif %}
                                 </div>
                                 <div class="col">
                                     <h6 class="mb-1">

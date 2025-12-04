@@ -1,7 +1,7 @@
 import json
 import hmac
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -49,7 +49,7 @@ def create_minimal_entities():
     db.session.add(doctor)
     db.session.commit()
 
-    appt = Appointment(patient_id=patient.id, doctor_id=doctor.id, appointment_date=datetime.utcnow())
+    appt = Appointment(patient_id=patient.id, doctor_id=doctor.id, appointment_date=datetime.now(timezone.utc))
     db.session.add(appt)
     db.session.commit()
 

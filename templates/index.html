@@ -1037,11 +1037,7 @@ setInterval(fetchTestimonials, 20000);
                 {% for doctor, user in doctors %}
                 <div class="col-lg-4 col-md-6">
                     <div class="card doctor-card fade-in">
-                            {% if user.profile_picture %}
-                                <img src="{{ url_for('static', filename=user.profile_picture) }}" alt="Dr. {{ user.first_name }} {{ user.last_name }}" class="doctor-image" style="object-fit:cover;">
-                            {% else %}
-                                <img src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" alt="Dr. {{ user.first_name }} {{ user.last_name }}" class="doctor-image" style="object-fit:cover;">
-                            {% endif %}
+                            <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Dr. {{ user.first_name }} {{ user.last_name }}" class="doctor-image" style="object-fit:cover;">
                         <div class="card-body text-center p-4">
                             <h5 class="card-title mb-1">Dr. {{ user.first_name }} {{ user.last_name }}</h5>
                             <p class="doctor-specialty mb-2">{{ doctor.specialization }}</p>
@@ -1085,9 +1081,11 @@ setInterval(fetchTestimonials, 20000);
                 <div class="col-lg-4">
                     <div class="testimonial-card fade-in">
                         <div class="d-flex align-items-center mb-4">
-                            <div class="testimonial-avatar me-3">
-                                {{ (testimonial.patient.user.get_display_name().split(' ')[0][0] + (testimonial.patient.user.get_display_name().split(' ')[1][0] if testimonial.patient.user.get_display_name().split(' ')|length > 1 else '')) if testimonial.patient and testimonial.patient.user else '' }}
-                            </div>
+                            {% if testimonial.patient and testimonial.patient.user %}
+                                <img src="{{ url_for('profile_picture', user_id=testimonial.patient.user.id) }}" alt="Profile" class="testimonial-avatar me-3" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                            {% else %}
+                                <div class="testimonial-avatar me-3">P</div>
+                            {% endif %}
                             <div>
                                 <h6 class="mb-1 fw-bold">{{ testimonial.patient.user.get_display_name() if testimonial.patient and testimonial.patient.user else 'Patient' }}</h6>
                                 <small class="text-muted">Dr. {{ testimonial.doctor.user.get_display_name() if testimonial.doctor and testimonial.doctor.user else '' }}</small>

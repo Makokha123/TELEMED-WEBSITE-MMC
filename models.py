@@ -2,7 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import hashlib
 import logging
@@ -19,7 +19,7 @@ class Report(db.Model):
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctors.id'), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     doctor = db.relationship('Doctor', foreign_keys=[doctor_id])
 
@@ -34,7 +34,7 @@ class Prescription(db.Model):
     medication = db.Column(db.String(255), nullable=False)
     dosage = db.Column(db.String(255), nullable=False)
     instructions = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     doctor = db.relationship('Doctor', foreign_keys=[doctor_id])
     patient = db.relationship('Patient', foreign_keys=[patient_id])
@@ -110,8 +110,8 @@ class User(UserMixin, db.Model):
     encrypted_first_name = db.Column(db.LargeBinary, nullable=False)
     encrypted_last_name = db.Column(db.LargeBinary, nullable=False)
     encrypted_phone = db.Column(db.LargeBinary)
+    encrypted_profile_picture_path = db.Column(db.String(512))  # Encrypted path stored as text
     date_of_birth = db.Column(db.Date)
-    profile_picture = db.Column(db.String(255))
     is_active = db.Column(db.Boolean, default=True)
     # Per-role toggles persisted on the user record
     # - `allow_user_creation` (admin only): whether this admin may create other users via admin UI
@@ -120,7 +120,7 @@ class User(UserMixin, db.Model):
     allow_user_creation = db.Column(db.Boolean, default=False)
     show_availability = db.Column(db.Boolean, default=True)
     share_data = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     patient_profile = db.relationship('Patient', backref='user', uselist=False, foreign_keys='Patient.user_id')
@@ -175,6 +175,16 @@ class User(UserMixin, db.Model):
     def phone(self, value):
         self.encrypted_phone = _encrypt_text(value) if value is not None else None
 
+    @property
+    def profile_picture(self):
+        """Decrypt and return profile picture path from DB."""
+        return _decrypt_text(self.encrypted_profile_picture_path) if self.encrypted_profile_picture_path else None
+
+    @profile_picture.setter
+    def profile_picture(self, value):
+        """Encrypt and store profile picture path in DB."""
+        self.encrypted_profile_picture_path = _encrypt_text(value) if value is not None else None
+
     def get_display_name(self):
         """Safe method to get display name that won't crash on encryption errors"""
         try:
@@ -191,13 +201,28 @@ class User(UserMixin, db.Model):
         try:
             if not self.date_of_birth:
                 return None
-            today = datetime.utcnow().date()
+            today = datetime.now(timezone.utc).date()
             dob = self.date_of_birth
             years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
             return years
         except Exception:
             return None
-
+    def get_initials(self):
+        """Get user initials for avatar display"""
+        try:
+            if self.first_name and self.last_name:
+                return f"{self.first_name[0]}{self.last_name[0]}".upper()
+            elif self.first_name:
+                return self.first_name[0].upper()
+            elif self.last_name:
+                return self.last_name[0].upper()
+            elif self.username:
+                return self.username[0].upper()
+            else:
+                return 'U'
+        except Exception:
+            return 'U'
+        
 class Patient(db.Model):
     __tablename__ = 'patients'
 
@@ -469,7 +494,7 @@ class Appointment(db.Model):
     encrypted_notes = db.Column(db.LargeBinary)
     rating = db.Column(db.Integer, nullable=True)  # 1-5 stars
     encrypted_feedback = db.Column(db.LargeBinary)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     communications = db.relationship('Communication', backref='appointment', lazy=True)
 
@@ -508,12 +533,14 @@ class Communication(db.Model):
     encrypted_file_path = db.Column(db.LargeBinary)
     # Store binary blobs (encrypted) for recordings/uploads when needed
     encrypted_file_blob = db.Column(db.LargeBinary)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     is_read = db.Column(db.Boolean, default=False)
     message_status = db.Column(db.String(20), default='sent')
 
-    
     sender = db.relationship('User', foreign_keys=[sender_id])
+
+    def __repr__(self):
+        return f'<Communication {self.id}: {self.message_type}>'
 
     @property
     def content(self):
@@ -540,7 +567,7 @@ class MedicalRecord(db.Model):
     encrypted_file_path = db.Column(db.LargeBinary)
     encrypted_description = db.Column(db.LargeBinary)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     @property
     def file_path(self):
@@ -569,7 +596,7 @@ class PatientVital(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
-    recorded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    recorded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     systolic = db.Column(db.Integer)
     diastolic = db.Column(db.Integer)
     heart_rate = db.Column(db.Integer)
@@ -587,7 +614,7 @@ class Testimonial(db.Model):
     rating = db.Column(db.Integer, nullable=False)  # 1-5
     encrypted_content = db.Column(db.LargeBinary)
     is_public = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     patient = db.relationship('Patient', foreign_keys=[patient_id])
 
@@ -608,7 +635,7 @@ class AuditLog(db.Model):
     action = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
     ip_address = db.Column(db.String(45))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 class SocialAccount(db.Model):
     __tablename__ = 'social_accounts'
@@ -620,7 +647,7 @@ class SocialAccount(db.Model):
     access_token = db.Column(db.String(255))
     refresh_token = db.Column(db.String(255))
     expires_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
     user = db.relationship('User', backref=db.backref('social_accounts', lazy=True))
 
@@ -639,8 +666,8 @@ class Payment(db.Model):
     provider = db.Column(db.String(50))
     provider_reference = db.Column(db.String(255))
     status = db.Column(db.String(20), default='pending')  # pending, paid, failed, cancelled
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     appointment = db.relationship('Appointment', foreign_keys=[appointment_id])
     patient = db.relationship('Patient', foreign_keys=[patient_id])
@@ -659,7 +686,7 @@ class CallSession(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=False)
-    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     ended_at = db.Column(db.DateTime)
     duration = db.Column(db.Integer)  # Duration in seconds
     call_quality = db.Column(db.String(20))  # excellent, good, poor

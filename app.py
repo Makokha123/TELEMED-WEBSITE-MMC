@@ -1,3 +1,4 @@
+import logging
 import gevent
 import gevent.monkey
 gevent.monkey.patch_all()
@@ -8,6 +9,7 @@ from flask import Flask
 from datetime import datetime, timedelta, timezone
 
 import urllib
+import os
 from models import Communication, PatientVital, Payment, Prescription, Report
 
 # Jinja2 filter for timeago
@@ -36,18 +38,54 @@ from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
 
 app = Flask(__name__)
 
+# Initialize Socket.IO with auto-detected async mode and sensible defaults.
+# Use environment variables to control behavior in production vs development.
+preferred_async = os.getenv('ASYNC_MODE', '').lower() or None
+detected_async = None
+debug_mode = os.getenv('ENVIRONMENT', '') == 'development' or os.getenv('FLASK_DEBUG', '') == '1'
+try:
+    if preferred_async == 'eventlet':
+        import eventlet
+        eventlet.monkey_patch()
+        detected_async = 'eventlet'
+    elif preferred_async == 'gevent':
+        import gevent
+        gevent.monkey.patch_all()
+        detected_async = 'gevent'
+    else:
+        # Auto-detect the best available async library
+        try:
+            import eventlet
+            eventlet.monkey_patch()
+            detected_async = 'eventlet'
+        except Exception:
+            try:
+                import gevent
+                gevent.monkey.patch_all()
+                detected_async = 'gevent'
+            except Exception:
+                detected_async = None
+except Exception:
+    detected_async = None
+
+# Allow CORS origins to be configured via env var (comma-separated), default to '*'
+cors_origins = os.getenv('SOCKETIO_CORS_ALLOWED_ORIGINS', '*')
+if cors_origins and cors_origins.strip() != '*':
+    cors_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
+
 socketio = SocketIO(
-    app, 
-    cors_allowed_origins="*",
-    async_mode='gevent',
-    logger=False,  # Disable for production
-    engineio_logger=False,  # Disable for production
-    ping_timeout=60,
-    ping_interval=25,
-    max_http_buffer_size=1e8
+    app,
+    cors_allowed_origins=cors_origins,
+    async_mode=detected_async,
+    logger=debug_mode,
+    engineio_logger=debug_mode,
+    ping_timeout=int(os.getenv('SOCKETIO_PING_TIMEOUT', 60)),
+    ping_interval=int(os.getenv('SOCKETIO_PING_INTERVAL', 25)),
+    max_http_buffer_size=int(float(os.getenv('SOCKETIO_MAX_HTTP_BUFFER_SIZE', 1e8))),
+    manage_session=False,
 )
 
-print("✓ Socket.IO initialized with gevent")
+print(f"✓ Socket.IO initialized (async_mode={detected_async}, debug={debug_mode})")
 
 # Define SOCKETIO_AVAILABLE to indicate if socketio is available
 SOCKETIO_AVAILABLE = True
@@ -102,8 +140,6 @@ except ImportError:
     class Config:
         ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt', 'mp3', 'wav', 'mp4'}
         MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
-
-app = Flask(__name__)
 
 # Global dictionary to track online users for Socket.IO presence
 user_sockets = {}
@@ -374,7 +410,7 @@ app.register_blueprint(facebook_bp, url_prefix="/login")
 
 def cleanup_old_sessions():
     """Clean up old user sessions"""
-    cutoff_time = datetime.utcnow() - timedelta(hours=1)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=1)
     users_to_remove = []
     
     for user_id, last_seen_str in list(user_last_seen.items()):
@@ -578,6 +614,60 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
 
+def handle_file_upload(user, file_obj, upload_type='profile_pics', encrypt=True):
+    """
+    Unified file upload handler with role-based organization and optional encryption.
+    
+    Args:
+        user: Flask-Login user object
+        file_obj: werkzeug FileStorage object
+        upload_type: 'profile_pics', 'documents', 'wallpapers', etc.
+        encrypt: Whether to encrypt file (True for sensitive files, False for public)
+    
+    Returns:
+        rel_path_for_db: Relative path to store in database (encrypted if encrypt=True)
+        or None if upload failed
+    """
+    if not file_obj or not file_obj.filename:
+        return None
+    
+    filename = secure_filename(file_obj.filename)
+    if not allowed_file(filename):
+        return None
+    
+    try:
+        # Organize by: uploads/{role}/{user_id}/{upload_type}/{filename}
+        rel_root = _uploads_rel_root() or 'uploads'
+        user_role = getattr(user, 'role', 'user')
+        user_id = getattr(user, 'id', 'unknown')
+        
+        rel_dir = os.path.join(rel_root, user_role, str(user_id), upload_type).replace('\\', '/')
+        full_dir = os.path.join(app.root_path, rel_dir)
+        os.makedirs(full_dir, exist_ok=True)
+        
+        # Generate unique filename
+        storage_name = f"{uuid4().hex}__{filename}"
+        if encrypt:
+            storage_name += '.enc'
+        
+        full_path = os.path.join(full_dir, storage_name)
+        rel_path_for_db = os.path.join(rel_dir, storage_name).replace('\\', '/')
+        
+        # Read and save file
+        raw = file_obj.read()
+        if encrypt:
+            encrypted_bytes = encrypt_file_bytes(raw)
+            with open(full_path, 'wb') as fh:
+                fh.write(encrypted_bytes)
+        else:
+            with open(full_path, 'wb') as fh:
+                fh.write(raw)
+        
+        return rel_path_for_db
+    except Exception as e:
+        logging.error(f"File upload error for user {user.id}: {e}")
+        return None
+
 # Routes
 @app.route('/')
 def index():
@@ -658,27 +748,12 @@ def settings():
         # Example: handle profile picture
         profile_picture = request.files.get('profile_picture')
         if profile_picture and profile_picture.filename:
-            filename = secure_filename(profile_picture.filename)
-            if allowed_file(filename):
-                storage_name = f"{uuid4().hex}__{filename}.enc"
-                username_for = safe_username(current_user)
-                rel_root = _uploads_rel_root() or 'uploads'
-                rel_dir = os.path.join(rel_root, username_for, 'profile_pictures').replace('\\', '/')
-                full_dir = os.path.join(app.root_path, rel_dir)
-                os.makedirs(full_dir, exist_ok=True)
-                full_path = os.path.join(full_dir, storage_name)
-                rel_path_for_db = os.path.join(rel_dir, storage_name).replace('\\', '/')
-
-                raw = profile_picture.read()
-                try:
-                    encrypted_bytes = encrypt_file_bytes(raw)
-                    with open(full_path, 'wb') as fh:
-                        fh.write(encrypted_bytes)
-                    current_user.profile_picture = rel_path_for_db
-                except Exception as e:
-                    flash('Error saving profile picture: ' + str(e), 'error')
+            pic_path = handle_file_upload(current_user, profile_picture, upload_type='profile_pics', encrypt=True)
+            if pic_path:
+                current_user.profile_picture = pic_path
+                flash('Profile picture updated successfully', 'success')
             else:
-                flash('Invalid profile picture file type.', 'error')
+                flash('Invalid profile picture file type or upload failed.', 'error')
         # Note: username already applied above before handling uploads
         # Example: handle password change
         new_password = request.form.get('new_password')
@@ -918,7 +993,7 @@ def signup():
             def _valid_dob(d):
                 try:
                     dob_dt = datetime.strptime(d, '%Y-%m-%d').date()
-                    today = datetime.utcnow().date()
+                    today = datetime.now(timezone.utc).date()
                     if dob_dt > today:
                         return False
                     age = today.year - dob_dt.year - ((today.month, today.day) < (dob_dt.month, dob_dt.day))
@@ -1361,7 +1436,7 @@ def edit_patient_profile():
         def _valid_dob(d):
             try:
                 dob_dt = datetime.strptime(d, '%Y-%m-%d').date()
-                today = datetime.utcnow().date()
+                today = datetime.now(timezone.utc).date()
                 if dob_dt > today:
                     return False
                 age = today.year - dob_dt.year - ((today.month, today.day) < (dob_dt.month, dob_dt.day))
@@ -1638,7 +1713,7 @@ def doctor_dashboard():
     def format_timeago(dt):
         if not dt:
             return "N/A"
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         diff = now - dt if now > dt else dt - now
         seconds = diff.total_seconds()
         if seconds < 60:
@@ -1817,7 +1892,7 @@ def admin_patients():
         new_this_month = 0
 
     # Pending records: medical records created in the last 7 days (as a reasonable definition)
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
     try:
         pending_records = MedicalRecord.query.filter(MedicalRecord.created_at >= seven_days_ago).count()
     except Exception:
@@ -1858,7 +1933,7 @@ def admin_patients():
                              'blood_type': blood_type,
                              'from_date': from_date
                          },
-                         now=datetime.utcnow())
+                         now=datetime.now(timezone.utc))
 
 
 @app.route('/admin/patients_data', methods=['GET'])
@@ -2531,10 +2606,10 @@ def get_appointment_details_enhanced(appointment_id):
     if not verify_appointment_access(appointment, current_user):
         return jsonify({'error': 'Access denied'}), 403
     
-    doctor = Doctor.query.get(appointment.doctor_id)
-    doctor_user = User.query.get(doctor.user_id) if doctor else None
-    patient = Patient.query.get(appointment.patient_id)
-    patient_user = User.query.get(patient.user_id) if patient else None
+    doctor = db.session.get(Doctor, appointment.doctor_id)
+    doctor_user = db.session.get(User, doctor.user_id) if doctor else None
+    patient = db.session.get(Patient, appointment.patient_id)
+    patient_user = db.session.get(User, patient.user_id) if patient else None
     
     # Get profile picture URLs
     doctor_profile_picture = None
@@ -2699,7 +2774,7 @@ def payment_confirm(payment_id):
         db.session.commit()
         
         # Update appointment status if needed
-        appointment = Appointment.query.get(payment.appointment_id)
+        appointment = db.session.get(Appointment, payment.appointment_id)
         if appointment and appointment.status == 'pending':
             appointment.status = 'confirmed'
             db.session.commit()
@@ -2737,7 +2812,7 @@ def payment_by_appointment(appointment_id):
     payment = Payment.query.filter_by(appointment_id=appointment_id).first()
     if not payment:
         # Create a new payment
-        doctor = Doctor.query.get(appointment.doctor_id)
+        doctor = db.session.get(Doctor, appointment.doctor_id)
         amount = doctor.consultation_fee if doctor and doctor.consultation_fee else 1500.00
         
         payment = Payment(
@@ -2789,7 +2864,7 @@ def book_appointment():
             return jsonify({'success': False, 'error': f'Invalid date format. Use YYYY-MM-DDTHH:MM. Error: {str(e)}'}), 400
         
         # Check if doctor exists
-        doctor = Doctor.query.get(data.get('doctor_id'))
+        doctor = db.session.get(Doctor, data.get('doctor_id'))
         if not doctor:
             return jsonify({'success': False, 'error': 'Doctor not found'}), 404
         
@@ -3206,7 +3281,7 @@ def upload_profile_picture():
     if current_user.role == 'admin' and request.form.get('user_id'):
         try:
             uid = int(request.form.get('user_id'))
-            target_user = User.query.get(uid) or target_user
+            target_user = db.session.get(User, uid) or target_user
         except Exception:
             pass
     
@@ -3241,41 +3316,76 @@ def upload_profile_picture():
 # Serve decrypted profile picture for a user
 @app.route('/profile_picture/<int:user_id>')
 def profile_picture(user_id):
-    """Serve profile picture with fallback"""
+    """Serve encrypted profile picture or fallback to SVG avatar."""
     try:
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
-            # Return SVG default avatar
-            return '''
-            <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50" cy="50" r="50" fill="#667eea"/>
-                <text x="50" y="60" text-anchor="middle" fill="white" font-size="40" font-family="Arial">U</text>
-            </svg>
-            ''', 200, {'Content-Type': 'image/svg+xml'}
+            return _get_default_avatar('U')
         
-        # Check if profile picture exists
-        if user.profile_picture:
-            # Check if it's a URL or local path
-            if user.profile_picture.startswith('http'):
-                return redirect(user.profile_picture)
-            else:
-                # Try to serve local file
-                import os
-                file_path = os.path.join(app.root_path, 'static', 'uploads', user.profile_picture)
-                if os.path.exists(file_path):
-                    return send_file(file_path)
+        # Get stored profile picture path (decrypted via @property)
+        pic_path = user.profile_picture
         
-        # Fallback to default avatar
-        return redirect(url_for('static', filename='img/default-avatar.png'))
+        if pic_path:
+            # Check if it's an external URL (from OAuth, e.g., Google/Facebook)
+            if pic_path.startswith('http'):
+                return redirect(pic_path)
+            
+            # Otherwise, it's a local encrypted file path stored in DB
+            try:
+                full_path = os.path.join(app.root_path, pic_path)
+                if os.path.exists(full_path) and os.path.isfile(full_path):
+                    # Decrypt and serve file
+                    with open(full_path, 'rb') as fh:
+                        encrypted_bytes = fh.read()
+                    try:
+                        raw_bytes = decrypt_file_bytes(encrypted_bytes)
+                        if raw_bytes:
+                            # Guess content type from file extension
+                            _, ext = os.path.splitext(pic_path)
+                            content_type = 'image/jpeg'
+                            if ext.lower() in ['.png']:
+                                content_type = 'image/png'
+                            elif ext.lower() in ['.gif']:
+                                content_type = 'image/gif'
+                            elif ext.lower() in ['.webp']:
+                                content_type = 'image/webp'
+                            return send_file(
+                                BytesIO(raw_bytes),
+                                mimetype=content_type
+                            )
+                    except Exception as dec_err:
+                        logging.error(f"Decryption error for {pic_path}: {dec_err}")
+            except Exception as file_err:
+                logging.error(f"File access error for {pic_path}: {file_err}")
+        
+        # Fallback to SVG avatar with user initials
+        return _get_default_avatar(user.get_initials())
         
     except Exception as e:
-        # Return SVG default avatar on error
-        return '''
-        <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="50" cy="50" r="50" fill="#667eea"/>
-            <text x="50" y="60" text-anchor="middle" fill="white" font-size="40" font-family="Arial">E</text>
-        </svg>
-        ''', 200, {'Content-Type': 'image/svg+xml'}
+        logging.error(f"Error serving profile picture for user {user_id}: {e}")
+        return _get_default_avatar('E')
+
+
+def _get_default_avatar(initials='U'):
+    """Generate and return a default SVG avatar with given initials."""
+    # Use a color based on initial hash for visual variety
+    color_map = {
+        'A': '#FF6B6B', 'B': '#4ECDC4', 'C': '#45B7D1', 'D': '#FFA07A',
+        'E': '#98D8C8', 'F': '#F7DC6F', 'G': '#BB8FCE', 'H': '#85C1E2',
+        'I': '#F8B88B', 'J': '#ABEBC6', 'K': '#F5B7B1', 'L': '#D7BDE2',
+        'M': '#A9DFBF', 'N': '#F9E79F', 'O': '#AED6F1', 'P': '#F1948A',
+        'Q': '#D5F4E6', 'R': '#FADBD8', 'S': '#E8DAEF', 'T': '#A3E4D7',
+        'U': '#667eea', 'V': '#764EA2', 'W': '#F093FB', 'X': '#4158D0',
+        'Y': '#C471ED', 'Z': '#12C2E9'
+    }
+    color = color_map.get(initials[0].upper(), '#667eea')
+    return f'''
+    <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="50" fill="{color}"/>
+        <text x="50" y="60" text-anchor="middle" fill="white" font-size="40" font-weight="bold" font-family="Arial">{initials}</text>
+    </svg>
+    ''', 200, {'Content-Type': 'image/svg+xml'}
+
     
 # Admin Communication Dashboard
 @app.route('/admin/communication')
@@ -3382,7 +3492,7 @@ def doctor_emergency_call():
         user_id=current_user.id,
         action='emergency_call',
         description=f'Doctor {current_user.get_display_name()} triggered an emergency call.',
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     db.session.add(log)
     db.session.commit()
@@ -4097,7 +4207,7 @@ def get_patient_appointments_categorized():
         }
         
         # Categorize based on status and date
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         if appointment.status == 'completed':
             completed.append(appointment_data)
@@ -4127,13 +4237,24 @@ def get_patient_appointments_categorized():
 @login_required
 def get_user_basic_info(user_id):
     """Get basic user info (name only)"""
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return jsonify({'error': 'User not found'}), 404
     
+    # Generate initials
+    initials = 'U'
+    if user.first_name and user.last_name:
+        initials = f"{user.first_name[0]}{user.last_name[0]}".upper()
+    elif user.first_name:
+        initials = user.first_name[0].upper()
+    elif user.last_name:
+        initials = user.last_name[0].upper()
+    elif user.username:
+        initials = user.username[0].upper()
+    
     return jsonify({
         'name': user.get_display_name(),
-        'initials': user.get_initials()
+        'initials': initials
     })
 
 # Add fallback for patient appointments
@@ -4153,9 +4274,9 @@ def get_patient_appointments_fallback():
     
     appointments_data = []
     for appointment in appointments:
-        doctor = Doctor.query.get(appointment.doctor_id)
+        doctor = db.session.get(Doctor, appointment.doctor_id)
         if doctor:
-            doctor_user = User.query.get(doctor.user_id)
+            doctor_user = db.session.get(User, doctor.user_id)
             appointments_data.append({
                 'appointment_id': appointment.id,
                 'doctor': {
@@ -4372,7 +4493,7 @@ def send_voice_note():
     if audio_file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'}), 400
     
-    filename = secure_filename(f"voice_{current_user.id}_{datetime.utcnow().timestamp()}.wav")
+    filename = secure_filename(f"voice_{current_user.id}_{datetime.now(timezone.utc).timestamp()}.wav")
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     audio_file.save(file_path)
     
@@ -4463,7 +4584,7 @@ def start_consultation():
     if not doctor:
         return jsonify({'success': False, 'error': 'Doctor profile not found'}), 404
     
-    patient = Patient.query.get(patient_id)
+    patient = db.session.get(Patient, patient_id)
     if not patient:
         return jsonify({'success': False, 'error': 'Patient not found'}), 404
     
@@ -4471,7 +4592,7 @@ def start_consultation():
     appointment = Appointment(
         patient_id=patient_id,
         doctor_id=doctor.id,
-        appointment_date=datetime.utcnow(),
+        appointment_date=datetime.now(timezone.utc),
         consultation_type='message',
         status='confirmed'
     )
@@ -4640,13 +4761,24 @@ def get_patient_doctors():
 @login_required
 def get_user_basic(user_id):
     """Get basic user info for avatar"""
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return jsonify({'name': 'User', 'initials': 'U'})
     
+    # Generate initials
+    initials = 'U'
+    if user.first_name and user.last_name:
+        initials = f"{user.first_name[0]}{user.last_name[0]}".upper()
+    elif user.first_name:
+        initials = user.first_name[0].upper()
+    elif user.last_name:
+        initials = user.last_name[0].upper()
+    elif user.username:
+        initials = user.username[0].upper()
+    
     return jsonify({
         'name': user.get_display_name(),
-        'initials': user.get_display_name()[:2].upper() if user.get_display_name() else 'U'
+        'initials': initials
     })
 
 @app.route('/api/patient/doctor/<int:doctor_id>/messages', methods=['GET'])
@@ -4998,7 +5130,7 @@ def handle_connect():
     """Handle Socket.IO connection"""
     if current_user.is_authenticated:
         user_sockets[current_user.id] = request.sid
-        user_last_seen[current_user.id] = datetime.utcnow().isoformat()
+        user_last_seen[current_user.id] = datetime.now(timezone.utc).isoformat()
         
         emit('connection_response', {'data': 'Connected to server'})
         print(f'User {current_user.id} connected: {request.sid}')
@@ -5033,7 +5165,7 @@ def handle_message_delivered(data):
         return
     
     # Update message status
-    message = Communication.query.get(message_id)
+    message = db.session.get(Communication, message_id)
     if message and message.appointment_id == appointment_id:
         message.message_status = 'delivered'
         db.session.commit()
@@ -5068,7 +5200,7 @@ def handle_disconnect():
                 del user_sockets[user_id]
             
             # Update last seen
-            user_last_seen[user_id] = datetime.utcnow().isoformat()
+            user_last_seen[user_id] = datetime.now(timezone.utc).isoformat()
             
             # Clean up active calls
             for apt_id, users in list(active_calls.items()):
@@ -5089,14 +5221,14 @@ def health_check():
         # Simple check without database query to avoid threading issues
         return jsonify({
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'service': 'telemedicine-platform'
         }), 200
     except Exception as e:
         return jsonify({
             'status': 'unhealthy',
             'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 @socketio.on('user_online_status')
@@ -5110,7 +5242,7 @@ def handle_user_online_status(data):
     
     if is_online:
         user_sockets[user_id] = request.sid
-        user_last_seen[user_id] = datetime.utcnow().isoformat()
+        user_last_seen[user_id] = datetime.now(timezone.utc).isoformat()
         
         # Notify relevant users based on role
         if current_user.role == 'doctor':
@@ -5121,7 +5253,7 @@ def handle_user_online_status(data):
                 patient_ids = set([app.patient_id for app in appointments])
                 
                 for patient_id in patient_ids:
-                    patient = Patient.query.get(patient_id)
+                    patient = db.session.get(Patient, patient_id)
                     if patient and patient.user_id in user_sockets:
                         socketio.emit('doctor_online', {
                             'doctor_id': doctor.id,
@@ -5136,7 +5268,7 @@ def handle_user_online_status(data):
                 doctor_ids = set([app.doctor_id for app in appointments])
                 
                 for doctor_id in doctor_ids:
-                    doctor = Doctor.query.get(doctor_id)
+                    doctor = db.session.get(Doctor, doctor_id)
                     if doctor and doctor.user_id in user_sockets:
                         socketio.emit('patient_online', {
                             'patient_id': patient.id,
@@ -5155,7 +5287,7 @@ def handle_user_online_status(data):
                 patient_ids = set([app.patient_id for app in appointments])
                 
                 for patient_id in patient_ids:
-                    patient = Patient.query.get(patient_id)
+                    patient = db.session.get(Patient, patient_id)
                     if patient and patient.user_id in user_sockets:
                         socketio.emit('doctor_offline', {
                             'doctor_id': doctor.id
@@ -5168,7 +5300,7 @@ def handle_user_online_status(data):
                 doctor_ids = set([app.doctor_id for app in appointments])
                 
                 for doctor_id in doctor_ids:
-                    doctor = Doctor.query.get(doctor_id)
+                    doctor = db.session.get(Doctor, doctor_id)
                     if doctor and doctor.user_id in user_sockets:
                         socketio.emit('patient_offline', {
                             'patient_id': patient.id
@@ -5208,7 +5340,8 @@ def handle_send_message_enhanced(data):
             sender_id=current_user.id,
             message_type=message_type,
             content=content,
-            message_status='sent'
+            message_status='sent',
+            is_read=False  # Make sure this is set
         )
         
         if file_url:
@@ -5231,7 +5364,7 @@ def handle_send_message_enhanced(data):
             'file_size': file_size
         }
 
-        # Broadcast to appointment room
+          # Broadcast to appointment room
         appointment_room = f'appointment_{appointment_id}'
         emit('message_received', message_data, room=appointment_room)
         
@@ -5240,15 +5373,15 @@ def handle_send_message_enhanced(data):
             'message_id': communication.id,
             'appointment_id': appointment_id,
             'status': 'sent'
-        })
+        }, room=request.sid)
         
         # Check if recipient is online for immediate delivery status
         recipient_id = None
         if current_user.role == 'patient':
-            doctor = Doctor.query.get(appointment.doctor_id)
+            doctor = db.session.get(Doctor, appointment.doctor_id)
             recipient_id = doctor.user_id if doctor else None
         else:
-            patient = Patient.query.get(appointment.patient_id)
+            patient = db.session.get(Patient, appointment.patient_id)
             recipient_id = patient.user_id if patient else None
         
         if recipient_id and recipient_id in user_sockets:
@@ -5290,7 +5423,7 @@ def handle_message_read(data):
         try:
             msg = db.session.get(Communication, message_id)
         except Exception:
-            msg = Communication.query.get(message_id)
+            msg = db.session.get(Communication, message_id)
         if msg and msg.appointment_id == int(appointment_id) and msg.sender_id != current_user.id:
             msg.is_read = True
             db.session.commit()
@@ -5369,7 +5502,7 @@ def handle_initiate_video_call(data):
             'caller_role': caller_role,
             'callee_id': callee_user_id,
             'call_type': 'video',
-            'start_time': datetime.utcnow().isoformat(),
+            'start_time': datetime.now(timezone.utc).isoformat(),
             'status': 'ringing'
         }
         
@@ -5391,7 +5524,7 @@ def handle_initiate_video_call(data):
             'call_type': 'video',
             'appointment_date': appointment.appointment_date.isoformat(),
             'appointment_time': appointment.appointment_date.strftime('%H:%M'),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
         # Send incoming call notification to callee with ringtone
@@ -5425,7 +5558,7 @@ def handle_initiate_video_call(data):
                     'caller_role': caller_role,
                     'appointment_date': appointment.appointment_date.isoformat(),
                     'appointment_time': appointment.appointment_date.strftime('%H:%M'),
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
                     'type': 'missed_video_call'
                 }
                 

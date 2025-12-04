@@ -2120,23 +2120,33 @@ function showPatientInfo() {
 }
 
 // Setup Socket.IO
+window.socket = io();
+
 function setupSocketIO() {
-    // Make sure socket is defined (from base.html)
-    if (typeof socket === 'undefined') {
-        console.error('Socket.IO not loaded');
+    // Make sure socket is defined
+    if (typeof io === 'undefined') {
+        console.error('Socket.IO library not loaded');
         setTimeout(setupSocketIO, 1000);
         return;
     }
     
+    // Connect with options
+    window.socket = io({
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
+    });
+    
     socket.on('connect', function() {
-        console.log('Doctor connected to Socket.IO server');
+        console.log('Connected to Socket.IO server');
         
         // Join any existing appointment room
         if (selectedAppointmentId) {
             socket.emit('join_appointment', { appointment_id: selectedAppointmentId });
         }
         
-        // Set doctor as online
+        // Set user as online
         socket.emit('user_online_status', { is_online: true });
     });
     
