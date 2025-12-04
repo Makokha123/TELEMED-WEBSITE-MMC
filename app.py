@@ -1,20 +1,8 @@
 
 import os
-try:
-    # Only patch if we're NOT in a gunicorn gevent worker context
-    worker_class = os.environ.get('gunicorn.worker_class', '').lower()
-    if 'gevent' not in worker_class:
-        import eventlet
-        eventlet.monkey_patch()
-        print("✓ Eventlet monkey-patched")
-except Exception as e:
-    print(f"⚠ Could not patch eventlet: {e}")
-
-try:
-    import gevent
-    # Don't patch here if using gevent worker; gunicorn handles it
-except Exception as e:
-    print(f"⚠ Gevent not available: {e}")
+import eventlet
+eventlet.monkey_patch()
+print("✓ Eventlet monkey-patched")
 
 import logging
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -47,15 +35,10 @@ from authlib.integrations.flask_client import OAuth
 app = Flask(__name__)
 
 
-preferred_async = os.getenv('ASYNC_MODE', '').lower() or None
+preferred_async = 'eventlet'
 debug_mode = os.getenv('ENVIRONMENT', '') == 'development' or os.getenv('FLASK_DEBUG', '') == '1'
-
-detected_async = None
-if preferred_async == 'gevent' or preferred_async is None:
-    detected_async = 'gevent'
-    print("✓ Gevent async mode selected")
-else:
-    detected_async = 'eventlet'
+detected_async = 'eventlet'
+print("✓ Eventlet async mode selected")
 
 # Allow CORS origins to be configured via env var (comma-separated), default to '*'
 cors_origins = os.getenv('SOCKETIO_CORS_ALLOWED_ORIGINS', '*')
