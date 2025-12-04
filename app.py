@@ -1,14 +1,20 @@
+
+import os
 try:
-    import eventlet
-    eventlet.monkey_patch()
+    # Only patch if we're NOT in a gunicorn gevent worker context
+    worker_class = os.environ.get('gunicorn.worker_class', '').lower()
+    if 'gevent' not in worker_class:
+        import eventlet
+        eventlet.monkey_patch()
+        print("✓ Eventlet monkey-patched")
 except Exception as e:
-    print(f"Warning: Could not patch eventlet: {e}")
+    print(f"⚠ Could not patch eventlet: {e}")
 
 try:
     import gevent
-    gevent.monkey.patch_all()
+    # Don't patch here if using gevent worker; gunicorn handles it
 except Exception as e:
-    print(f"Warning: Could not patch gevent: {e}")
+    print(f"⚠ Gevent not available: {e}")
 
 import logging
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -17,7 +23,6 @@ from flask import Flask, g, render_template, request, jsonify, redirect, url_for
 from datetime import datetime, timedelta, timezone, date
 
 import urllib
-import os
 
 def timeago(dt):
     if not dt:
