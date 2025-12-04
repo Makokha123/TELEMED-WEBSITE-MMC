@@ -111,6 +111,10 @@ class User(UserMixin, db.Model):
     encrypted_last_name = db.Column(db.LargeBinary, nullable=False)
     encrypted_phone = db.Column(db.LargeBinary)
     encrypted_profile_picture_path = db.Column(db.String(512))  # Encrypted path stored as text
+    # Binary profile picture storage (encrypted)
+    profile_picture_blob = db.Column(db.LargeBinary)  # Encrypted image bytes
+    profile_picture_mime = db.Column(db.String(50))   # Content type (e.g., 'image/jpeg')
+    profile_picture_name = db.Column(db.String(255))  # Original filename for reference
     date_of_birth = db.Column(db.Date)
     is_active = db.Column(db.Boolean, default=True)
     # Per-role toggles persisted on the user record
@@ -177,13 +181,25 @@ class User(UserMixin, db.Model):
 
     @property
     def profile_picture(self):
-        """Decrypt and return profile picture path from DB."""
+        """
+        Decrypt and return profile picture.
+        First checks for profile_picture_blob (encrypted binary),
+        then falls back to encrypted_profile_picture_path (for legacy or external URLs).
+        Returns: bytes if BLOB exists, string path if path exists, None otherwise.
+        """
+        # If BLOB exists, return marker indicating we have a blob
+        if self.profile_picture_blob:
+            return f"blob://{self.id}"
+        # Otherwise return decrypted path
         return _decrypt_text(self.encrypted_profile_picture_path) if self.encrypted_profile_picture_path else None
 
     @profile_picture.setter
     def profile_picture(self, value):
-        """Encrypt and store profile picture path in DB."""
-        self.encrypted_profile_picture_path = _encrypt_text(value) if value is not None else None
+        """Encrypt and store profile picture path in DB (for OAuth or external URLs)."""
+        if value is not None and isinstance(value, str):
+            self.encrypted_profile_picture_path = _encrypt_text(value)
+        else:
+            self.encrypted_profile_picture_path = None
 
     def get_display_name(self):
         """Safe method to get display name that won't crash on encryption errors"""

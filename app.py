@@ -1,18 +1,24 @@
-import logging
-import gevent
-import gevent.monkey
-gevent.monkey.patch_all()
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except Exception as e:
+    print(f"Warning: Could not patch eventlet: {e}")
 
+try:
+    import gevent
+    gevent.monkey.patch_all()
+except Exception as e:
+    print(f"Warning: Could not patch gevent: {e}")
+
+import logging
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import gc
-from flask import Flask
-from datetime import datetime, timedelta, timezone
+from flask import Flask, g, render_template, request, jsonify, redirect, url_for, flash, session
+from datetime import datetime, timedelta, timezone, date
 
 import urllib
 import os
-from models import Communication, PatientVital, Payment, Prescription, Report
 
-# Jinja2 filter for timeago
 def timeago(dt):
     if not dt:
         return "N/A"
@@ -31,42 +37,30 @@ def timeago(dt):
         return dt.strftime('%b %d, %Y')
 
 
-from flask import Flask
 from authlib.integrations.flask_client import OAuth
-from flask_dance.contrib.google import make_google_blueprint, google
-from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
 
 app = Flask(__name__)
 
-# Initialize Socket.IO with auto-detected async mode and sensible defaults.
-# Use environment variables to control behavior in production vs development.
 preferred_async = os.getenv('ASYNC_MODE', '').lower() or None
-detected_async = None
 debug_mode = os.getenv('ENVIRONMENT', '') == 'development' or os.getenv('FLASK_DEBUG', '') == '1'
-try:
-    if preferred_async == 'eventlet':
-        import eventlet
-        eventlet.monkey_patch()
-        detected_async = 'eventlet'
-    elif preferred_async == 'gevent':
+
+
+detected_async = None
+if preferred_async == 'gevent' or preferred_async is None:
+    try:
         import gevent
+        # Test if gevent works properly
         gevent.monkey.patch_all()
         detected_async = 'gevent'
-    else:
-        # Auto-detect the best available async library
-        try:
-            import eventlet
-            eventlet.monkey_patch()
-            detected_async = 'eventlet'
-        except Exception:
-            try:
-                import gevent
-                gevent.monkey.patch_all()
-                detected_async = 'gevent'
-            except Exception:
-                detected_async = None
-except Exception:
-    detected_async = None
+        print("✓ Gevent async mode selected")
+    except Exception as e:
+        print(f"⚠ Gevent failed ({e}), falling back to eventlet")
+        detected_async = 'eventlet'
+else:
+    detected_async = 'eventlet'
+
+if detected_async is None:
+    detected_async = 'eventlet'
 
 # Allow CORS origins to be configured via env var (comma-separated), default to '*'
 cors_origins = os.getenv('SOCKETIO_CORS_ALLOWED_ORIGINS', '*')
@@ -90,16 +84,13 @@ print(f"✓ Socket.IO initialized (async_mode={detected_async}, debug={debug_mod
 # Define SOCKETIO_AVAILABLE to indicate if socketio is available
 SOCKETIO_AVAILABLE = True
 
-# Twitter OAuth integration removed — disable related variables
-make_twitter_blueprint = None
-twitter = None
-HAVE_TWITTER_DANCE = False
+# Now import Flask-Dance after app is created
+from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.orm import aliased
-from flask import Flask, g, render_template, request, jsonify, redirect, url_for, flash, session
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import aliased, joinedload
 from sqlalchemy import QueuePool, func, distinct
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, generate_csrf
@@ -108,6 +99,14 @@ from uuid import uuid4
 from io import BytesIO
 from flask import send_file, abort
 from PIL import Image
+import secrets
+import string
+import json
+import hmac
+import hashlib
+from flask_migrate import Migrate
+import psutil
+
 # Load environment from .env if python-dotenv is available
 try:
     from dotenv import load_dotenv
@@ -116,30 +115,17 @@ except Exception:
     pass
 
 # Import models (after attempting to load .env so ENCRYPTION_KEY can be read)
-from models import SocialAccount, db, User, Patient, Doctor, Appointment, AuditLog, Testimonial, MedicalRecord, _hash_value, encrypt_file_bytes, decrypt_file_bytes
+from models import (
+    Communication, PatientVital, Payment, Prescription, Report,
+    SocialAccount, db, User, Patient, Doctor, Appointment, AuditLog, 
+    Testimonial, MedicalRecord, _hash_value, encrypt_file_bytes, decrypt_file_bytes
+)
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
-import secrets
-import string
 from config import Config
-import os
 
 # Initialize serializer for password reset tokens
 s = URLSafeTimedSerializer(os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production-12345'))
-from datetime import datetime
-from datetime import datetime, timedelta, date
-import json
-import hmac
-import hashlib
-from flask_migrate import Migrate
-import psutil
-
-try:
-    from config import Config
-except ImportError:
-    class Config:
-        ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt', 'mp3', 'wav', 'mp4'}
-        MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
 
 # Global dictionary to track online users for Socket.IO presence
 user_sockets = {}
@@ -317,27 +303,6 @@ def initialize_database():
             # Create default users
             create_default_users()
             
-            # Create uploads directory ONLY if it doesn't exist
-            uploads_dir = app.config['UPLOAD_FOLDER']
-            
-            # Create the full path if needed
-            if not os.path.exists(uploads_dir):
-                os.makedirs(uploads_dir, exist_ok=True)
-                print(f"✓ Created uploads directory: {uploads_dir}")
-            else:
-                # Just list what's in the directory for debugging
-                existing_files = []
-                try:
-                    for root, dirs, files in os.walk(uploads_dir):
-                        for file in files:
-                            existing_files.append(os.path.join(root, file))
-                    if existing_files:
-                        print(f"✓ Uploads directory already exists with {len(existing_files)} files")
-                    else:
-                        print(f"✓ Uploads directory already exists (empty)")
-                except Exception as e:
-                    print(f"✓ Uploads directory exists (error checking contents: {e})")
-                
         except Exception as e:
             print(f"✗ Database initialization error: {e}")
             import traceback
@@ -2576,15 +2541,8 @@ def get_user_profile(user_id):
         'username': user.username,
         'name': user.get_display_name(),
         'role': user.role,
-        'profile_picture_url': None
+        'profile_picture_url': get_user_profile_picture_url(user)
     }
-    
-    # Get profile picture URL
-    if user.profile_picture:
-        if user.profile_picture.startswith('http'):
-            profile_data['profile_picture_url'] = user.profile_picture
-        else:
-            profile_data['profile_picture_url'] = url_for('profile_picture', user_id=user.id, _external=True)
     
     return jsonify(profile_data)
 
@@ -3269,6 +3227,7 @@ if SOCKETIO_AVAILABLE:
 @login_required
 @csrf.exempt
 def upload_profile_picture():
+    """Upload and encrypt user profile picture, storing in BLOB and with proper directory structure."""
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file provided'}), 400
     
@@ -3286,17 +3245,42 @@ def upload_profile_picture():
             pass
     
     if file and allowed_file(file.filename):
-        # Read and encrypt file
+        # Read file
         raw = file.read()
         try:
+            # Encrypt file bytes
             encrypted_bytes = encrypt_file_bytes(raw)
             
-            # Store in user record as BLOB
+            # Store encrypted bytes in BLOB column
             target_user.profile_picture_blob = encrypted_bytes
-            target_user.profile_picture_mime = file.content_type
-            
-            # Also store original filename for reference
+            target_user.profile_picture_mime = file.content_type or 'image/jpeg'
             target_user.profile_picture_name = secure_filename(file.filename)
+            
+            # Also save to filesystem for reference (uploads/user/{role}/profile_pictures/)
+            try:
+                rel_root = _uploads_rel_root() or 'uploads'
+                user_role = getattr(target_user, 'role', 'user')
+                user_id = getattr(target_user, 'id', 'unknown')
+                
+                # Create directory structure: uploads/user/{role}/profile_pictures/
+                rel_dir = os.path.join(rel_root, 'user', user_role, 'profile_pictures').replace('\\', '/')
+                full_dir = os.path.join(app.root_path, rel_dir)
+                os.makedirs(full_dir, exist_ok=True)
+                
+                # Generate unique filename
+                storage_name = f"{uuid4().hex}__{secure_filename(file.filename)}.enc"
+                full_path = os.path.join(full_dir, storage_name)
+                rel_path_for_db = os.path.join(rel_dir, storage_name).replace('\\', '/')
+                
+                # Save encrypted file to disk
+                with open(full_path, 'wb') as fh:
+                    fh.write(encrypted_bytes)
+                
+                # Store the file path as backup (encrypted)
+                target_user.profile_picture = rel_path_for_db
+            except Exception as file_err:
+                logging.warning(f"Could not save profile picture to filesystem: {file_err}")
+                # Continue anyway since BLOB is stored
             
             db.session.add(target_user)
             db.session.commit()
@@ -3304,11 +3288,13 @@ def upload_profile_picture():
             return jsonify({
                 'success': True, 
                 'user_id': target_user.id,
-                'message': 'Profile picture stored in database'
+                'message': 'Profile picture uploaded successfully'
             }), 201
             
         except Exception as e:
-            return jsonify({'success': False, 'error': 'Encryption failed', 'detail': str(e)}), 500
+            db.session.rollback()
+            logging.error(f"Error uploading profile picture: {e}")
+            return jsonify({'success': False, 'error': 'Upload failed', 'detail': str(e)}), 500
     
     return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
@@ -3316,13 +3302,27 @@ def upload_profile_picture():
 # Serve decrypted profile picture for a user
 @app.route('/profile_picture/<int:user_id>')
 def profile_picture(user_id):
-    """Serve encrypted profile picture or fallback to SVG avatar."""
+    """Serve encrypted profile picture from BLOB or file path, or fallback to SVG avatar."""
     try:
         user = db.session.get(User, user_id)
         if not user:
             return _get_default_avatar('U')
         
-        # Get stored profile picture path (decrypted via @property)
+        # First priority: Check for BLOB in database (encrypted)
+        if user.profile_picture_blob:
+            try:
+                raw_bytes = decrypt_file_bytes(user.profile_picture_blob)
+                if raw_bytes:
+                    # Use stored MIME type or guess from filename
+                    mime_type = user.profile_picture_mime or 'image/jpeg'
+                    return send_file(
+                        BytesIO(raw_bytes),
+                        mimetype=mime_type
+                    )
+            except Exception as dec_err:
+                logging.error(f"Decryption error for profile blob (user {user_id}): {dec_err}")
+        
+        # Second priority: Check for file path (encrypted path in DB or external URL)
         pic_path = user.profile_picture
         
         if pic_path:
@@ -3330,33 +3330,38 @@ def profile_picture(user_id):
             if pic_path.startswith('http'):
                 return redirect(pic_path)
             
-            # Otherwise, it's a local encrypted file path stored in DB
-            try:
-                full_path = os.path.join(app.root_path, pic_path)
-                if os.path.exists(full_path) and os.path.isfile(full_path):
-                    # Decrypt and serve file
-                    with open(full_path, 'rb') as fh:
-                        encrypted_bytes = fh.read()
-                    try:
-                        raw_bytes = decrypt_file_bytes(encrypted_bytes)
-                        if raw_bytes:
-                            # Guess content type from file extension
-                            _, ext = os.path.splitext(pic_path)
-                            content_type = 'image/jpeg'
-                            if ext.lower() in ['.png']:
-                                content_type = 'image/png'
-                            elif ext.lower() in ['.gif']:
-                                content_type = 'image/gif'
-                            elif ext.lower() in ['.webp']:
-                                content_type = 'image/webp'
-                            return send_file(
-                                BytesIO(raw_bytes),
-                                mimetype=content_type
-                            )
-                    except Exception as dec_err:
-                        logging.error(f"Decryption error for {pic_path}: {dec_err}")
-            except Exception as file_err:
-                logging.error(f"File access error for {pic_path}: {file_err}")
+            # Check if it's a blob marker
+            if pic_path.startswith('blob://'):
+                # BLOB already checked above, this shouldn't happen
+                pass
+            else:
+                # It's a local encrypted file path stored in DB
+                try:
+                    full_path = os.path.join(app.root_path, pic_path)
+                    if os.path.exists(full_path) and os.path.isfile(full_path):
+                        # Decrypt and serve file
+                        with open(full_path, 'rb') as fh:
+                            encrypted_bytes = fh.read()
+                        try:
+                            raw_bytes = decrypt_file_bytes(encrypted_bytes)
+                            if raw_bytes:
+                                # Guess content type from file extension
+                                _, ext = os.path.splitext(pic_path)
+                                content_type = 'image/jpeg'
+                                if ext.lower() in ['.png']:
+                                    content_type = 'image/png'
+                                elif ext.lower() in ['.gif']:
+                                    content_type = 'image/gif'
+                                elif ext.lower() in ['.webp']:
+                                    content_type = 'image/webp'
+                                return send_file(
+                                    BytesIO(raw_bytes),
+                                    mimetype=content_type
+                                )
+                        except Exception as dec_err:
+                            logging.error(f"Decryption error for {pic_path}: {dec_err}")
+                except Exception as file_err:
+                    logging.error(f"File access error for {pic_path}: {file_err}")
         
         # Fallback to SVG avatar with user initials
         return _get_default_avatar(user.get_initials())
@@ -3385,6 +3390,39 @@ def _get_default_avatar(initials='U'):
         <text x="50" y="60" text-anchor="middle" fill="white" font-size="40" font-weight="bold" font-family="Arial">{initials}</text>
     </svg>
     ''', 200, {'Content-Type': 'image/svg+xml'}
+
+
+def get_user_profile_picture_url(user):
+    """
+    Get the profile picture URL for a user for use in JSON responses.
+    Returns: URL string or None
+    """
+    if not user:
+        return None
+    
+    # If user has profile picture (BLOB or path), use the route
+    if user.profile_picture:
+        if isinstance(user.profile_picture, str) and user.profile_picture.startswith('http'):
+            # External URL (OAuth)
+            return user.profile_picture
+        else:
+            # Local BLOB or encrypted file path
+            return url_for('profile_picture', user_id=user.id, _external=False)
+    
+    return None
+
+
+def get_user_profile_picture_url(user):
+    """Get profile picture URL for a user, handling BLOBs and paths."""
+    if not user:
+        return url_for('profile_picture', user_id=0, _external=True)
+    
+    # Check if user has BLOB or path
+    if user.profile_picture_blob or user.profile_picture:
+        return url_for('profile_picture', user_id=user.id, _external=True)
+    
+    # No profile picture, will fallback to SVG avatar
+    return url_for('profile_picture', user_id=user.id, _external=True)
 
     
 # Admin Communication Dashboard

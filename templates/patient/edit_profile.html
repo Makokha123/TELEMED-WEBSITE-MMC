@@ -25,6 +25,29 @@
                             </div>
                         </div>
 
+                        <!-- Profile Picture Section -->
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title mb-3">Profile Picture</h6>
+                                        <div class="row align-items-center">
+                                            <div class="col-md-3 text-center">
+                                                <img id="profilePreview" src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Profile" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:2px solid #ddd;">
+                                            </div>
+                                            <div class="col-md-9">
+                                                <label for="profile_picture" class="form-label">Upload New Picture</label>
+                                                <input type="file" id="profile_picture" class="form-control" accept="image/*">
+                                                <div class="form-text">Accepted formats: JPG, PNG, GIF (max 5MB)</div>
+                                                <div id="uploadStatus" class="mt-2"></div>
+                                                <button type="button" id="uploadProfileBtn" class="btn btn-sm btn-primary mt-2" style="display:none;">Upload Picture</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="first_name" class="form-label">First name</label>
@@ -231,6 +254,45 @@
         $('#height_cm').on('input change', validateHeight);
         $('#weight_kg').on('input change', validateWeight);
         $('#date_of_birth').on('input change', validateDOB);
+
+        // Profile picture upload
+        $('#profile_picture').on('change', function(){
+            if($(this).val()){
+                $('#uploadProfileBtn').show();
+            } else {
+                $('#uploadProfileBtn').hide();
+            }
+        });
+
+        $('#uploadProfileBtn').on('click', async function(){
+            const file = $('#profile_picture')[0].files[0];
+            if(!file) return;
+
+            const form = new FormData();
+            form.append('file', file);
+
+            try {
+                const res = await fetch('/upload_profile_picture', {
+                    method: 'POST',
+                    body: form
+                });
+                const data = await res.json();
+                if(data.success){
+                    $('#uploadStatus').html('<div class="alert alert-success">Profile picture uploaded successfully!</div>');
+                    // Reload preview after 1 second
+                    setTimeout(() => {
+                        $('#profilePreview').attr('src', '{{ url_for("profile_picture", user_id=user.id) }}?' + new Date().getTime());
+                        $('#profile_picture').val('');
+                        $('#uploadProfileBtn').hide();
+                        $('#uploadStatus').html('');
+                    }, 1000);
+                } else {
+                    $('#uploadStatus').html('<div class="alert alert-danger">Error: ' + (data.error || 'Upload failed') + '</div>');
+                }
+            } catch(err){
+                $('#uploadStatus').html('<div class="alert alert-danger">Error: ' + err.message + '</div>');
+            }
+        });
     });
 </script>
 {% endblock %}

@@ -138,7 +138,7 @@
     <div class="profile-header">
         <div class="profile-avatar">
             {% if user.profile_picture %}
-                <img src="{{ url_for('static', filename=user.profile_picture) }}" alt="{{ user.get_display_name() }}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;" />
+                <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="{{ user.get_display_name() }}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;" />
             {% else %}
                 {{ user.first_name[0] }}{{ user.last_name[0] }}
             {% endif %}
