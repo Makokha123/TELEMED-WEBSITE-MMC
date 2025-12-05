@@ -1131,40 +1131,49 @@ function loadPatients() {
                 return;
             }
 
-            // Create patient items directly from the grouped data
+            // Flatten appointments - create individual items for each appointment
+            const allAppointments = [];
             appointmentsByPatient.forEach(patientGroup => {
-                // Get the most recent appointment for preview
-                const allAppointments = [
-                    ...patientGroup.today,
-                    ...patientGroup.upcoming,
-                    ...patientGroup.completed,
-                    ...patientGroup.rescheduled,
-                    ...patientGroup.pending
-                ];
+                // Collect all appointments from all categories
+                const categories = patientGroup.today || [];
+                const upcoming = patientGroup.upcoming || [];
+                const completed = patientGroup.completed || [];
+                const rescheduled = patientGroup.rescheduled || [];
+                const pending = patientGroup.pending || [];
                 
-                const latestAppointment = allAppointments[0] || {};
+                const appointments = [...categories, ...upcoming, ...completed, ...rescheduled, ...pending];
                 
-                const patientData = {
-                    patient: patientGroup.patient,
-                    appointments: allAppointments,
-                    lastMessage: latestAppointment.last_message || 'No messages yet',
-                    lastMessageTime: latestAppointment.last_message_time || '',
-                    unreadCount: latestAppointment.unread_count || 0,
-                    paymentStatus: latestAppointment.payment_status || 'pending'
-                };
-                
-                const item = createPatientItem(patientGroup.patient, patientData);
-                list.appendChild(item);
+                appointments.forEach(appointment => {
+                    allAppointments.push({
+                        appointment: appointment,
+                        patient: patientGroup.patient
+                    });
+                });
+            });
+            
+            // Sort appointments by date (descending - closest upcoming first)
+            allAppointments.sort((a, b) => {
+                const dateA = new Date(a.appointment?.appointment_date || 0);
+                const dateB = new Date(b.appointment?.appointment_date || 0);
+                return dateB - dateA; // Descending order (newest first)
+            });
+            
+            // Create appointment items - each appointment separately
+            allAppointments.forEach(item => {
+                const appointmentItem = createAppointmentItem(item.patient, item.appointment);
+                if (appointmentItem) {
+                    list.appendChild(appointmentItem);
+                }
             });
         })
         .catch(error => {
-            console.error('Error loading patients:', error);
+            console.error('Error loading appointments:', error);
             const list = document.getElementById('patientsList');
             list.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                    <div class="empty-state-text">Error loading patients</div>
-                    <div class="empty-state-subtext">Unable to load patients. Please try again.</div>
+                    <div class="empty-state-text">Error loading appointments</div>
+                    <div class="empty-state-subtext">Unable to load appointments. Please try again.</div>
                 </div>
             `;
             
@@ -1172,115 +1181,141 @@ function loadPatients() {
             console.log('Detailed error:', error.message);
         });
 }
-// Create patient list item
-function createPatientItem(patient, patientData) {
-    const div = document.createElement('div');
-    div.className = 'appointment-item';
-    div.dataset.patientId = patient.id;
-    div.dataset.paymentStatus = patientData.paymentStatus || 'pending';
-    
-    const name = `${patient.first_name} ${patient.last_name}`;
-    const avatarText = getInitials(name);
-    const profilePictureUrl = patient.profile_picture_url;
-    const lastAppointment = patientData.appointments[0];
-    
-    // Payment badge
-    const paymentBadge = patientData.paymentStatus === 'paid' ? 
-        '<span class="badge bg-success ms-2">Paid</span>' : 
-        '<span class="badge bg-warning ms-2">Pending</span>';
-    
-    div.innerHTML = `
-        <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
-             data-profile-picture="${profilePictureUrl || ''}">
-            ${profilePictureUrl ? `<img src="${profilePictureUrl}" alt="${name}">` : avatarText}
-            <div class="online-indicator"></div>
-        </div>
-        <div class="appointment-content">
-            <div class="appointment-header">
-                <span class="appointment-name">${name}</span>
-                <span class="appointment-time">${patientData.lastMessageTime || ''}</span>
-            </div>
-            <div class="appointment-preview">${patientData.lastMessage || 'No messages yet'}</div>
-            <div class="appointment-details">
-                <small class="text-muted">
-                    ${patientData.appointments.length} consultation(s) ${paymentBadge}
-                </small>
-            </div>
-        </div>
-        ${patientData.unreadCount > 0 ? `<div class="unread-badge">${patientData.unreadCount}</div>` : ''}
-    `;
-    
-    // Load profile picture if available
-    if (profilePictureUrl) {
-        setTimeout(() => {
-            const avatar = div.querySelector('.appointment-avatar');
-            if (avatar.dataset.profilePicture) {
-                const img = document.createElement('img');
-                img.src = avatar.dataset.profilePicture;
-                img.alt = name;
-                img.onload = () => {
-                    avatar.innerHTML = '';
-                    avatar.appendChild(img);
-                    const indicator = document.createElement('div');
-                    indicator.className = 'online-indicator';
-                    avatar.appendChild(indicator);
-                };
-                img.onerror = () => {
-                    avatar.textContent = avatarText;
-                    avatar.classList.add('initials');
-                    const indicator = document.createElement('div');
-                    indicator.className = 'online-indicator';
-                    avatar.appendChild(indicator);
-                };
+
+// Create appointment item (each appointment separately)
+function createAppointmentItem(patient, appointment) {
+    try {
+        const div = document.createElement('div');
+        div.className = 'appointment-item';
+        
+        const appointmentId = appointment?.appointment_id || appointment?.id;
+        const patientId = patient?.id;
+        
+        if (!appointmentId || !patientId) {
+            console.warn('Missing appointment or patient data:', { appointment, patient });
+            return null;
+        }
+        
+        div.dataset.appointmentId = appointmentId;
+        div.dataset.patientId = patientId;
+        div.dataset.paymentStatus = appointment?.payment_status || 'pending';
+        
+        const name = `${patient.first_name} ${patient.last_name}`;
+        const avatarText = getInitials(name);
+        const profilePictureUrl = patient.profile_picture_url;
+        
+        // Format appointment date for display
+        const appointmentDate = appointment?.appointment_date ? new Date(appointment.appointment_date) : null;
+        let appointmentDateDisplay = '';
+        if (appointmentDate) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            
+            if (appointmentDate.toDateString() === today.toDateString()) {
+                appointmentDateDisplay = 'Today ' + (appointment.appointment_time || '');
+            } else if (appointmentDate.toDateString() === tomorrow.toDateString()) {
+                appointmentDateDisplay = 'Tomorrow ' + (appointment.appointment_time || '');
+            } else {
+                appointmentDateDisplay = appointmentDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + (appointment.appointment_time || '');
             }
-        }, 100);
+        }
+        
+        // Payment badge
+        const paymentBadge = appointment?.payment_status === 'paid' ? 
+            '<span class="badge bg-success ms-2">Paid</span>' : 
+            '<span class="badge bg-warning ms-2">Pending</span>';
+        
+        div.innerHTML = `
+            <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
+                 data-profile-picture="${profilePictureUrl || ''}">
+                ${profilePictureUrl ? `<img src="${profilePictureUrl}" alt="${name}">` : avatarText}
+                <div class="online-indicator"></div>
+            </div>
+            <div class="appointment-content">
+                <div class="appointment-header">
+                    <span class="appointment-name">${name}</span>
+                    <span class="appointment-time">${appointment?.last_message_time || ''}</span>
+                </div>
+                <div class="appointment-preview">${appointment?.last_message || 'No messages yet'}</div>
+                <div class="appointment-details">
+                    <small class="text-muted">
+                        ${appointmentDateDisplay} ${paymentBadge}
+                    </small>
+                </div>
+            </div>
+            ${appointment?.unread_count > 0 ? `<div class="unread-badge">${appointment.unread_count}</div>` : ''}
+        `;
+        
+        // Load profile picture if available
+        if (profilePictureUrl) {
+            setTimeout(() => {
+                const avatar = div.querySelector('.appointment-avatar');
+                if (avatar && avatar.dataset.profilePicture) {
+                    const img = document.createElement('img');
+                    img.src = avatar.dataset.profilePicture;
+                    img.alt = name;
+                    img.onload = () => {
+                        if (avatar) {
+                            avatar.innerHTML = '';
+                            avatar.appendChild(img);
+                            const indicator = document.createElement('div');
+                            indicator.className = 'online-indicator';
+                            avatar.appendChild(indicator);
+                        }
+                    };
+                    img.onerror = () => {
+                        if (avatar) {
+                            avatar.textContent = avatarText;
+                            avatar.classList.add('initials');
+                            const indicator = document.createElement('div');
+                            indicator.className = 'online-indicator';
+                            avatar.appendChild(indicator);
+                        }
+                    };
+                }
+            }, 100);
+        }
+        
+        div.addEventListener('click', () => selectAppointment(appointmentId, patient, appointment));
+        return div;
+    } catch (error) {
+        console.error('Error creating appointment item:', error);
+        return null;
     }
-    
-    div.addEventListener('click', () => selectPatient(patient.id, patient, lastAppointment));
-    return div;
 }
 
-// Select patient
-function selectPatient(patientId, patientData, appointmentData) {
-    selectedPatientId = patientId;
+// Select appointment
+function selectAppointment(appointmentId, patientData, appointmentData) {
+    selectedAppointmentId = appointmentId;
+    selectedPatientId = patientData?.id;
     selectedPatientData = patientData;
     
     // Update selected state
     document.querySelectorAll('.appointment-item').forEach(item => {
         item.classList.remove('active');
-        if (item.dataset.patientId === patientId.toString()) {
+        if (item.dataset.appointmentId === appointmentId.toString()) {
             item.classList.add('active');
+            paymentStatus = item.dataset.paymentStatus;
         }
     });
     
     // Update UI for mobile
     if (window.innerWidth <= 768) {
-        document.getElementById('appointmentsSidebar').style.display = 'none';
-        document.getElementById('chatArea').style.display = 'flex';
-        document.getElementById('backToList').style.display = 'flex';
+        const patientsSidebar = document.getElementById('patientsSidebar');
+        const chatArea = document.getElementById('chatArea');
+        const backToList = document.getElementById('backToList');
+        
+        if (patientsSidebar) patientsSidebar.style.display = 'none';
+        if (chatArea) chatArea.style.display = 'flex';
+        if (backToList) backToList.style.display = 'flex';
     }
     
-    // Get the latest appointment for this patient
-    if (appointmentData) {
-        selectedAppointmentId = appointmentData.appointment_id;
-        loadAppointmentDetails(selectedAppointmentId);
-    } else {
-        // Try to get latest appointment
-        fetch(`/api/doctor/patient/${patientId}/latest-appointment`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.appointment_id) {
-                    selectedAppointmentId = data.appointment_id;
-                    loadAppointmentDetails(selectedAppointmentId);
-                } else {
-                    // No appointment found, create one or show message
-                    showNoAppointmentMessage();
-                }
-            });
-    }
+    // Load appointment details
+    loadAppointmentDetails(appointmentId);
 }
 
-// Load appointment details
 function loadAppointmentDetails(appointmentId) {
     fetch(`/api/appointment/${appointmentId}/details`)
         .then(response => response.json())

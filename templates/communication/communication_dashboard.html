@@ -1183,7 +1183,7 @@ function loadDoctors() {
             return response.json();
         })
         .then(data => {
-            console.log('Doctors data received:', data);
+            console.log('Appointments data received:', data);
             
             list.innerHTML = '';
             
@@ -1198,8 +1198,15 @@ function loadDoctors() {
                 return;
             }
 
-            // Create doctor items
-            data.forEach(appointmentData => {
+            // Sort appointments by appointment date (descending - closest upcoming first)
+            const sortedAppointments = [...data].sort((a, b) => {
+                const dateA = new Date(a.appointment_date || 0);
+                const dateB = new Date(b.appointment_date || 0);
+                return dateB - dateA; // Descending order (newest first)
+            });
+
+            // Create appointment items - each appointment separately
+            sortedAppointments.forEach(appointmentData => {
                 if (!appointmentData || typeof appointmentData !== 'object') {
                     console.warn('Invalid appointment data:', appointmentData);
                     return;
@@ -1234,21 +1241,23 @@ function loadDoctors() {
         });
 }
 
-// Create doctor list item with safe data access
-function createDoctorItem(doctor, doctorData) {
+// Create appointment item with full details
+function createDoctorItem(doctor, appointmentData) {
     try {
         const div = document.createElement('div');
         div.className = 'appointment-item';
         
-        // Safely get doctor ID
+        // Get doctor ID from appointmentData (which is the single appointment record)
+        const appointmentId = appointmentData?.appointment_id;
         const doctorId = doctor?.id;
-        if (!doctorId) {
-            console.error('Doctor ID is missing:', doctor);
+        if (!appointmentId || !doctorId) {
+            console.error('Appointment ID or Doctor ID is missing:', appointmentData);
             return null;
         }
         
+        div.dataset.appointmentId = appointmentId;
         div.dataset.doctorId = doctorId;
-        div.dataset.paymentStatus = doctorData?.paymentStatus || 'pending';
+        div.dataset.paymentStatus = appointmentData?.payment_status || 'pending';
         
         // Safely get doctor name
         const firstName = doctor?.first_name || '';
@@ -1258,21 +1267,37 @@ function createDoctorItem(doctor, doctorData) {
         
         // Safely get profile picture
         const profilePictureUrl = doctor?.profile_picture_url || 
-                                 doctorData?.doctor?.profile_picture_url;
-        
-        // Safely get appointments array
-        const appointments = doctorData?.appointments || [];
-        const lastAppointment = appointments[0] || doctorData;
+                                 appointmentData?.doctor?.profile_picture_url;
         
         // Safely get online status
         const isOnline = doctor?.is_online || false;
         
-        // Safely get other data with defaults
-        const lastMessageTime = doctorData?.lastMessageTime || '';
-        const lastMessage = doctorData?.lastMessage || 'No messages yet';
+        // Safely get appointment details
+        const appointmentDate = appointmentData?.appointment_date ? new Date(appointmentData.appointment_date) : null;
+        const lastMessageTime = appointmentData?.last_message_time || '';
+        const lastMessage = appointmentData?.last_message || 'No messages yet';
         const specialization = doctor?.specialization || 'General Practitioner';
-        const paymentStatus = doctorData?.paymentStatus || 'pending';
-        const unreadCount = doctorData?.unreadCount || 0;
+        const paymentStatus = appointmentData?.payment_status || 'pending';
+        const unreadCount = appointmentData?.unread_count || 0;
+        const consultationType = appointmentData?.consultation_type || 'Consultation';
+        const appointmentStatus = appointmentData?.status || '';
+        
+        // Format appointment date for display
+        let appointmentDateDisplay = '';
+        if (appointmentDate) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            
+            if (appointmentDate.toDateString() === today.toDateString()) {
+                appointmentDateDisplay = 'Today ' + appointmentData.appointment_time;
+            } else if (appointmentDate.toDateString() === tomorrow.toDateString()) {
+                appointmentDateDisplay = 'Tomorrow ' + appointmentData.appointment_time;
+            } else {
+                appointmentDateDisplay = appointmentDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + appointmentData.appointment_time;
+            }
+        }
         
         div.innerHTML = `
             <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
@@ -1288,7 +1313,7 @@ function createDoctorItem(doctor, doctorData) {
                 <div class="appointment-preview">${escapeHtml(lastMessage)}</div>
                 <div class="appointment-details">
                     <small class="text-muted">
-                        ${escapeHtml(specialization)}
+                        ${escapeHtml(specialization)} • ${escapeHtml(appointmentDateDisplay)}
                         <span class="payment-badge ms-2 ${paymentStatus === 'paid' ? 'paid' : 'pending'}">
                             ${paymentStatus === 'paid' ? '✓ Paid' : 'Payment Pending'}
                         </span>
@@ -1329,13 +1354,13 @@ function createDoctorItem(doctor, doctorData) {
         }
         
         div.addEventListener('click', () => {
-            if (doctorId) {
-                selectDoctor(doctorId, doctor, lastAppointment);
+            if (appointmentId) {
+                selectAppointment(appointmentId, doctor, appointmentData);
             }
         });
         return div;
     } catch (error) {
-        console.error('Error creating doctor item:', error);
+        console.error('Error creating appointment item:', error);
         return null;
     }
 }
@@ -1351,21 +1376,20 @@ function handleProfilePictureError(imgElement) {
     }
 }
 
-// Select doctor
-function selectDoctor(doctorId, doctorData, appointmentData) {
-    console.log('Selecting doctor:', doctorId);
+// Select appointment
+function selectAppointment(appointmentId, doctorData, appointmentData) {
+    console.log('Selecting appointment:', appointmentId);
     
-    selectedDoctorId = doctorId;
+    selectedDoctorId = doctorData?.id;
     selectedDoctorData = doctorData;
+    selectedAppointmentId = appointmentId;
     
     // Update selected state
     document.querySelectorAll('.appointment-item').forEach(item => {
-        if (item.dataset.doctorId) {
-            item.classList.remove('active');
-            if (item.dataset.doctorId === doctorId.toString()) {
-                item.classList.add('active');
-                paymentStatus = item.dataset.paymentStatus || 'pending';
-            }
+        item.classList.remove('active');
+        if (item.dataset.appointmentId === appointmentId.toString()) {
+            item.classList.add('active');
+            paymentStatus = item.dataset.paymentStatus || 'pending';
         }
     });
     
@@ -1380,30 +1404,11 @@ function selectDoctor(doctorId, doctorData, appointmentData) {
         if (backToList) backToList.style.display = 'flex';
     }
     
-    // Get the latest appointment for this doctor
-    if (appointmentData) {
-        selectedAppointmentId = appointmentData.appointment_id || appointmentData.id;
-        selectedAppointmentData = appointmentData;
-        loadAppointmentDetails(selectedAppointmentId);
-    } else {
-        // Try to get latest appointment
-        fetch(`/api/patient/doctor/${doctorId}/latest-appointment`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data && data.appointment_id) {
-                    selectedAppointmentId = data.appointment_id;
-                    loadAppointmentDetails(selectedAppointmentId);
-                } else {
-                    // No appointment found, show message
-                    showNoAppointmentMessage();
-                }
-            })
-            .catch(error => {
+    // Load appointment details
+    loadAppointmentDetails(appointmentId);
+}
+
+function loadAppointmentDetails(appointmentId) {
                 console.error('Error getting latest appointment:', error);
                 showNoAppointmentMessage();
             });

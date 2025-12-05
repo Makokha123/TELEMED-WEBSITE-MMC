@@ -1109,7 +1109,7 @@ function loadUserProfilePicture() {
 
 // Load doctors with appointments (similar to loadPatients() in doctor version)
 function loadDoctorsWithAppointments() {
-    fetch('/api/patient/doctors-with-appointments') // Need to create this endpoint
+    fetch('/api/patient/appointments')
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -1120,7 +1120,7 @@ function loadDoctorsWithAppointments() {
             const list = document.getElementById('doctorsList');
             list.innerHTML = '';
             
-            if (!data || data.length === 0) {
+            if (!data || !Array.isArray(data) || data.length === 0) {
                 list.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon"><i class="fas fa-user-md"></i></div>
@@ -1131,19 +1131,28 @@ function loadDoctorsWithAppointments() {
                 return;
             }
 
-            // Create doctor items
-            data.forEach(doctorData => {
-                const item = createDoctorItem(doctorData);
-                list.appendChild(item);
+            // Sort appointments by appointment date (descending - closest upcoming first)
+            const sortedAppointments = [...data].sort((a, b) => {
+                const dateA = new Date(a.appointment_date || 0);
+                const dateB = new Date(b.appointment_date || 0);
+                return dateB - dateA; // Descending order (newest first)
+            });
+
+            // Create appointment items - each appointment separately
+            sortedAppointments.forEach(appointmentData => {
+                const item = createAppointmentItem(appointmentData);
+                if (item) {
+                    list.appendChild(item);
+                }
             });
         })
         .catch(error => {
-            console.error('Error loading doctors:', error);
+            console.error('Error loading appointments:', error);
             const list = document.getElementById('doctorsList');
             list.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                    <div class="empty-state-text">Error loading doctors</div>
+                    <div class="empty-state-text">Error loading appointments</div>
                     <div class="empty-state-subtext">${error.message}</div>
                     <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">
                         <i class="fas fa-sync me-1"></i>Refresh
@@ -1153,82 +1162,120 @@ function loadDoctorsWithAppointments() {
         });
 }
 
-// Create doctor list item (similar to createPatientItem() but for doctors)
-function createDoctorItem(doctorData) {
-    const div = document.createElement('div');
-    div.className = 'appointment-item';
-    div.dataset.doctorId = doctorData.id;
-    div.dataset.paymentStatus = doctorData.paymentStatus || 'pending';
-    
-    const name = `Dr. ${doctorData.first_name} ${doctorData.last_name}`;
-    const avatarText = getInitials(name);
-    const profilePictureUrl = doctorData.profile_picture_url;
-    
-    // Payment badge
-    const paymentBadge = doctorData.paymentStatus === 'paid' ? 
-        '<span class="badge bg-success ms-2">Paid</span>' : 
-        '<span class="badge bg-warning ms-2">Pending</span>';
-    
-    div.innerHTML = `
-        <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
-             data-profile-picture="${profilePictureUrl || ''}">
-            ${profilePictureUrl ? `<img src="${profilePictureUrl}" alt="${name}">` : avatarText}
-            <div class="online-indicator ${doctorData.is_online ? '' : 'offline'}"></div>
-        </div>
-        <div class="appointment-content">
-            <div class="appointment-header">
-                <span class="appointment-name">${name}</span>
-                <span class="appointment-time">${doctorData.lastMessageTime || ''}</span>
-            </div>
-            <div class="appointment-preview">${doctorData.lastMessage || 'No messages yet'}</div>
-            <div class="appointment-details">
-                <small class="text-muted">
-                    ${doctorData.specialization || 'General Practitioner'} ${paymentBadge}
-                </small>
-            </div>
-        </div>
-        ${doctorData.unreadCount > 0 ? `<div class="unread-badge">${doctorData.unreadCount}</div>` : ''}
-    `;
-    
-    // Load profile picture if available
-    if (profilePictureUrl) {
-        setTimeout(() => {
-            const avatar = div.querySelector('.appointment-avatar');
-            if (avatar.dataset.profilePicture) {
-                const img = document.createElement('img');
-                img.src = avatar.dataset.profilePicture;
-                img.alt = name;
-                img.onload = () => {
-                    avatar.innerHTML = '';
-                    avatar.appendChild(img);
-                    const indicator = document.createElement('div');
-                    indicator.className = doctorData.is_online ? 'online-indicator' : 'online-indicator offline';
-                    avatar.appendChild(indicator);
-                };
-                img.onerror = () => {
-                    avatar.textContent = avatarText;
-                    avatar.classList.add('initials');
-                    const indicator = document.createElement('div');
-                    indicator.className = doctorData.is_online ? 'online-indicator' : 'online-indicator offline';
-                    avatar.appendChild(indicator);
-                };
+// Create appointment item (each appointment separately)
+function createAppointmentItem(appointmentData) {
+    try {
+        const div = document.createElement('div');
+        div.className = 'appointment-item';
+        
+        const appointmentId = appointmentData?.appointment_id;
+        const doctor = appointmentData?.doctor;
+        
+        if (!appointmentId || !doctor) {
+            console.warn('Missing appointment or doctor data:', appointmentData);
+            return null;
+        }
+        
+        div.dataset.appointmentId = appointmentId;
+        div.dataset.doctorId = doctor.id;
+        div.dataset.paymentStatus = appointmentData?.payment_status || 'pending';
+        
+        const name = `Dr. ${doctor.first_name} ${doctor.last_name}`;
+        const avatarText = getInitials(name);
+        const profilePictureUrl = doctor.profile_picture_url;
+        
+        // Format appointment date for display
+        const appointmentDate = appointmentData?.appointment_date ? new Date(appointmentData.appointment_date) : null;
+        let appointmentDateDisplay = '';
+        if (appointmentDate) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            
+            if (appointmentDate.toDateString() === today.toDateString()) {
+                appointmentDateDisplay = 'Today ' + appointmentData.appointment_time;
+            } else if (appointmentDate.toDateString() === tomorrow.toDateString()) {
+                appointmentDateDisplay = 'Tomorrow ' + appointmentData.appointment_time;
+            } else {
+                appointmentDateDisplay = appointmentDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + appointmentData.appointment_time;
             }
-        }, 100);
+        }
+        
+        // Payment badge
+        const paymentBadge = appointmentData?.payment_status === 'paid' ? 
+            '<span class="badge bg-success ms-2">Paid</span>' : 
+            '<span class="badge bg-warning ms-2">Pending</span>';
+        
+        div.innerHTML = `
+            <div class="appointment-avatar ${profilePictureUrl ? '' : 'initials'}" 
+                 data-profile-picture="${profilePictureUrl || ''}">
+                ${profilePictureUrl ? `<img src="${profilePictureUrl}" alt="${name}">` : avatarText}
+                <div class="online-indicator ${doctor.is_online ? '' : 'offline'}"></div>
+            </div>
+            <div class="appointment-content">
+                <div class="appointment-header">
+                    <span class="appointment-name">${name}</span>
+                    <span class="appointment-time">${appointmentData?.last_message_time || ''}</span>
+                </div>
+                <div class="appointment-preview">${appointmentData?.last_message || 'No messages yet'}</div>
+                <div class="appointment-details">
+                    <small class="text-muted">
+                        ${doctor.specialization || 'General Practitioner'} • ${appointmentDateDisplay} ${paymentBadge}
+                    </small>
+                </div>
+            </div>
+            ${appointmentData?.unread_count > 0 ? `<div class="unread-badge">${appointmentData.unread_count}</div>` : ''}
+        `;
+        
+        // Load profile picture if available
+        if (profilePictureUrl) {
+            setTimeout(() => {
+                const avatar = div.querySelector('.appointment-avatar');
+                if (avatar && avatar.dataset.profilePicture) {
+                    const img = document.createElement('img');
+                    img.src = avatar.dataset.profilePicture;
+                    img.alt = name;
+                    img.onload = () => {
+                        if (avatar) {
+                            avatar.innerHTML = '';
+                            avatar.appendChild(img);
+                            const indicator = document.createElement('div');
+                            indicator.className = doctor.is_online ? 'online-indicator' : 'online-indicator offline';
+                            avatar.appendChild(indicator);
+                        }
+                    };
+                    img.onerror = () => {
+                        if (avatar) {
+                            avatar.textContent = avatarText;
+                            avatar.classList.add('initials');
+                            const indicator = document.createElement('div');
+                            indicator.className = doctor.is_online ? 'online-indicator' : 'online-indicator offline';
+                            avatar.appendChild(indicator);
+                        }
+                    };
+                }
+            }, 100);
+        }
+        
+        div.addEventListener('click', () => selectAppointment(appointmentId, doctor, appointmentData));
+        return div;
+    } catch (error) {
+        console.error('Error creating appointment item:', error);
+        return null;
     }
-    
-    div.addEventListener('click', () => selectDoctor(doctorData.id, doctorData));
-    return div;
 }
 
-// Select doctor
-function selectDoctor(doctorId, doctorData) {
-    selectedDoctorId = doctorId;
+// Select appointment
+function selectAppointment(appointmentId, doctorData, appointmentData) {
+    selectedAppointmentId = appointmentId;
+    selectedDoctorId = doctorData?.id;
     selectedDoctorData = doctorData;
     
     // Update selected state
     document.querySelectorAll('.appointment-item').forEach(item => {
         item.classList.remove('active');
-        if (item.dataset.doctorId === doctorId.toString()) {
+        if (item.dataset.appointmentId === appointmentId.toString()) {
             item.classList.add('active');
             paymentStatus = item.dataset.paymentStatus;
         }
@@ -1241,24 +1288,11 @@ function selectDoctor(doctorId, doctorData) {
         document.getElementById('backToList').style.display = 'flex';
     }
     
-    // Get the latest appointment for this doctor
-    fetch(`/api/patient/doctor/${doctorId}/latest-appointment`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.appointment_id) {
-                selectedAppointmentId = data.appointment_id;
-                loadAppointmentDetails(selectedAppointmentId);
-            } else {
-                showNoAppointmentMessage();
-            }
-        })
-        .catch(() => {
-            showNoAppointmentMessage();
-        });
+    // Load appointment details
+    loadAppointmentDetails(appointmentId);
 }
 
-// Load appointment details (similar to doctor version)
-function loadAppointmentDetails(appointmentId) {
+// Load appointment detailsfunction loadAppointmentDetails(appointmentId) {
     fetch(`/api/appointment/${appointmentId}/details`)
         .then(response => response.json())
         .then(data => {
