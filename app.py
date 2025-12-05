@@ -5122,22 +5122,72 @@ def send_voice_note():
     if audio_file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'}), 400
     
-    filename = secure_filename(f"voice_{current_user.id}_{datetime.now(timezone.utc).timestamp()}.wav")
+    # Generate filename
+    filename = secure_filename(f"voice_{current_user.id}_{datetime.now(timezone.utc).timestamp()}.webm")
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    # Create uploads directory if it doesn't exist
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    # Save file
     audio_file.save(file_path)
     
+    # Create communication record
     communication = Communication(
         appointment_id=appointment_id,
         sender_id=current_user.id,
         message_type='voice_note',
         content='[Voice Note]',
-        file_path=file_path
+        file_path=file_path,
+        file_name=filename,
+        file_size=os.path.getsize(file_path),
+        message_status='delivered'
     )
     
     db.session.add(communication)
+    db.session.flush()  # Get the ID before commit
+    
+    # Prepare file URL
+    file_url = f'/static/uploads/{filename}'
+    
+    # Get recipient based on current user role
+    if current_user.role == 'patient':
+        recipient_id = appointment.doctor.user_id
+    else:
+        recipient_id = appointment.patient.user_id
+    
+    # Mark as delivered if recipient is online
+    recipient_socket_id = user_sockets.get(recipient_id)
+    if recipient_socket_id:
+        communication.message_status = 'delivered'
+    
     db.session.commit()
     
-    return jsonify({'success': True, 'message_id': communication.id})
+    # Broadcast to appointment room via Socket.IO
+    appointment_room = f'appointment_{appointment_id}'
+    message_data = {
+        'id': communication.id,
+        'sender_id': current_user.id,
+        'sender_name': safe_display_name(current_user),
+        'content': '[Voice Note]',
+        'message_type': 'voice_note',
+        'timestamp': communication.created_at.isoformat(),
+        'message_status': communication.message_status,
+        'file_url': file_url,
+        'file_name': filename,
+        'file_size': communication.file_size,
+        'appointment_id': appointment_id
+    }
+    
+    # Emit to all in the room
+    socketio.emit('message_received', message_data, room=appointment_room)
+    
+    return jsonify({
+        'success': True,
+        'message_id': communication.id,
+        'file_url': file_url,
+        'message_status': communication.message_status
+    })
 
 # API for doctor communication
 
@@ -5488,6 +5538,42 @@ def send_patient_message():
 # ============================================
 # VIDEO/VOICE CALL ROUTES
 # ============================================
+
+@app.route('/incoming-video-call/<int:appointment_id>')
+@login_required
+def incoming_video_call(appointment_id):
+    """Incoming video call notification page"""
+    appointment = Appointment.query.get_or_404(appointment_id)
+    
+    # Verify user is the recipient of this call (not the initiator)
+    if current_user.role == 'patient':
+        patient = Patient.query.filter_by(user_id=current_user.id).first()
+        if not patient or appointment.patient_id != patient.id:
+            return redirect(url_for('index'))
+    elif current_user.role == 'doctor':
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        if not doctor or appointment.doctor_id != doctor.id:
+            return redirect(url_for('index'))
+    
+    return render_template('communication/incoming_video_call.html', appointment=appointment)
+
+@app.route('/incoming-voice-call/<int:appointment_id>')
+@login_required
+def incoming_voice_call(appointment_id):
+    """Incoming voice call notification page"""
+    appointment = Appointment.query.get_or_404(appointment_id)
+    
+    # Verify user is the recipient of this call (not the initiator)
+    if current_user.role == 'patient':
+        patient = Patient.query.filter_by(user_id=current_user.id).first()
+        if not patient or appointment.patient_id != patient.id:
+            return redirect(url_for('index'))
+    elif current_user.role == 'doctor':
+        doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+        if not doctor or appointment.doctor_id != doctor.id:
+            return redirect(url_for('index'))
+    
+    return render_template('communication/incoming_voice_call.html', appointment=appointment)
 
 @app.route('/video-call/<int:appointment_id>')
 @login_required
@@ -6369,7 +6455,7 @@ def handle_initiate_video_call(data):
             'call_type': 'video'
         })
         
-        # Prepare call notification data
+        # Prepare call notification data (including caller_id)
         call_data = {
             'appointment_id': appointment_id,
             'caller_id': current_user.id,
@@ -6451,7 +6537,7 @@ def handle_accept_video_call(data):
         
         # Update call status
         call_info['status'] = 'accepted'
-        call_info['accepted_time'] = datetime.utcnow().isoformat()
+        call_info['accepted_time'] = datetime.now(timezone.utc).isoformat()
         
         # Notify both parties that call is connected
         caller_socket_id = user_sockets.get(call_info['caller_id'])
@@ -6702,27 +6788,97 @@ def handle_initiate_voice_call(data):
             emit('call_error', {'error': 'Appointment not found'})
             return
         
-        appointment_room = f'appointment_{appointment_id}'
+        # Get caller and callee information
+        caller_name = safe_display_name(current_user)
+        caller_role = current_user.role
         
-        # Add to active calls
-        if appointment_id not in active_calls:
-            active_calls[appointment_id] = {}
-        active_calls[appointment_id][current_user.id] = request.sid
+        if current_user.role == 'patient':
+            callee_user_id = appointment.doctor.user_id
+            callee_role = 'doctor'
+        else:
+            callee_user_id = appointment.patient.user_id
+            callee_role = 'patient'
         
-        call_data = {
-            'initiator_id': current_user.id,
-            'initiator_name': safe_display_name(current_user),
+        # Store call information
+        call_info = {
             'appointment_id': appointment_id,
-            'call_type': 'voice'
+            'caller_id': current_user.id,
+            'caller_name': caller_name,
+            'caller_role': caller_role,
+            'callee_id': callee_user_id,
+            'call_type': 'voice',
+            'start_time': datetime.now(timezone.utc).isoformat(),
+            'status': 'ringing'
         }
         
-        # Notify other participant
-        emit('incoming_voice_call', call_data, room=appointment_room, skip_sid=request.sid)
-        emit('call_initiated', call_data)
+        active_calls[appointment_id] = call_info
+        
+        # Prepare call notification data
+        call_data = {
+            'appointment_id': appointment_id,
+            'caller_id': current_user.id,
+            'caller_name': caller_name,
+            'caller_role': caller_role,
+            'callee_role': callee_role,
+            'call_type': 'voice',
+            'appointment_date': appointment.appointment_date.isoformat(),
+            'appointment_time': appointment.appointment_date.strftime('%H:%M'),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Notify caller that call is ringing
+        emit('call_ringing', {
+            'appointment_id': appointment_id,
+            'call_type': 'voice'
+        })
+        
+        # Send incoming call notification to callee
+        callee_socket_id = user_sockets.get(callee_user_id)
+        if callee_socket_id:
+            emit('incoming_voice_call', call_data, room=callee_socket_id)
+        
+        # Set call timeout (1 minute)
+        def call_timeout():
+            if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
+                # Call timed out
+                active_calls[appointment_id]['status'] = 'timeout'
+                
+                # Notify caller
+                caller_socket_id = user_sockets.get(current_user.id)
+                if caller_socket_id:
+                    emit('call_ended', {
+                        'appointment_id': appointment_id,
+                        'reason': 'timeout',
+                        'message': 'Call timed out - no answer'
+                    }, room=caller_socket_id)
+                
+                # Create missed call notification for callee
+                missed_call_data = {
+                    'appointment_id': appointment_id,
+                    'caller_name': caller_name,
+                    'caller_role': caller_role,
+                    'appointment_date': appointment.appointment_date.isoformat(),
+                    'appointment_time': appointment.appointment_date.strftime('%H:%M'),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'type': 'missed_voice_call'
+                }
+                
+                if callee_socket_id:
+                    emit('missed_call', missed_call_data, room=callee_socket_id)
+                
+                # Clean up
+                if appointment_id in active_calls:
+                    del active_calls[appointment_id]
+        
+        # Schedule timeout
+        socketio.start_background_task(lambda: socketio.sleep(60) or call_timeout())
+        
+        return {'success': True, 'message': 'Call initiated'}
         
     except Exception as e:
         print(f'Error initiating voice call: {str(e)}')
         emit('call_error', {'error': str(e)})
+        return {'success': False, 'error': str(e)}
 
 @socketio.on('accept_voice_call')
 def handle_accept_voice_call(data):
@@ -6732,18 +6888,39 @@ def handle_accept_voice_call(data):
     
     try:
         appointment_id = data.get('appointment_id')
-        appointment_room = f'appointment_{appointment_id}'
+        
+        if appointment_id not in active_calls:
+            emit('call_error', {'error': 'Call not found'})
+            return
+        
+        call_info = active_calls[appointment_id]
+        
+        # Update call status
+        call_info['status'] = 'accepted'
+        call_info['accepted_time'] = datetime.now(timezone.utc).isoformat()
+        
+        # Notify both parties that call is connected
+        caller_socket_id = user_sockets.get(call_info['caller_id'])
+        callee_socket_id = user_sockets.get(current_user.id)
         
         call_data = {
-            'acceptor_id': current_user.id,
-            'acceptor_name': safe_display_name(current_user),
-            'appointment_id': appointment_id
+            'appointment_id': appointment_id,
+            'caller_id': call_info['caller_id'],
+            'callee_id': current_user.id,
+            'call_type': 'voice'
         }
         
-        emit('voice_call_accepted', call_data, room=appointment_room)
+        if caller_socket_id:
+            emit('voice_call_accepted', call_data, room=caller_socket_id)
+        
+        if callee_socket_id:
+            emit('voice_call_accepted', call_data, room=callee_socket_id)
+        
+        print(f'Voice call accepted for appointment {appointment_id}')
         
     except Exception as e:
         print(f'Error accepting voice call: {str(e)}')
+        emit('call_error', {'error': str(e)})
 
 @socketio.on('end_voice_call')
 def handle_end_voice_call(data):
@@ -6753,19 +6930,38 @@ def handle_end_voice_call(data):
     
     try:
         appointment_id = data.get('appointment_id')
-        appointment_room = f'appointment_{appointment_id}'
         
-        # Remove from active calls
-        if appointment_id in active_calls:
-            if current_user.id in active_calls[appointment_id]:
-                del active_calls[appointment_id][current_user.id]
-            if not active_calls[appointment_id]:
-                del active_calls[appointment_id]
+        if appointment_id not in active_calls:
+            return
         
-        emit('voice_call_ended', {
+        call_info = active_calls[appointment_id]
+        
+        # Determine who is ending the call
+        caller_socket_id = user_sockets.get(call_info['caller_id'])
+        callee_socket_id = user_sockets.get(call_info.get('callee_id'))
+        
+        # Update call status
+        call_info['status'] = 'ended'
+        call_info['ended_time'] = datetime.now(timezone.utc).isoformat()
+        call_info['ended_by'] = current_user.id
+        
+        # Notify both parties
+        call_ended_data = {
+            'appointment_id': appointment_id,
             'ended_by': current_user.id,
-            'appointment_id': appointment_id
-        }, room=appointment_room)
+            'call_type': 'voice'
+        }
+        
+        if caller_socket_id:
+            emit('voice_call_ended', call_ended_data, room=caller_socket_id)
+        
+        if callee_socket_id:
+            emit('voice_call_ended', call_ended_data, room=callee_socket_id)
+        
+        # Clean up after short delay
+        socketio.start_background_task(lambda: (socketio.sleep(2), active_calls.pop(appointment_id, None)))
+        
+        print(f'Voice call ended for appointment {appointment_id}')
         
     except Exception as e:
         print(f'Error ending voice call: {str(e)}')

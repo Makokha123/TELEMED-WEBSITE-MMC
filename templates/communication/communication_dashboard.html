@@ -2598,6 +2598,7 @@ function handleIncomingCall(data, callType) {
     // Store call data in sessionStorage for the incoming call template
     sessionStorage.setItem('incomingCallData', JSON.stringify({
         appointment_id: data.appointment_id,
+        caller_id: data.caller_id,
         caller_name: data.caller_name || 'Caller',
         caller_role: data.caller_role || 'Healthcare Provider',
         appointment_date: data.appointment_date,
@@ -2605,12 +2606,12 @@ function handleIncomingCall(data, callType) {
         call_type: callType
     }));
     
-    // Open incoming call template in new window/modal
+    // Open incoming call template in new window
     if (callType === 'voice') {
-        window.open('/templates/communication/incoming_voice_call.html', 'incomingVoiceCall', 
+        window.open(`/incoming-voice-call/${data.appointment_id}`, 'incomingVoiceCall', 
             'width=600,height=700,left=100,top=100');
     } else if (callType === 'video') {
-        window.open('/templates/communication/incoming_video_call.html', 'incomingVideoCall', 
+        window.open(`/incoming-video-call/${data.appointment_id}`, 'incomingVideoCall', 
             'width=600,height=700,left=100,top=100');
     }
     
@@ -2633,9 +2634,13 @@ function setupIncomingCallHandlers(data, callType) {
                     });
                 }
                 
-                // Redirect to call page
+                // Redirect based on call type
                 setTimeout(() => {
-                    window.location.href = `/video-call/${data.appointment_id}`;
+                    if (callType === 'video') {
+                        window.location.href = `/video-call/${data.appointment_id}`;
+                    } else if (callType === 'voice') {
+                        window.location.href = `/communication/${data.appointment_id}`;
+                    }
                 }, 500);
             } else if (callResponse === 'rejected') {
                 if (typeof socket !== 'undefined' && socket.connected) {
@@ -2648,6 +2653,11 @@ function setupIncomingCallHandlers(data, callType) {
             sessionStorage.removeItem('callResponse');
         }
     }, 100);
+    
+    // Timeout after 70 seconds (longer than call timeout)
+    setTimeout(() => {
+        clearInterval(checkCallResponse);
+    }, 70000);
     
     // Timeout after 60 seconds
     setTimeout(() => {

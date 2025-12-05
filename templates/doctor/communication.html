@@ -2388,23 +2388,69 @@ function updatePaymentBadge(status) {
 
 // Handle incoming call
 function handleIncomingCall(data, callType) {
-    const callTypeName = callType === 'voice' ? 'Voice' : 'Video';
-    const callerName = data.caller_name || 'Patient';
+    // Store call data in sessionStorage for the incoming call template
+    sessionStorage.setItem('incomingCallData', JSON.stringify({
+        appointment_id: data.appointment_id,
+        caller_id: data.caller_id,
+        caller_name: data.caller_name || 'Patient',
+        caller_role: data.caller_role || 'Patient',
+        appointment_date: data.appointment_date,
+        appointment_time: data.appointment_time,
+        call_type: callType
+    }));
     
-    if (confirm(`${callerName} is calling you for a ${callTypeName} consultation. Accept?`)) {
-        socket.emit(`accept_${callType}_call`, {
-            appointment_id: data.appointment_id
-        });
-        
-        // Redirect to call page
-        setTimeout(() => {
-            window.location.href = `/${callType}-call/${data.appointment_id}`;
-        }, 500);
-    } else {
-        socket.emit(`reject_${callType}_call`, {
-            appointment_id: data.appointment_id
-        });
+    // Open incoming call template in new window
+    if (callType === 'voice') {
+        window.open(`/incoming-voice-call/${data.appointment_id}`, 'incomingVoiceCall', 
+            'width=600,height=700,left=100,top=100');
+    } else if (callType === 'video') {
+        window.open(`/incoming-video-call/${data.appointment_id}`, 'incomingVideoCall', 
+            'width=600,height=700,left=100,top=100');
     }
+    
+    // Setup handlers for the incoming call window
+    setupIncomingCallHandlers(data, callType);
+}
+
+function setupIncomingCallHandlers(data, callType) {
+    // Listen for accept/reject from incoming call window
+    const checkCallResponse = setInterval(() => {
+        const callResponse = sessionStorage.getItem('callResponse');
+        
+        if (callResponse) {
+            clearInterval(checkCallResponse);
+            
+            if (callResponse === 'accepted') {
+                if (typeof socket !== 'undefined' && socket.connected) {
+                    socket.emit(`accept_${callType}_call`, {
+                        appointment_id: data.appointment_id
+                    });
+                }
+                
+                // Redirect based on call type
+                setTimeout(() => {
+                    if (callType === 'video') {
+                        window.location.href = `/video-call/${data.appointment_id}`;
+                    } else if (callType === 'voice') {
+                        window.location.href = `/communication/${data.appointment_id}`;
+                    }
+                }, 500);
+            } else if (callResponse === 'rejected') {
+                if (typeof socket !== 'undefined' && socket.connected) {
+                    socket.emit(`reject_${callType}_call`, {
+                        appointment_id: data.appointment_id
+                    });
+                }
+            }
+            
+            sessionStorage.removeItem('callResponse');
+        }
+    }, 100);
+    
+    // Timeout after 70 seconds (longer than call timeout)
+    setTimeout(() => {
+        clearInterval(checkCallResponse);
+    }, 70000);
 }
 </script>
 {% endblock %}
