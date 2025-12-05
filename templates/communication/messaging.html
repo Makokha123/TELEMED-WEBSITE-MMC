@@ -647,7 +647,8 @@ function addMessageToUIFast(message) {
     group.className = `message-group ${message.is_sent ? 'sent' : 'received'}`;
     group.dataset.messageId = message.id;
     
-    const timestamp = new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    // Use LocalTime utility to format timestamp in device's local time
+    const timestamp = window.LocalTime ? window.LocalTime.formatToLocalTime(message.timestamp, 'timeonly') : new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
     let messageContent = message.content || '';
     
@@ -663,7 +664,7 @@ function addMessageToUIFast(message) {
             <div class="message-bubble ${message.is_sent ? 'sent' : 'received'}">
                 ${messageContent}
             </div>
-            <div class="message-time">${timestamp}${status}</div>
+            <div class="message-time" data-timestamp="${message.timestamp}" data-timestamp-format="timeonly">${timestamp}${status}</div>
         </div>
     `;
     messagesArea.appendChild(group);

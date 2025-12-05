@@ -1,4 +1,4 @@
-
+﻿
 import os
 import eventlet
 eventlet.monkey_patch()
@@ -1666,9 +1666,17 @@ def doctor_dashboard():
             flash('Doctor profile not found', 'error')
             return redirect(url_for('index'))
 
-        # Upcoming appointments for this doctor
+        # Today's appointments for this doctor (filter by date only, not time)
         try:
-            appointments = Appointment.query.filter_by(doctor_id=doctor.id).order_by(Appointment.appointment_date).all()
+            from datetime import datetime, timezone, date
+            today = date.today()
+            # Filter appointments where the date part matches today
+            appointments = []
+            all_appointments = Appointment.query.filter_by(doctor_id=doctor.id).order_by(Appointment.appointment_date).all()
+            for appt in all_appointments:
+                appt_date = appt.appointment_date.date() if appt.appointment_date else None
+                if appt_date == today:
+                    appointments.append(appt)
         except Exception as e:
             print(f"Error loading appointments: {e}")
             appointments = []
@@ -1746,6 +1754,29 @@ def doctor_dashboard():
             print(f"Error loading recent patients: {e}")
             recent_patients = []
 
+        # Recent activity (communications with user info for profile pictures)
+        recent_activity = []
+        try:
+            from sqlalchemy import desc
+            recent_comms = db.session.query(Communication).filter_by().order_by(desc(Communication.timestamp)).limit(10).all()
+            seen_comms = set()
+            for comm in recent_comms:
+                if comm.sender_id not in seen_comms:
+                    sender = db.session.get(User, comm.sender_id)
+                    if sender:
+                        recent_activity.append({
+                            'type': 'message',
+                            'text': f"Message from {sender.get_display_name()}",
+                            'user': sender,
+                            'timestamp': comm.timestamp
+                        })
+                        seen_comms.add(comm.sender_id)
+                if len(recent_activity) >= 10:
+                    break
+        except Exception as e:
+            print(f"Error loading recent activity: {e}")
+            recent_activity = []
+
         return render_template(
             'doctor/doctor_dashboard.html',
             doctor=doctor,
@@ -1753,7 +1784,8 @@ def doctor_dashboard():
             patients_this_week=patients_this_week,
             pending_prescriptions=pending_prescriptions,
             urgent_cases=urgent_cases,
-            recent_patients=recent_patients
+            recent_patients=recent_patients,
+            recent_activity=recent_activity
         )
     
     except Exception as e:

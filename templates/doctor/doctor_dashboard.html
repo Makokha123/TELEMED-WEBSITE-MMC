@@ -156,9 +156,13 @@
                             <div class="list-group-item">
                                 <div class="row align-items-center">
                                     <div class="col-auto">
-                                        <div class="patient-avatar">
-                                            {{ appointment.patient.user.first_name[0] }}{{ appointment.patient.user.last_name[0] }}
-                                        </div>
+                                        {% if appointment.patient.user.profile_picture %}
+                                            <img src="{{ url_for('profile_picture', user_id=appointment.patient.user_id) }}" alt="Patient" style="width:50px;height:50px;border-radius:50%;object-fit:cover;" />
+                                        {% else %}
+                                            <div class="patient-avatar">
+                                                {{ appointment.patient.user.first_name[0] }}{{ appointment.patient.user.last_name[0] }}
+                                            </div>
+                                        {% endif %}
                                     </div>
                                     <div class="col">
                                         <h6 class="mb-1">{{ appointment.patient.user.first_name }} {{ appointment.patient.user.last_name }}</h6>
@@ -230,15 +234,26 @@
                     <div class="row">
                         <div class="col-md-6">
                             <h6>Recent Activity</h6>
-                            <ul class="list-unstyled">
-                                {% if recent_activity %}
-                                    {% for act in recent_activity %}
-                                        <li><i class="fas fa-{{ 'file-medical' if act.type == 'record' else 'comment' }} text-primary me-2"></i>{{ act.text }}</li>
-                                    {% endfor %}
-                                {% else %}
-                                    <li class="text-muted">No recent activity</li>
-                                {% endif %}
-                            </ul>
+                            <div style="{% if recent_activity|length >= 5 %}max-height: 300px; overflow-y: auto;{% endif %}">
+                                <ul class="list-unstyled">
+                                    {% if recent_activity %}
+                                        {% for act in recent_activity %}
+                                            <li class="d-flex align-items-center gap-2 mb-2">
+                                                {% if act.user and act.user.profile_picture %}
+                                                    <img src="{{ url_for('profile_picture', user_id=act.user.id) }}" alt="User" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
+                                                {% elif act.user %}
+                                                    <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#28a745,#20c997);color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.8em;flex-shrink:0;">{{ act.user.first_name[0] if act.user.first_name else 'U' }}</div>
+                                                {% else %}
+                                                    <i class="fas fa-{{ 'file-medical' if act.type == 'record' else 'comment' }} text-primary me-2 flex-shrink-0" style="width:32px;"></i>
+                                                {% endif %}
+                                                <span style="font-size:0.9em;">{{ act.text }}</span>
+                                            </li>
+                                        {% endfor %}
+                                    {% else %}
+                                        <li class="text-muted">No recent activity</li>
+                                    {% endif %}
+                                </ul>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <h6>Specializations</h6>

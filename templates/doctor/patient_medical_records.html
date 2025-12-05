@@ -16,7 +16,7 @@
           <div class="d-flex justify-content-between">
             <div>
               <h5 class="card-title">{{ r.record_type }}</h5>
-              <p class="mb-1 small text-muted">By user #{{ r.created_by }} on {{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+              <p class="mb-1 small text-muted">By user #{{ r.created_by }} on <span data-timestamp="{{ r.created_at.isoformat() }}" data-timestamp-format="datetime">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</span></p>
               <p>{{ r.description or '-' }}</p>
             </div>
             <div class="text-end">
@@ -122,13 +122,15 @@ function renderRecordsList(records){
   }
   let html = '';
   for (const r of records){
+    // Format date using LocalTime utility if available, otherwise use toLocaleString
+    const dateStr = r.created_at ? (window.LocalTime ? window.LocalTime.formatToLocalTime(r.created_at, 'datetime') : new Date(r.created_at).toLocaleString()) : '';
     html += `
       <div class="card mb-2">
         <div class="card-body">
           <div class="d-flex justify-content-between">
             <div>
               <h5 class="card-title">${r.record_type}</h5>
-              <p class="mb-1 small text-muted">By user #${r.created_by} on ${r.created_at ? new Date(r.created_at).toLocaleString() : ''}</p>
+              <p class="mb-1 small text-muted">By user #${r.created_by} on <span data-timestamp="${r.created_at}" data-timestamp-format="datetime">${dateStr}</span></p>
               <p>${r.description || '-'}</p>
             </div>
             <div class="text-end">

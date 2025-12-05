@@ -1410,9 +1410,11 @@ function createMessageElement(message) {
     // Message time and status
     const timeElement = document.createElement('div');
     timeElement.className = 'message-time';
+    timeElement.setAttribute('data-timestamp', message.timestamp);
+    timeElement.setAttribute('data-timestamp-format', 'timeonly');
     
-    const timestamp = new Date(message.timestamp);
-    const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Use LocalTime utility for formatting
+    const timeString = window.LocalTime ? window.LocalTime.formatToLocalTime(message.timestamp, 'timeonly') : new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
     let statusHTML = '';
     if (isSent) {
