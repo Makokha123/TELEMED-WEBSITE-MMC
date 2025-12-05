@@ -1622,6 +1622,7 @@ function createMessageElement(message) {
     const isSent = message.sender_id === currentUserId;
     const wrapper = document.createElement('div');
     wrapper.className = `message-wrapper ${isSent ? 'sent' : 'received'}`;
+    wrapper.setAttribute('data-message-id', message.id);
     
     const container = document.createElement('div');
     container.className = 'message-container';
@@ -1709,12 +1710,16 @@ function createFileMessageHTML(message) {
 // Get message status HTML (WhatsApp-style ticks)
 function getMessageStatusHTML(status) {
     switch(status) {
+        case 'sending':
+            return '<span class="tick single" style="opacity: 0.5;">✓</span>';
         case 'sent':
             return '<span class="tick single">✓</span>';
         case 'delivered':
             return '<span class="tick double grey">✓✓</span>';
         case 'read':
             return '<span class="tick double blue">✓✓</span>';
+        case 'failed':
+            return '<span class="tick single" style="color: red;">✗</span>';
         default:
             return '<span class="tick single">✓</span>';
     }
@@ -2001,6 +2006,9 @@ function sendMessage() {
         return;
     }
     
+    // Clear input immediately (UX improvement)
+    if (input) input.value = '';
+    
     // Clear typing indicator
     clearTimeout(typingTimeout);
     isTyping = false;
@@ -2008,16 +2016,39 @@ function sendMessage() {
         socket.emit('stop_typing', { appointment_id: selectedAppointmentId });
     }
     
-    // Send via Socket.IO if available
+    // Create temporary message for optimistic UI update
+    const tempMessageId = 'temp_' + Date.now();
+    const messageData = {
+        id: tempMessageId,
+        sender_id: currentUserId,
+        content: content,
+        message_type: 'text',
+        timestamp: new Date().toISOString(),
+        message_status: 'sending'
+    };
+    
+    // Add message to UI immediately with sending status
+    addMessageToUI(messageData);
+    
+    // Send via Socket.IO (primary method)
     if (typeof socket !== 'undefined' && socket.connected) {
         socket.emit('send_message', {
             appointment_id: selectedAppointmentId,
             content: content,
             message_type: 'text'
+        }, function(response) {
+            // Handle server acknowledgement
+            if (response && response.success) {
+                // Update temp message with real ID
+                const tempMsg = document.querySelector(`[data-message-id="${tempMessageId}"]`);
+                if (tempMsg) {
+                    tempMsg.setAttribute('data-message-id', response.message_id);
+                }
+            }
         });
     } else {
-        console.warn('Socket.IO not available, using HTTP fallback');
-        // Fallback to HTTP request
+        // Fallback to HTTP if Socket.IO not available
+        console.warn('Socket.IO not connected, using HTTP fallback');
         fetch('/api/send-message', {
             method: 'POST',
             headers: {
@@ -2032,35 +2063,22 @@ function sendMessage() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Add message to UI
-                const messageData = {
-                    id: data.message_id,
-                    sender_id: currentUserId,
-                    content: content,
-                    message_type: 'text',
-                    timestamp: new Date().toISOString(),
-                    message_status: 'sent'
-                };
-                addMessageToUI(messageData);
+                // Update temp message with real ID
+                const tempMsg = document.querySelector(`[data-message-id="${tempMessageId}"]`);
+                if (tempMsg) {
+                    tempMsg.setAttribute('data-message-id', data.message_id);
+                    updateMessageStatus(data.message_id, 'sent');
+                }
+            } else {
+                console.error('Failed to send message:', data.error);
+                updateMessageStatus(tempMessageId, 'failed');
             }
         })
-        .catch(error => console.error('Error sending message:', error));
+        .catch(error => {
+            console.error('Error sending message:', error);
+            updateMessageStatus(tempMessageId, 'failed');
+        });
     }
-    
-    // Clear input
-    if (input) input.value = '';
-    
-    // Add message to UI immediately (optimistic update)
-    const messageData = {
-        id: Date.now(), // Temporary ID
-        sender_id: currentUserId,
-        content: content,
-        message_type: 'text',
-        timestamp: new Date().toISOString(),
-        message_status: 'sent'
-    };
-    
-    addMessageToUI(messageData);
 }
 
 // Toggle voice recording
@@ -2218,12 +2236,24 @@ function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file || !selectedAppointmentId) return;
     
-    const formData = new FormData();
-    formData.append('appointment_id', selectedAppointmentId);
-    formData.append('file', file);
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+        alert('File size exceeds 50MB limit. Please choose a smaller file.');
+        event.target.value = '';
+        return;
+    }
     
     // Determine file type
     const fileType = file.type.startsWith('image/') ? 'image' : 'document';
+    
+    // Show upload progress feedback - no temp message, just indicate uploading via status
+    const uploadId = 'upload_' + Date.now();
+    
+    // Upload file
+    const formData = new FormData();
+    formData.append('appointment_id', selectedAppointmentId);
+    formData.append('file', file);
     
     fetch('/api/upload-file', {
         method: 'POST',
@@ -2235,36 +2265,19 @@ function handleFileUpload(event) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Send message about file
-            if (typeof socket !== 'undefined' && socket.connected) {
-                socket.emit('send_message', {
-                    appointment_id: selectedAppointmentId,
-                    content: file.name,
-                    message_type: fileType,
-                    file_url: data.file_url,
-                    file_size: file.size
-                });
-            }
-            
-            // Add to UI
-            const messageData = {
-                id: Date.now(),
-                sender_id: currentUserId,
-                content: file.name,
-                message_type: fileType,
-                timestamp: new Date().toISOString(),
-                message_status: 'sent',
-                file_url: data.file_url,
-                file_size: file.size,
-                file_name: file.name
-            };
-            
-            addMessageToUI(messageData);
+            // File uploaded successfully
+            // The backend already created the message and broadcast via Socket.IO
+            // Just ensure the message appears with correct file_url
+            console.log('File uploaded successfully:', data.message_id);
+        } else {
+            // Show error to user
+            console.error('Upload failed:', data.error);
+            alert('Failed to upload file: ' + (data.error || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error uploading file:', error);
-        alert('Error uploading file');
+        alert('Error uploading file: ' + error.message);
     });
     
     // Clear file input
@@ -2398,9 +2411,30 @@ function initializeSocket() {
         // Handle incoming messages
         socket.on('message_received', function(data) {
             if (data.appointment_id === selectedAppointmentId) {
-                addMessageToUI(data);
+                // Check if this message was already added via optimistic UI (sent by current user)
+                if (data.sender_id === currentUserId) {
+                    // This is our own message - update the temp message with real data
+                    const messagesArea = document.getElementById('chatMessages');
+                    if (messagesArea) {
+                        const tempMessages = messagesArea.querySelectorAll('[data-message-id^="temp_"]');
+                        if (tempMessages.length > 0) {
+                            // Get the last temp message (most recent)
+                            const lastTempMsg = tempMessages[tempMessages.length - 1];
+                            lastTempMsg.setAttribute('data-message-id', data.id);
+                            // Update status indicators
+                            const timeElement = lastTempMsg.querySelector('.message-time');
+                            if (timeElement) {
+                                const statusHTML = getMessageStatusHTML(data.message_status || 'sent');
+                                timeElement.innerHTML = timeElement.innerHTML.replace(/<span class="tick[^>]*>[^<]*<\/span>|<span style="color[^>]*>[^<]*<\/span>/, statusHTML);
+                            }
+                        }
+                    }
+                } else {
+                    // This is a message from someone else - add it to UI
+                    addMessageToUI(data);
+                }
                 
-                // Mark as delivered
+                // Mark as delivered if from other user
                 if (data.sender_id !== currentUserId) {
                     socket.emit('message_delivered', {
                         message_id: data.id,
@@ -2520,20 +2554,18 @@ function hideTypingIndicator() {
 
 // Update message status
 function updateMessageStatus(messageId, status) {
-    const messages = document.querySelectorAll('.message-wrapper');
-    messages.forEach(wrapper => {
-        const timeElement = wrapper.querySelector('.message-time');
+    // Find the specific message by ID
+    const messageWrapper = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageWrapper) {
+        const timeElement = messageWrapper.querySelector('.message-time');
         if (timeElement) {
-            // Simple update - just replace the status
             const statusHTML = getMessageStatusHTML(status);
             const currentHTML = timeElement.innerHTML;
             // Remove existing status and add new one
-            const newHTML = currentHTML.replace(/<span class="tick[^>]*>[^<]*<\/span>/, statusHTML);
-            if (newHTML !== currentHTML) {
-                timeElement.innerHTML = newHTML;
-            }
+            const newHTML = currentHTML.replace(/<span class="tick[^>]*>[^<]*<\/span>|<span style="color[^>]*>[^<]*<\/span>/, statusHTML);
+            timeElement.innerHTML = newHTML;
         }
-    });
+    }
 }
 
 // Update unread count

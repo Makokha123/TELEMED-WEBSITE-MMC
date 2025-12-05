@@ -1,5 +1,6 @@
 ﻿
 import os
+import time
 import eventlet
 eventlet.monkey_patch()
 print("✓ Eventlet monkey-patched")
@@ -1269,15 +1270,88 @@ def patient_appointment():
             'consultation_fee': doctor.consultation_fee
         })
     
-    # Get categorized appointments - fix the data structure
+    # Get categorized appointments - properly flatten and categorize
     try:
-        appointments_response = get_patient_appointments_categorized()
-        if isinstance(appointments_response, tuple):
-            appointments_data = appointments_response[0].get_json()
-        else:
-            appointments_data = appointments_response.get_json()
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+        
+        appointments_query = db.session.query(
+            Appointment,
+            Doctor,
+            User,
+            Payment
+        ).join(
+            Doctor, Appointment.doctor_id == Doctor.id
+        ).join(
+            User, Doctor.user_id == User.id
+        ).outerjoin(
+            Payment, Appointment.id == Payment.appointment_id
+        ).filter(
+            Appointment.patient_id == patient.id
+        ).order_by(Appointment.appointment_date.desc()).all()
+        
+        # Categorize appointments
+        upcoming = []
+        pending_confirmation = []
+        completed = []
+        rescheduled = []
+        
+        for appointment, doctor, user, payment in appointments_query:
+            # Determine payment status
+            payment_status = 'pending'
+            if payment:
+                payment_status = payment.status
+            elif appointment.status == 'completed':
+                payment_status = 'completed'
+            
+            appointment_data = {
+                'id': appointment.id,
+                'doctor': {
+                    'id': doctor.id,
+                    'user': {
+                        'id': user.id,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name
+                    },
+                    'specialization': doctor.specialization,
+                    'consultation_fee': float(doctor.consultation_fee) if doctor.consultation_fee else 0.0
+                },
+                'appointment_date': appointment.appointment_date,
+                'appointment_date_formatted': appointment.appointment_date.strftime('%d %b %Y') if appointment.appointment_date else None,
+                'appointment_time': appointment.appointment_date.strftime('%H:%M') if appointment.appointment_date else None,
+                'consultation_type': appointment.consultation_type,
+                'symptoms': appointment.symptoms,
+                'notes': appointment.notes,
+                'status': appointment.status,
+                'payment_status': payment_status,
+                'rating': appointment.rating if hasattr(appointment, 'rating') else None,
+                'created_at': appointment.created_at
+            }
+            
+            # Categorize based on status and date
+            if appointment.status == 'completed':
+                completed.append(appointment_data)
+            elif appointment.status == 'rescheduled':
+                rescheduled.append(appointment_data)
+            elif appointment.status == 'pending':
+                pending_confirmation.append(appointment_data)
+            elif appointment.status in ['confirmed', 'scheduled']:
+                upcoming.append(appointment_data)
+            else:
+                # Default to pending confirmation for unknown statuses
+                pending_confirmation.append(appointment_data)
+        
+        appointments_data = {
+            'upcoming': upcoming,
+            'pending_confirmation': pending_confirmation,
+            'completed': completed,
+            'rescheduled': rescheduled
+        }
     except Exception as e:
         print(f"Error getting appointments: {e}")
+        import traceback
+        traceback.print_exc()
         appointments_data = {
             'upcoming': [],
             'pending_confirmation': [],
@@ -1285,50 +1359,15 @@ def patient_appointment():
             'rescheduled': []
         }
 
-    # Convert appointment dates from strings to datetime objects for the template
-    def process_appointments(appointments_list):
-        processed = []
-        for appointment in appointments_list:
-            # Create a copy of the appointment dictionary
-            processed_appointment = appointment.copy()
-            
-            # Convert appointment_date string to datetime object if it exists
-            if appointment.get('appointment_date'):
-                try:
-                    if isinstance(appointment['appointment_date'], str):
-                        processed_appointment['appointment_date'] = datetime.fromisoformat(appointment['appointment_date'].replace('Z', '+00:00'))
-                except (ValueError, AttributeError) as e:
-                    print(f"Error parsing date {appointment['appointment_date']}: {e}")
-                    # Keep as string if parsing fails
-                    processed_appointment['appointment_date'] = appointment['appointment_date']
-            
-            # Convert created_at string to datetime object if it exists
-            if appointment.get('created_at'):
-                try:
-                    if isinstance(appointment['created_at'], str):
-                        processed_appointment['created_at'] = datetime.fromisoformat(appointment['created_at'].replace('Z', '+00:00'))
-                except (ValueError, AttributeError) as e:
-                    print(f"Error parsing created_at {appointment['created_at']}: {e}")
-                    # Keep as string if parsing fails
-                    processed_appointment['created_at'] = appointment['created_at']
-            
-            processed.append(processed_appointment)
-        return processed
-
-    # Process all appointment categories
-    upcoming_processed = process_appointments(appointments_data.get('upcoming', []))
-    pending_confirmation_processed = process_appointments(appointments_data.get('pending_confirmation', []))
-    completed_processed = process_appointments(appointments_data.get('completed', []))
-    rescheduled_processed = process_appointments(appointments_data.get('rescheduled', []))
 
     return render_template('patient/appointment.html', 
                          user=current_user, 
                          patient=patient,
                          doctors=doctors,
-                         upcoming=upcoming_processed,
-                         pending_confirmation=pending_confirmation_processed,
-                         completed=completed_processed,
-                         rescheduled=rescheduled_processed)
+                         upcoming=appointments_data.get('upcoming', []),
+                         pending_confirmation=appointments_data.get('pending_confirmation', []),
+                         completed=appointments_data.get('completed', []),
+                         rescheduled=appointments_data.get('rescheduled', []))
 
 @app.route('/patient/edit_profile', methods=['GET', 'POST'])
 @login_required
@@ -4137,12 +4176,11 @@ def upload_file_api():
             db.session.add(comm)
             db.session.commit()
             
-            # Return file URL
-            file_url = url_for('download_communication_file', communication_id=comm.id, _external=True)
-            
             # BROADCAST via Socket.IO immediately for real-time delivery
             if SOCKETIO_AVAILABLE:
                 appointment_room = f'appointment_{appointment_id}'
+                file_url = url_for('download_communication_file', communication_id=comm.id, _external=True)
+                
                 message_data = {
                     'id': comm.id,
                     'appointment_id': appointment_id,
@@ -4150,7 +4188,9 @@ def upload_file_api():
                     'sender_name': safe_display_name(current_user),
                     'message_type': message_type,
                     'content': filename,
-                    'file_path': file_url,
+                    'file_url': file_url,
+                    'file_name': filename,
+                    'file_size': len(raw),
                     'timestamp': comm.timestamp.isoformat(),
                     'message_status': 'sent',
                     'is_sent': True,
@@ -4856,31 +4896,94 @@ def get_api_doctor_patients():
 
 @app.route('/doctor/patients', methods=['GET'])
 def get_doctor_patients():
-    """Render all patients for a doctor in HTML"""
-    patients = db.session.query(Patient, User, Appointment).join(
-        User, Patient.user_id == User.id
-    ).join(
-        Appointment, Appointment.patient_id == Patient.id
-    ).filter(
-        Appointment.doctor_id == current_user.id
-    ).distinct(Patient.id).all()
-
-    # Prepare a list of patient dicts for the template
-    patient_list = []
-    for patient, user, appointment in patients:
-        patient_list.append({
-            'id': patient.id,
-            'user_id': user.id,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'email': user.email,
-            'phone': user.phone,
-            'last_message': getattr(appointment, 'last_message', ''),
-            'last_message_time': getattr(appointment, 'last_message_time', ''),
-            'unread_count': getattr(appointment, 'unread_count', 0)
-        })
-
-    return render_template('doctor/patients.html', patients=patient_list)
+    """Render all patients for a doctor with their appointments categorized by status"""
+    if current_user.role != 'doctor':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+    
+    doctor = current_user.doctor_profile
+    if not doctor:
+        flash('Doctor profile not found', 'error')
+        return redirect(url_for('index'))
+    
+    try:
+        # Get all appointments for this doctor with patient info
+        appointments_query = db.session.query(
+            Appointment,
+            Patient,
+            User
+        ).join(
+            Patient, Appointment.patient_id == Patient.id
+        ).join(
+            User, Patient.user_id == User.id
+        ).filter(
+            Appointment.doctor_id == doctor.id
+        ).order_by(Appointment.appointment_date.desc()).all()
+        
+        # Categorize appointments
+        upcoming_appointments = []
+        completed_appointments = []
+        rescheduled_appointments = []
+        pending_appointments = []
+        
+        now = datetime.now(timezone.utc)
+        
+        for appointment, patient, user in appointments_query:
+            appointment_data = {
+                'id': appointment.id,
+                'patient': {
+                    'id': patient.id,
+                    'user': {
+                        'id': user.id,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'email': user.email,
+                        'phone': user.phone,
+                        'profile_picture': user.profile_picture
+                    },
+                    'blood_type': patient.blood_type,
+                    'allergies': patient.allergies
+                },
+                'appointment_date': appointment.appointment_date,
+                'appointment_date_formatted': appointment.appointment_date.strftime('%B %d, %Y') if appointment.appointment_date else None,
+                'appointment_time': appointment.appointment_date.strftime('%H:%M') if appointment.appointment_date else None,
+                'consultation_type': appointment.consultation_type,
+                'symptoms': appointment.symptoms,
+                'notes': appointment.notes,
+                'status': appointment.status,
+                'urgency': appointment.urgency,
+                'created_at': appointment.created_at
+            }
+            
+            # Categorize based on status and date
+            if appointment.status == 'completed':
+                completed_appointments.append(appointment_data)
+            elif appointment.status == 'rescheduled':
+                rescheduled_appointments.append(appointment_data)
+            elif appointment.status == 'pending':
+                pending_appointments.append(appointment_data)
+            elif appointment.status in ['confirmed', 'scheduled']:
+                upcoming_appointments.append(appointment_data)
+            else:
+                # Default to pending for unknown statuses
+                pending_appointments.append(appointment_data)
+        
+        return render_template('doctor/patients.html',
+                             upcoming=upcoming_appointments,
+                             completed=completed_appointments,
+                             rescheduled=rescheduled_appointments,
+                             pending=pending_appointments)
+    
+    except Exception as e:
+        print(f"Error loading patients: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Error loading patients', 'error')
+        return render_template('doctor/patients.html',
+                             upcoming=[],
+                             completed=[],
+                             rescheduled=[],
+                             pending=[])
 
 # API to get messages for appointment (patient/doctor communication)
 @app.route('/api/appointment/<int:appointment_id>/messages', methods=['GET'])
@@ -6066,7 +6169,8 @@ def handle_user_online_status(data):
 def handle_send_message_enhanced(data):
     """Handle real-time message sending with WhatsApp-style features"""
     if not current_user.is_authenticated:
-        return {'success': False, 'error': 'Not authenticated'}
+        emit('message_error', {'error': 'Not authenticated'})
+        return False
 
     try:
         appointment_id = data.get('appointment_id')
@@ -6076,35 +6180,41 @@ def handle_send_message_enhanced(data):
         file_size = data.get('file_size')
 
         if not appointment_id or (not content and message_type == 'text'):
-            return {'success': False, 'error': 'Invalid data'}
+            emit('message_error', {'error': 'Invalid data'})
+            return False
 
         appointment = db.session.get(Appointment, appointment_id)
         if not appointment:
-            return {'success': False, 'error': 'Appointment not found'}
+            emit('message_error', {'error': 'Appointment not found'})
+            return False
 
         # Verify access
         if not verify_appointment_access(appointment, current_user):
-            return {'success': False, 'error': 'Access denied'}
+            emit('message_error', {'error': 'Access denied'})
+            return False
 
-        # Save message to database
+        # Save message to database with proper timestamp
         communication = Communication(
             appointment_id=appointment_id,
             sender_id=current_user.id,
             message_type=message_type,
             content=content,
             message_status='sent',
-            is_read=False  # Make sure this is set
+            is_read=False,
+            timestamp=datetime.now(timezone.utc)
         )
         
         if file_url:
             communication.file_path = file_url
         
         db.session.add(communication)
+        db.session.flush()  # Get the ID without committing
+        message_id = communication.id
         db.session.commit()
 
-        # Prepare message data for broadcast
+        # Prepare complete message data for broadcast
         message_data = {
-            'id': communication.id,
+            'id': message_id,
             'appointment_id': appointment_id,
             'sender_id': current_user.id,
             'sender_name': safe_display_name(current_user),
@@ -6116,16 +6226,9 @@ def handle_send_message_enhanced(data):
             'file_size': file_size
         }
 
-          # Broadcast to appointment room
+        # Broadcast to appointment room
         appointment_room = f'appointment_{appointment_id}'
-        emit('message_received', message_data, room=appointment_room)
-        
-        # Update sender's UI immediately
-        emit('message_sent', {
-            'message_id': communication.id,
-            'appointment_id': appointment_id,
-            'status': 'sent'
-        }, room=request.sid)
+        emit('message_received', message_data, room=appointment_room, skip_sid=None)
         
         # Check if recipient is online for immediate delivery status
         recipient_id = None
@@ -6136,24 +6239,24 @@ def handle_send_message_enhanced(data):
             patient = db.session.get(Patient, appointment.patient_id)
             recipient_id = patient.user_id if patient else None
         
+        # Mark as delivered immediately if recipient is in the appointment room
+        # This gives instant double-tick feedback like WhatsApp
         if recipient_id and recipient_id in user_sockets:
-            # Mark as delivered immediately
             communication.message_status = 'delivered'
             db.session.commit()
-            
+            # Broadcast delivery status immediately to all clients in room
             emit('message_status_updated', {
-                'message_id': communication.id,
+                'message_id': message_id,
                 'status': 'delivered',
                 'appointment_id': appointment_id
             }, room=appointment_room)
-            
-            # If recipient is viewing the chat, mark as read
-            # This would require additional tracking of active chats
-            
-        return {'success': True, 'message_id': communication.id}
+        
+        return {'success': True, 'message_id': message_id}
 
     except Exception as e:
         print(f'Error sending message: {str(e)}')
+        import traceback
+        traceback.print_exc()
         emit('message_error', {'error': str(e)})
         return {'success': False, 'error': str(e)}
 
