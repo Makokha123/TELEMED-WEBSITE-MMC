@@ -2365,13 +2365,6 @@ function initiateVideoCall() {
         appointment_id: selectedAppointmentId
     });
 }
-    
-    if (typeof socket !== 'undefined') {
-        socket.emit('initiate_voice_call', {
-            appointment_id: selectedAppointmentId
-        });
-    }
-
 
 // Add message to UI
 function addMessageToUI(messageData) {
@@ -2503,15 +2496,8 @@ function setupSocketIO() {
         updateDoctorOnlineStatus(data.doctor_id, false);
     });
     
-    // Handle calls (same as doctor version)
-    socket.on('incoming_voice_call', function(data) {
-        handleIncomingCall(data, 'voice');
-    });
+    // Handle calls - specific listeners will be set up below
     
-    socket.on('incoming_video_call', function(data) {
-        handleIncomingCall(data, 'video');
-    });
-
     // When a call is accepted, hide any outgoing modals and navigate to the call page
     socket.on('video_call_accepted', function(data) {
         try {

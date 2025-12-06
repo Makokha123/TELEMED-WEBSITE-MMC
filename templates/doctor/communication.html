@@ -2554,20 +2554,16 @@ function initiateVideoCall() {
 
     
     
-    // Show outgoing call modal
-    const modal = new bootstrap.Modal(document.getElementById('outgoingVoiceCallModal'));
+    // Show outgoing video call modal
+    const modal = new bootstrap.Modal(document.getElementById('outgoingVideoCallModal'));
     
     // Update modal with patient name
     if (selectedPatientData) {
-        document.getElementById('outgoingVoiceDoctorName').textContent = `${selectedPatientData.first_name} ${selectedPatientData.last_name}`;
-        document.getElementById('outgoingVoiceDoctorAvatar').textContent = `${selectedPatientData.first_name[0]}${selectedPatientData.last_name[0]}`;
+        document.getElementById('outgoingVideoDoctorName').textContent = `${selectedPatientData.first_name} ${selectedPatientData.last_name}`;
+        document.getElementById('outgoingVideoDoctorAvatar').textContent = `${selectedPatientData.first_name[0]}${selectedPatientData.last_name[0]}`;
     }
     
     modal.show();
-    
-    socket.emit('initiate_voice_call', {
-        appointment_id: selectedAppointmentId
-    });
 }
 
 // Open prescription modal
@@ -2844,15 +2840,8 @@ function setupSocketIO() {
         updatePatientOnlineStatus(data.patient_id, false);
     });
     
-    // Handle calls
-    socket.on('incoming_voice_call', function(data) {
-        handleIncomingCall(data, 'voice');
-    });
+    // Handle calls - these will be replaced with specific incoming_video_call and incoming_voice_call handlers below
     
-    socket.on('incoming_video_call', function(data) {
-        handleIncomingCall(data, 'video');
-    });
-
     // When a call is accepted, hide doctor outgoing modals and navigate to call
     socket.on('video_call_accepted', function(data) {
         try {
