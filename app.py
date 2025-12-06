@@ -6624,7 +6624,20 @@ def handle_user_online_status(data):
     is_online = data.get('is_online', True)
     
     if is_online:
-        user_sockets[user_id] = request.sid
+        # Ensure list semantics for user_sockets (support multiple tabs/devices)
+        sid = request.sid
+        existing = user_sockets.get(user_id)
+        if isinstance(existing, list):
+            if sid not in existing:
+                existing.append(sid)
+            user_sockets[user_id] = existing
+        elif existing:
+            try:
+                user_sockets[user_id] = [existing, sid] if existing != sid else [sid]
+            except Exception:
+                user_sockets[user_id] = [sid]
+        else:
+            user_sockets[user_id] = [sid]
         user_last_seen[user_id] = datetime.now(timezone.utc).isoformat()
         
         # Notify relevant users based on role
@@ -6637,11 +6650,12 @@ def handle_user_online_status(data):
                 
                 for patient_id in patient_ids:
                     patient = db.session.get(Patient, patient_id)
-                    if patient and patient.user_id in user_sockets:
+                    if patient:
+                        # Emit to the patient's personal room
                         socketio.emit('doctor_online', {
                             'doctor_id': doctor.id,
                             'doctor_name': current_user.get_display_name()
-                        }, room=user_sockets[patient.user_id])
+                        }, room=f'user_{patient.user_id}')
         
         elif current_user.role == 'patient':
             # Notify all doctors who have appointments with this patient
@@ -6652,15 +6666,15 @@ def handle_user_online_status(data):
                 
                 for doctor_id in doctor_ids:
                     doctor = db.session.get(Doctor, doctor_id)
-                    if doctor and doctor.user_id in user_sockets:
+                    if doctor:
                         socketio.emit('patient_online', {
                             'patient_id': patient.id,
                             'patient_name': current_user.get_display_name()
-                        }, room=user_sockets[doctor.user_id])
+                        }, room=f'user_{doctor.user_id}')
     
     else:
         if user_id in user_sockets:
-            del user_sockets[user_id]
+            user_sockets.pop(user_id, None)
         
         # Notify relevant users about offline status
         if current_user.role == 'doctor':
@@ -6671,10 +6685,10 @@ def handle_user_online_status(data):
                 
                 for patient_id in patient_ids:
                     patient = db.session.get(Patient, patient_id)
-                    if patient and patient.user_id in user_sockets:
+                    if patient:
                         socketio.emit('doctor_offline', {
                             'doctor_id': doctor.id
-                        }, room=user_sockets[patient.user_id])
+                        }, room=f'user_{patient.user_id}')
         
         elif current_user.role == 'patient':
             patient = Patient.query.filter_by(user_id=user_id).first()
@@ -6684,10 +6698,10 @@ def handle_user_online_status(data):
                 
                 for doctor_id in doctor_ids:
                     doctor = db.session.get(Doctor, doctor_id)
-                    if doctor and doctor.user_id in user_sockets:
+                    if doctor:
                         socketio.emit('patient_offline', {
                             'patient_id': patient.id
-                        }, room=user_sockets[doctor.user_id])
+                        }, room=f'user_{doctor.user_id}')
 
 # ============================================
 # MESSAGING EVENTS
@@ -7822,14 +7836,14 @@ def create_health_tip():
         db.session.add(health_tip)
         db.session.commit()
         
-        # Emit real-time notification to patient
+        # Emit real-time notification to patient (emit to personal room)
         patient_user = db.session.get(User, patient.user_id)
-        if patient_user and patient_user.id in user_sockets:
+        if patient_user:
             emit('new_health_tip', {
                 'tip_id': health_tip.id,
                 'title': health_tip.title,
                 'doctor_name': current_user.first_name + ' ' + current_user.last_name
-            }, room=user_sockets[patient_user.id])
+            }, room=f'user_{patient_user.id}')
         
         return jsonify({
             'success': True,
@@ -7875,12 +7889,12 @@ def update_health_tip(tip_id):
         # Emit real-time notification to patient
         patient = db.session.get(Patient, health_tip.patient_id)
         patient_user = db.session.get(User, patient.user_id)
-        if patient_user and patient_user.id in user_sockets:
+        if patient_user:
             emit('health_tip_updated', {
                 'tip_id': health_tip.id,
                 'title': health_tip.title,
                 'doctor_name': current_user.first_name + ' ' + current_user.last_name
-            }, room=user_sockets[patient_user.id])
+            }, room=f'user_{patient_user.id}')
         
         return jsonify({'success': True, 'message': 'Health tip updated successfully'})
     
@@ -7913,11 +7927,11 @@ def delete_health_tip(tip_id):
         # Emit real-time notification to patient
         patient = db.session.get(Patient, patient_id)
         patient_user = db.session.get(User, patient.user_id)
-        if patient_user and patient_user.id in user_sockets:
+        if patient_user:
             emit('health_tip_deleted', {
                 'tip_id': tip_id,
                 'doctor_name': current_user.first_name + ' ' + current_user.last_name
-            }, room=user_sockets[patient_user.id])
+            }, room=f'user_{patient_user.id}')
         
         return jsonify({'success': True, 'message': 'Health tip deleted successfully'})
     
@@ -7938,11 +7952,11 @@ def handle_health_tip_viewed(data):
             if patient.user_id == current_user.id:
                 # Emit to doctor that patient viewed the tip
                 doctor_user = db.session.get(User, health_tip.doctor.user_id)
-                if doctor_user and doctor_user.id in user_sockets:
+                if doctor_user:
                     emit('patient_viewed_health_tip', {
                         'tip_id': tip_id,
                         'patient_name': current_user.first_name + ' ' + current_user.last_name
-                    }, room=user_sockets[doctor_user.id])
+                    }, room=f'user_{doctor_user.id}')
     except Exception as e:
         print(f"Error handling health tip viewed: {e}")
 
