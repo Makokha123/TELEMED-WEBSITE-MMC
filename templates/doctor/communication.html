@@ -2358,23 +2358,16 @@ function initiateVideoCall() {
         alert('Please select a patient first');
         return;
     }
-    
-    // Show outgoing call modal
-    const modal = new bootstrap.Modal(document.getElementById('outgoingVideoCallModal'));
-    
-    // Update modal with patient name
-    if (selectedPatientData) {
-        document.getElementById('outgoingVideoDoctorName').textContent = `${selectedPatientData.first_name} ${selectedPatientData.last_name}`;
-        document.getElementById('outgoingVideoDoctorAvatar').textContent = `${selectedPatientData.first_name[0]}${selectedPatientData.last_name[0]}`;
-    }
-    
-    modal.show();
-    
     if (typeof socket === 'undefined' || !socket.connected) {
-        console.warn('Socket.IO not connected - cannot initiate video call', { appointment_id: selectedAppointmentId });
         alert('Real-time connection not ready. Try again in a moment.');
         return;
     }
+    const calleeId = selectedPatientData?.user_id || selectedPatientData?.id;
+    socket.emit('initiate_video_call', {
+        caller_id: currentUserId,
+        callee_id: calleeId,
+        appointment_id: selectedAppointmentId
+    });
     console.log('Initiating video call', { appointment_id: selectedAppointmentId, patient_id: selectedPatientId });
     socket.emit('initiate_video_call', {
         appointment_id: selectedAppointmentId
@@ -2627,7 +2620,8 @@ function setupSocketIO() {
             socket.emit('join_appointment', { appointment_id: selectedAppointmentId });
         }
         
-        // Set user as online
+        // Register this socket with server and set user as online
+        socket.emit('register_user', { user_id: currentUserId });
         socket.emit('user_online_status', { is_online: true });
     });
     
@@ -2807,6 +2801,169 @@ function updatePaymentBadge(status) {
         }
     });
 }
+
+// -------------------------
+// In-page Video Call UI (doctor)
+// -------------------------
+let _ringAudioCtx_doc = null;
+let _ringOsc_doc = null;
+function playRingtoneDoc(loop=true, frequency=440) {
+    try {
+        if (!_ringAudioCtx_doc) _ringAudioCtx_doc = new (window.AudioContext || window.webkitAudioContext)();
+        _ringOsc_doc = _ringAudioCtx_doc.createOscillator();
+        const gain = _ringAudioCtx_doc.createGain();
+        _ringOsc_doc.type = 'sine';
+        _ringOsc_doc.frequency.setValueAtTime(frequency, _ringAudioCtx_doc.currentTime);
+        _ringOsc_doc.connect(gain);
+        gain.connect(_ringAudioCtx_doc.destination);
+        gain.gain.setValueAtTime(0.0001, _ringAudioCtx_doc.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.18, _ringAudioCtx_doc.currentTime + 0.02);
+        _ringOsc_doc.start();
+        if (loop) {
+            let on = true;
+            _ringOsc_doc._pulse = setInterval(() => {
+                gain.gain.cancelScheduledValues(_ringAudioCtx_doc.currentTime);
+                gain.gain.setValueAtTime(on ? 0.18 : 0.0001, _ringAudioCtx_doc.currentTime);
+                on = !on;
+            }, 600);
+        }
+    } catch(e) {}
+}
+function stopRingtoneDoc() {
+    try {
+        if (_ringOsc_doc) {
+            if (_ringOsc_doc._pulse) clearInterval(_ringOsc_doc._pulse);
+            _ringOsc_doc.stop();
+            _ringOsc_doc.disconnect();
+            _ringOsc_doc = null;
+        }
+    } catch(e){}
+}
+
+function showOutgoingVideoOverlay_doc(callInfo) {
+    closeVideoOverlays_doc();
+    const overlay = document.createElement('div');
+    overlay.id = 'outgoingVideoOverlay_doc';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:2000;';
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:28px;min-width:320px;max-width:420px;text-align:center;">
+            <div id="callieAvatar_doc" style="width:96px;height:96px;border-radius:50%;margin:0 auto 12px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:32px;"></div>
+            <div id="callieName_doc" style="font-weight:700;margin-bottom:6px;">${escapeHtml(callInfo.callee_name || 'Recipient')}</div>
+            <div style="color:#666;margin-bottom:14px;">Video call</div>
+            <div id="outgoingCallStatus_doc" style="margin-bottom:16px;color:#999;">Ringing...</div>
+            <div style="display:flex;gap:12px;justify-content:center;">
+                <button id="endOutgoingCallBtn_doc" class="btn btn-danger">End call</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    const avatar = document.getElementById('callieAvatar_doc');
+    if (callInfo.callee_profile_picture) avatar.innerHTML = `<img src="${callInfo.callee_profile_picture}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`; else avatar.textContent = getInitials(callInfo.callee_name || 'User');
+    document.getElementById('endOutgoingCallBtn_doc').addEventListener('click', () => {
+        stopRingtoneDoc();
+        if (socket && socket.connected) socket.emit('end_call', { call_id: callInfo.id, ended_by: callInfo.caller });
+        showNoAnswerOverlay_doc(callInfo);
+        closeVideoOverlays_doc();
+    });
+    playRingtoneDoc(true, 520);
+    overlay._ringTimeout = setTimeout(() => {
+        stopRingtoneDoc();
+        if (socket && socket.connected) socket.emit('reject_video_call', { call_id: callInfo.id, reason: 'no_answer' });
+        closeVideoOverlays_doc();
+        showNoAnswerOverlay_doc(callInfo);
+    }, 60000);
+}
+
+function showNoAnswerOverlay_doc(callInfo) {
+    closeVideoOverlays_doc();
+    const modal = document.createElement('div');
+    modal.id = 'noAnswerOverlay_doc';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:2100;';
+    modal.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:24px;min-width:320px;text-align:center;">
+            <h5 style="color:#c00;margin-bottom:8px;">No answer</h5>
+            <p style="color:#666;margin-bottom:16px;">The call was not answered. Would you like to redial?</p>
+            <div style="display:flex;gap:12px;justify-content:center;">
+                <button id="redialBtn_doc" class="btn btn-primary">Redial</button>
+                <button id="cancelNoAnswerBtn_doc" class="btn btn-outline-secondary">Cancel</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('redialBtn_doc').addEventListener('click', () => {
+        modal.remove();
+        if (socket && socket.connected) socket.emit('initiate_video_call', { caller_id: currentUserId, callee_id: callInfo.callee, appointment_id: callInfo.appointment_id });
+    });
+    document.getElementById('cancelNoAnswerBtn_doc').addEventListener('click', () => modal.remove());
+}
+
+function showIncomingVideoOverlay_doc(callInfo) {
+    closeVideoOverlays_doc();
+    const overlay = document.createElement('div');
+    overlay.id = 'incomingVideoOverlay_doc';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:2000;';
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:26px;min-width:320px;max-width:420px;text-align:center;">
+            <div id="callerAvatar_doc" style="width:96px;height:96px;border-radius:50%;margin:0 auto 12px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:32px;"></div>
+            <div id="callerName_doc" style="font-weight:700;margin-bottom:6px;">${escapeHtml(callInfo.caller_name || 'Caller')}</div>
+            <div id="callerRole_doc" style="color:#666;margin-bottom:14px;">Incoming video call from ${escapeHtml(callInfo.caller_role || '')}</div>
+            <div style="display:flex;gap:12px;justify-content:center;">
+                <button id="acceptIncomingVideoBtn_doc" class="btn btn-success">Accept</button>
+                <button id="hangupIncomingVideoBtn_doc" class="btn btn-danger">Hang up</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    const avatar = document.getElementById('callerAvatar_doc');
+    if (callInfo.caller_profile_picture) avatar.innerHTML = `<img src="${callInfo.caller_profile_picture}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`; else avatar.textContent = getInitials(callInfo.caller_name || 'User');
+    playRingtoneDoc(true, 380);
+    document.getElementById('acceptIncomingVideoBtn_doc').addEventListener('click', () => {
+        stopRingtoneDoc();
+        if (socket && socket.connected) socket.emit('accept_video_call', { call_id: callInfo.id, user_id: currentUserId });
+        closeVideoOverlays_doc();
+    });
+    document.getElementById('hangupIncomingVideoBtn_doc').addEventListener('click', () => {
+        stopRingtoneDoc();
+        if (socket && socket.connected) socket.emit('reject_video_call', { call_id: callInfo.id, reason: 'hung_up' });
+        closeVideoOverlays_doc();
+        setTimeout(()=>{ window.location.href = '/doctor/dashboard'; }, 400);
+    });
+    overlay._ringTimeout = setTimeout(() => {
+        stopRingtoneDoc();
+        if (socket && socket.connected) socket.emit('reject_video_call', { call_id: callInfo.id, reason: 'no_answer' });
+        closeVideoOverlays_doc();
+    }, 60000);
+}
+
+function closeVideoOverlays_doc() {
+    ['outgoingVideoOverlay_doc','incomingVideoOverlay_doc','noAnswerOverlay_doc'].forEach(id => { const el=document.getElementById(id); if(el){ if(el._ringTimeout) clearTimeout(el._ringTimeout); el.remove(); }});
+    stopRingtoneDoc();
+}
+
+socket.on('incoming_video_call', function(data) {
+    const info = { id: data.id || data.call_id, caller: data.caller, callee: data.callee, appointment_id: data.appointment_id, caller_name: data.caller_name, caller_role: data.caller_role, caller_profile_picture: data.caller_profile_picture };
+    showIncomingVideoOverlay_doc(info);
+});
+
+socket.on('outgoing_video_call_started', function(data) {
+    const info = { id: data.id, caller: data.caller, callee: data.callee, appointment_id: data.appointment_id, callee_name: data.callee_name, callee_profile_picture: data.callee_profile_picture };
+    showOutgoingVideoOverlay_doc(info);
+});
+
+socket.on('call_accepted', function(data) {
+    closeVideoOverlays_doc();
+    if (data && data.appointment_id) {
+        const connectedStub = document.createElement('div');
+        connectedStub.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:2200;';
+        connectedStub.innerHTML = `<div style="background:#fff;border-radius:12px;padding:20px;min-width:240px;text-align:center;"><h5>Connected</h5><p id=networkStrength_doc style=color:#666;>Network: Good</p></div>`;
+        document.body.appendChild(connectedStub);
+        setTimeout(()=>{ connectedStub.remove(); window.location.href = `/video-call/${data.appointment_id}`; }, 900);
+    }
+});
+
+socket.on('call_rejected', function(data) { closeVideoOverlays_doc(); if (data && data.reason === 'no_answer') showNoAnswerOverlay_doc(data); });
+
+socket.on('call_ended', function(data) { closeVideoOverlays_doc(); if (data && data.ended_by && data.ended_by !== currentUserId) { setTimeout(()=>{ window.location.href = '/doctor/dashboard'; }, 600); } });
 
 // Handle incoming call
 function handleIncomingCall(data, callType) {

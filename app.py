@@ -1,10 +1,9 @@
-﻿
-import os
-import time
-import eventlet
+﻿import eventlet
 eventlet.monkey_patch()
 print("✓ Eventlet monkey-patched")
 
+import os
+import time
 import logging
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import gc
@@ -96,7 +95,7 @@ except Exception:
 
 # Import models (after attempting to load .env so ENCRYPTION_KEY can be read)
 from models import (
-    Communication, PatientVital, Payment, Prescription, Report,
+    CallSession, Communication, PatientVital, Payment, Prescription, Report,
     PrescriptionAudit, Notification, HealthTip,
     SocialAccount, db, User, Patient, Doctor, Appointment, AuditLog, 
     Testimonial, MedicalRecord, _hash_value, encrypt_file_bytes, decrypt_file_bytes
@@ -114,6 +113,8 @@ user_last_seen = {}
 active_calls = {}
 call_rooms = {}  # Track call rooms: {call_id: {'caller': user_id, 'callee': user_id, 'appointment_id': apt_id}}
 incoming_call_notifications = {}  # Track incoming calls waiting for answer: {user_id: call_info}
+# Simple in-memory rate limiter for messages: {user_id: [timestamp,...]}
+message_rate = {}
 
 
 def configure_app():
@@ -175,6 +176,29 @@ def configure_app():
     # Logging
     app.config['LOG_LEVEL'] = os.getenv('LOG_LEVEL', 'INFO')
 
+    # Session / cookie security defaults
+    app.config.setdefault('SESSION_COOKIE_SECURE', True)
+    app.config.setdefault('SESSION_COOKIE_HTTPONLY', True)
+    app.config.setdefault('SESSION_COOKIE_SAMESITE', 'Lax')
+    app.config.setdefault('REMEMBER_COOKIE_SECURE', True)
+    app.config.setdefault('REMEMBER_COOKIE_HTTPONLY', True)
+    app.config.setdefault('PREFERRED_URL_SCHEME', 'https')
+
+    # ICE / TURN configuration (can be overridden via env vars)
+    # Expected env vars: TURN_URL, TURN_USER, TURN_PASS (optional)
+    turn_url = os.getenv('TURN_URL')
+    turn_user = os.getenv('TURN_USER')
+    turn_pass = os.getenv('TURN_PASS')
+    ice_servers = []
+    # public STUN as fallback
+    ice_servers.append({ 'urls': 'stun:stun.l.google.com:19302' })
+    if turn_url:
+        if turn_user and turn_pass:
+            ice_servers.append({ 'urls': turn_url, 'username': turn_user, 'credential': turn_pass })
+        else:
+            ice_servers.append({ 'urls': turn_url })
+    app.config['ICE_SERVERS'] = ice_servers
+
 configure_app()
 
 # Initialize extensions
@@ -185,6 +209,25 @@ mail = Mail(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 oauth = OAuth(app)
+
+
+# Security headers to harden responses
+@app.after_request
+def set_security_headers(response):
+    try:
+        # Prevent clickjacking
+        response.headers.setdefault('X-Frame-Options', 'DENY')
+        # Prevent MIME type sniffing
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        # Basic Referrer policy
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        # HSTS - enforce HTTPS for 1 week (adjust in production)
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=604800; includeSubDomains')
+        # Basic Permissions-Policy to opt-out of some features
+        response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    except Exception:
+        pass
+    return response
 
 # ============================================
 # DATABASE INITIALIZATION
@@ -313,6 +356,207 @@ def safe_username(user_or_name):
         return f'user_{getattr(user_or_name, "id", "unknown")}'
 
 
+# ----------------------
+# Socket.IO call handlers
+# ----------------------
+from flask import copy_current_request_context
+@socketio.on('register_user')
+def handle_register_user(data):
+    """Register a connected socket for a user: {user_id} """
+    try:
+        uid = int(data.get('user_id'))
+    except Exception:
+        return
+    sid = request.sid
+    # allow multiple sockets per user
+    lst = user_sockets.get(uid) or []
+    if sid not in lst:
+        lst.append(sid)
+    user_sockets[uid] = lst
+    user_last_seen[uid] = datetime.now(timezone.utc)
+    # join a personal room
+    join_room(f'user_{uid}')
+    emit('registered', {'status': 'ok'})
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    sid = request.sid
+    # remove sid from user_sockets
+    for uid, sids in list(user_sockets.items()):
+        if sid in sids:
+            sids.remove(sid)
+            if not sids:
+                user_sockets.pop(uid, None)
+                user_last_seen[uid] = datetime.now(timezone.utc)
+            else:
+                user_sockets[uid] = sids
+
+
+def _emit_to_user(user_id, event, payload):
+    # emit to personal room
+    try:
+        socketio.emit(event, payload, room=f'user_{user_id}')
+    except Exception:
+        pass
+
+
+@socketio.on('initiate_video_call')
+def handle_initiate_video_call(data):
+    """Caller requests to start a video call. data: {caller_id, callee_id, appointment_id}
+    Server creates a call_id, stores active_calls, notifies callee with incoming_video_call."""
+    try:
+        caller_id = int(data.get('caller_id'))
+        callee_id = int(data.get('callee_id'))
+        appointment_id = int(data.get('appointment_id')) if data.get('appointment_id') else None
+    except Exception:
+        emit('call_error', {'message': 'invalid_parameters'})
+        return
+
+    call_id = str(uuid4())
+    call_info = {
+        'id': call_id,
+        'caller': caller_id,
+        'callee': callee_id,
+        'appointment_id': appointment_id,
+        'started_at': datetime.now(timezone.utc).isoformat(),
+        'status': 'ringing'
+    }
+    active_calls[call_id] = call_info
+    incoming_call_notifications[callee_id] = call_info
+
+    # Enrich call info with user display names and profile pictures when available
+    try:
+        caller_user = User.query.get(caller_id)
+        callee_user = User.query.get(callee_id)
+        if caller_user:
+            call_info['caller_name'] = safe_display_name(caller_user)
+            call_info['caller_profile_picture'] = caller_user.profile_picture if getattr(caller_user, 'profile_picture', None) else None
+        if callee_user:
+            call_info['callee_name'] = safe_display_name(callee_user)
+            call_info['callee_profile_picture'] = callee_user.profile_picture if getattr(callee_user, 'profile_picture', None) else None
+    except Exception:
+        pass
+
+    # update appointment status if present
+    if appointment_id:
+        try:
+            apt = Appointment.query.get(appointment_id)
+            if apt:
+                apt.call_status = 'ringing'
+                apt.call_initiated_by = caller_id
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    # Notify callee
+    _emit_to_user(callee_id, 'incoming_video_call', call_info)
+    # Notify caller that ringing started
+    _emit_to_user(caller_id, 'outgoing_video_call_started', call_info)
+
+
+@socketio.on('accept_video_call')
+def handle_accept_video_call(data):
+    # data: {call_id, user_id}
+    call_id = data.get('call_id')
+    user_id = data.get('user_id')
+    info = active_calls.get(call_id)
+    if not info:
+        emit('call_error', {'message': 'call_not_found'})
+        return
+    # mark as ongoing
+    info['status'] = 'ongoing'
+    info['accepted_at'] = datetime.now(timezone.utc).isoformat()
+    # create CallSession row
+    try:
+        cs = CallSession(appointment_id=info.get('appointment_id') or None, participants=[info['caller'], info['callee']])
+        db.session.add(cs)
+        db.session.commit()
+        info['call_session_id'] = cs.id
+    except Exception:
+        db.session.rollback()
+
+    # notify both users
+    _emit_to_user(info['caller'], 'call_accepted', info)
+    _emit_to_user(info['callee'], 'call_accepted', info)
+
+
+@socketio.on('reject_video_call')
+def handle_reject_video_call(data):
+    call_id = data.get('call_id')
+    reason = data.get('reason') or 'rejected'
+    info = active_calls.pop(call_id, None)
+    if info:
+        incoming_call_notifications.pop(info.get('callee'), None)
+        # update appointment
+        try:
+            if info.get('appointment_id'):
+                apt = Appointment.query.get(info.get('appointment_id'))
+                if apt:
+                    apt.call_status = 'missed'
+                    db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        _emit_to_user(info['caller'], 'call_rejected', {'call_id': call_id, 'reason': reason})
+        _emit_to_user(info['callee'], 'call_rejected', {'call_id': call_id, 'reason': reason})
+
+
+@socketio.on('end_call')
+def handle_end_call(data):
+    call_id = data.get('call_id')
+    ended_by = data.get('ended_by')
+    info = active_calls.pop(call_id, None)
+    if info:
+        incoming_call_notifications.pop(info.get('callee'), None)
+        # update call session and appointment
+        try:
+            cs_id = info.get('call_session_id')
+            if cs_id:
+                cs = CallSession.query.get(cs_id)
+                if cs and not cs.ended_at:
+                    cs.ended_at = datetime.now(timezone.utc)
+                    if cs.started_at:
+                        try:
+                            started = cs.started_at
+                            duration = int((datetime.now(timezone.utc) - started).total_seconds())
+                            cs.duration = duration
+                        except Exception:
+                            pass
+                    db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        # update appointment status and possibly mark completed if doctor ended
+        try:
+            if info.get('appointment_id'):
+                apt = Appointment.query.get(info.get('appointment_id'))
+                if apt:
+                    apt.call_status = 'ended'
+                    # if the ended_by is the doctor user, mark appointment completed
+                    try:
+                        doctor_user_id = None
+                        if apt.doctor:
+                            doctor_user_id = getattr(apt.doctor, 'user_id', None)
+                        if doctor_user_id and ended_by and int(ended_by) == int(doctor_user_id):
+                            apt.status = 'completed'
+                            # emit testimonial prompt to patient
+                            _emit_to_user(apt.patient.user_id, 'prompt_testimonial', {
+                                'appointment_id': apt.id,
+                                'doctor_id': apt.doctor_id
+                            })
+                    except Exception:
+                        pass
+                    db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        # notify other participant
+        _emit_to_user(info['caller'], 'call_ended', {'call_id': call_id, 'ended_by': ended_by})
+        _emit_to_user(info['callee'], 'call_ended', {'call_id': call_id, 'ended_by': ended_by})
+
+
+
 def _uploads_rel_root():
     """Return uploads root relative to `static` (e.g. 'uploads')."""
     rel = app.config.get('UPLOAD_FOLDER', 'static/uploads').replace('\\', '/')
@@ -339,14 +583,16 @@ google_bp = make_google_blueprint(
     client_id=app.config['GOOGLE_OAUTH_CLIENT_ID'],
     client_secret=app.config['GOOGLE_OAUTH_CLIENT_SECRET'],
     scope=["profile", "email"],
-    storage=SQLAlchemyStorage(SocialAccount, db.session, user=current_user)
+    # Do not pass `current_user` at import time — use storage without binding a user
+    storage=SQLAlchemyStorage(SocialAccount, db.session)
 )
 
 facebook_bp = make_facebook_blueprint(
     client_id=app.config['FACEBOOK_OAUTH_CLIENT_ID'],
     client_secret=app.config['FACEBOOK_OAUTH_CLIENT_SECRET'],
     scope=["email", "public_profile"],
-    storage=SQLAlchemyStorage(SocialAccount, db.session, user=current_user)
+    # Do not pass `current_user` at import time — use storage without binding a user
+    storage=SQLAlchemyStorage(SocialAccount, db.session)
 )
 
 twitter_bp = None
@@ -3995,7 +4241,7 @@ def communication_appointment(appointment_id):
 @app.route('/api/testimonial', methods=['POST'])
 @login_required
 @csrf.exempt
-def submit_testimonial():
+def submit_testimonial_api():
     """Submit a testimonial at the end of a consultation (patient only)."""
     if current_user.role != 'patient':
         return jsonify({'success': False, 'error': 'Access denied'}), 403
@@ -6158,6 +6404,16 @@ def handle_connect():
         return True
     return False
 
+
+# Make ICE servers available to templates via context processor
+@app.context_processor
+def inject_ice_servers():
+    try:
+        ice = app.config.get('ICE_SERVERS', [{'urls': 'stun:stun.l.google.com:19302'}])
+        return {'ice_servers': ice}
+    except Exception:
+        return {'ice_servers': [{'urls': 'stun:stun.l.google.com:19302'}]}
+
 # Also add this route for health check
 @app.route('/socket.io/')
 def socketio_health():
@@ -6346,6 +6602,16 @@ def handle_send_message_enhanced(data):
         return False
 
     try:
+        # Simple rate limiting: max 30 messages per minute per user
+        now_ts = time.time()
+        user_bucket = message_rate.get(current_user.id, [])
+        # keep only last 60s
+        user_bucket = [t for t in user_bucket if now_ts - t < 60]
+        if len(user_bucket) >= 30:
+            emit('message_error', {'error': 'Rate limit exceeded'});
+            return {'success': False, 'error': 'rate_limited'}
+        user_bucket.append(now_ts)
+        message_rate[current_user.id] = user_bucket
         appointment_id = data.get('appointment_id')
         content = data.get('content')
         message_type = data.get('message_type', 'text')
@@ -7340,6 +7606,40 @@ def mark_all_notifications_read():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/appointments/<int:appointment_id>/testimonial', methods=['POST'])
+@login_required
+def submit_testimonial(appointment_id):
+    try:
+        data = request.get_json() or {}
+        rating = int(data.get('rating') or 0)
+        content = data.get('content')
+        is_public = data.get('is_public', True)
+
+        apt = Appointment.query.get(appointment_id)
+        if not apt:
+            return jsonify({'error': 'appointment_not_found'}), 404
+
+        # Ensure current_user is the patient for the appointment
+        if current_user.role != 'patient' or getattr(current_user, 'id', None) != getattr(apt.patient, 'user_id', None):
+            return jsonify({'error': 'unauthorized'}), 403
+
+        t = Testimonial(patient_id=apt.patient_id, doctor_id=apt.doctor_id, appointment_id=apt.id, rating=rating, is_public=bool(is_public))
+        t.content = content
+        db.session.add(t)
+        # store rating on appointment too
+        try:
+            apt.rating = rating
+            apt.feedback = content
+        except Exception:
+            pass
+        db.session.commit()
+        return jsonify({'status': 'ok', 'testimonial_id': t.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'server_error', 'message': str(e)}), 500
+
+
+
 # ==================== HEALTH TIPS ENDPOINTS ====================
 
 @app.route('/api/health-tips/patient/<int:patient_id>', methods=['GET'])
@@ -7382,6 +7682,9 @@ def get_patient_health_tips(patient_id):
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+    # NOTE: duplicate appointment-specific testimonial route removed (kept canonical /api/appointments/<id>/testimonial earlier)
 
 
 @app.route('/api/health-tips', methods=['POST'])

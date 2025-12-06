@@ -9,6 +9,8 @@
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
     <meta name="theme-color" content="#0d6efd">
+    <!-- Server-provided ICE servers (JSON) stored in a meta tag so JS doesn't contain raw Jinja markers -->
+    <meta name="ice-servers" content='{{ ice_servers|tojson | safe }}'>
     
     <!-- Bootstrap 5 CSS -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" 
@@ -184,6 +186,20 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/local-time.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    <!-- Expose ICE servers configured on server to client JS (read from meta to avoid Jinja in JS) -->
+    <script>
+        (function(){
+            try {
+                const meta = document.querySelector('meta[name="ice-servers"]');
+                const raw = meta ? meta.getAttribute('content') : null;
+                const parsed = raw ? JSON.parse(raw) : null;
+                window.ICE_SERVERS = parsed || [{ urls: 'stun:stun.l.google.com:19302' }];
+            } catch (e) {
+                window.ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+            }
+        })();
+    </script>
 
     <!-- CSRF Token -->
     <script>
