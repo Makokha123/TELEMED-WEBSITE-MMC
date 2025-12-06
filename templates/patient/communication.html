@@ -1053,6 +1053,60 @@
     </div>
 </div>
 
+<!-- Outgoing Video Call Modal -->
+<div class="modal fade" id="outgoingVideoCallModal" tabindex="-1" aria-labelledby="outgoingVideoCallLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="modal-body text-center text-white py-5">
+                <div style="margin-bottom: 30px;">
+                    <div class="avatar-large" id="outgoingVideoDoctorAvatar" style="width: 120px; height: 120px; border-radius: 50%; margin: 0 auto 20px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: bold;">
+                        D
+                    </div>
+                    <h5 id="outgoingVideoDoctorName" style="margin-bottom: 10px;">Doctor Name</h5>
+                    <p style="margin: 0; opacity: 0.9;">Video call in progress...</p>
+                </div>
+                <div style="margin: 40px 0;">
+                    <div class="spinner-border text-light" role="status" style="width: 60px; height: 60px;">
+                        <span class="visually-hidden">Calling...</span>
+                    </div>
+                </div>
+                <div style="margin-top: 40px; display: flex; gap: 10px; justify-content: center;">
+                    <button type="button" class="btn btn-danger btn-lg" id="rejectOutgoingVideoCallBtn" style="border-radius: 50%; width: 60px; height: 60px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-phone-slash" style="font-size: 24px;"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Outgoing Voice Call Modal -->
+<div class="modal fade" id="outgoingVoiceCallModal" tabindex="-1" aria-labelledby="outgoingVoiceCallLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="modal-body text-center text-white py-5">
+                <div style="margin-bottom: 30px;">
+                    <div class="avatar-large" id="outgoingVoiceDoctorAvatar" style="width: 120px; height: 120px; border-radius: 50%; margin: 0 auto 20px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: bold;">
+                        D
+                    </div>
+                    <h5 id="outgoingVoiceDoctorName" style="margin-bottom: 10px;">Doctor Name</h5>
+                    <p style="margin: 0; opacity: 0.9;">Calling...</p>
+                </div>
+                <div style="margin: 40px 0;">
+                    <div class="spinner-border text-light" role="status" style="width: 60px; height: 60px;">
+                        <span class="visually-hidden">Calling...</span>
+                    </div>
+                </div>
+                <div style="margin-top: 40px; display: flex; gap: 10px; justify-content: center;">
+                    <button type="button" class="btn btn-danger btn-lg" id="rejectOutgoingVoiceCallBtn" style="border-radius: 50%; width: 60px; height: 60px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-phone-slash" style="font-size: 24px;"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Hidden elements for data -->
 <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
 <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
@@ -1315,6 +1369,14 @@ function loadDoctorsWithAppointments() {
                     list.appendChild(item);
                 }
             });
+            
+            // Add scroll if more than 3 appointments
+            if (sortedAppointments.length > 3) {
+                list.style.maxHeight = '300px';
+                list.style.overflowY = 'auto';
+            } else {
+                list.style.maxHeight = 'auto';
+            }
         })
         .catch(error => {
             console.error('Error loading appointments:', error);
@@ -1882,6 +1944,27 @@ function setupEventListeners() {
     document.getElementById('videoCallBtn').addEventListener('click', initiateVideoCall);
     document.getElementById('infoBtn').addEventListener('click', showDoctorInfo);
     
+    // Outgoing call rejection handlers
+    document.getElementById('rejectOutgoingVideoCallBtn').addEventListener('click', function() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('outgoingVideoCallModal'));
+        if (modal) modal.hide();
+        if (typeof socket !== 'undefined') {
+            socket.emit('end_video_call', {
+                appointment_id: selectedAppointmentId
+            });
+        }
+    });
+    
+    document.getElementById('rejectOutgoingVoiceCallBtn').addEventListener('click', function() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('outgoingVoiceCallModal'));
+        if (modal) modal.hide();
+        if (typeof socket !== 'undefined') {
+            socket.emit('end_voice_call', {
+                appointment_id: selectedAppointmentId
+            });
+        }
+    });
+    
     // Back to list (mobile) - same as doctor
     document.getElementById('backToList').addEventListener('click', () => {
         document.getElementById('appointmentsSidebar').style.display = 'flex';
@@ -2231,8 +2314,43 @@ function initiateVideoCall() {
         return;
     }
     
+    // Show outgoing call modal
+    const modal = new bootstrap.Modal(document.getElementById('outgoingVideoCallModal'));
+    
+    // Update modal with doctor name
+    if (selectedPatientData) {
+        document.getElementById('outgoingVideoDoctorName').textContent = `${selectedPatientData.first_name} ${selectedPatientData.last_name}`;
+        document.getElementById('outgoingVideoDoctorAvatar').textContent = `${selectedPatientData.first_name[0]}${selectedPatientData.last_name[0]}`;
+    }
+    
+    modal.show();
+    
     if (typeof socket !== 'undefined') {
         socket.emit('initiate_video_call', {
+            appointment_id: selectedAppointmentId
+        });
+    }
+}
+
+function initiateVoiceCall() {
+    if (!selectedAppointmentId) {
+        alert('Please select an appointment first');
+        return;
+    }
+    
+    // Show outgoing call modal
+    const modal = new bootstrap.Modal(document.getElementById('outgoingVoiceCallModal'));
+    
+    // Update modal with doctor name
+    if (selectedPatientData) {
+        document.getElementById('outgoingVoiceDoctorName').textContent = `${selectedPatientData.first_name} ${selectedPatientData.last_name}`;
+        document.getElementById('outgoingVoiceDoctorAvatar').textContent = `${selectedPatientData.first_name[0]}${selectedPatientData.last_name[0]}`;
+    }
+    
+    modal.show();
+    
+    if (typeof socket !== 'undefined') {
+        socket.emit('initiate_voice_call', {
             appointment_id: selectedAppointmentId
         });
     }
