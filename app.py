@@ -223,8 +223,28 @@ def set_security_headers(response):
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         # HSTS - enforce HTTPS for 1 week (adjust in production)
         response.headers.setdefault('Strict-Transport-Security', 'max-age=604800; includeSubDomains')
-        # Basic Permissions-Policy to opt-out of some features
-        response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        # Basic Permissions-Policy: deny by default but allow camera/microphone
+        # for call-related pages (same-origin). You can override via
+        # the PERMISSIONS_POLICY env var if needed.
+        env_policy = os.getenv('PERMISSIONS_POLICY')
+        if env_policy:
+            response.headers.setdefault('Permissions-Policy', env_policy)
+        else:
+            try:
+                # Allow camera/microphone on call pages (same-origin only)
+                path = request.path or ''
+                allow_camera_mic = False
+                # Paths that typically need media access
+                if path.startswith('/communication') or path.startswith('/video') or '/call' in path or path.startswith('/communication/'):
+                    allow_camera_mic = True
+                if allow_camera_mic:
+                    # Allow only same-origin (self)
+                    response.headers.setdefault('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()')
+                else:
+                    # Deny by default
+                    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+            except Exception:
+                response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
     except Exception:
         pass
     return response
