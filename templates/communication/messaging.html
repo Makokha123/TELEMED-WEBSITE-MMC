@@ -532,11 +532,13 @@
 </div>
 
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 
 <script>
 const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 let currentAppointmentId = null;
 let currentPatientId = null;
+let selectedAppointmentData = null;
 let mediaRecorder;
 let recordedChunks = [];
 let recordingStartTime;
@@ -595,6 +597,7 @@ function loadAppointments() {
 function selectAppointment(appointmentId, patientId, doctor, appointment) {
     currentAppointmentId = appointmentId;
     currentPatientId = patientId;
+    selectedAppointmentData = appointment || null;
     
     document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
     event.target.closest('.conversation-item').classList.add('active');
@@ -779,7 +782,20 @@ function initiateVideoCall() {
         alert('Please select an appointment first');
         return;
     }
-    
+    // Show an outgoing call window for caller immediately
+    try {
+        if (selectedAppointmentData) {
+            const role = document.getElementById('currentUserRole')?.value;
+            const callee = (role === 'doctor') ? selectedAppointmentData.patient : selectedAppointmentData.doctor;
+            const calleeName = callee ? (callee.first_name + ' ' + (callee.last_name || '')) : '';
+            const calleePic = callee ? (callee.profile_picture_url || '') : '';
+            const url = `/incoming-video-call/${currentAppointmentId}?caller_name=${encodeURIComponent(calleeName)}&caller_profile_pic=${encodeURIComponent(calleePic)}`;
+            window.open(url, '_blank', 'width=420,height=720');
+        }
+    } catch (e) {
+        console.warn('Could not open outgoing call window:', e);
+    }
+
     socket.emit('initiate_video_call', {
         appointment_id: currentAppointmentId
     });
@@ -791,7 +807,20 @@ function initiateVoiceCall() {
         alert('Please select an appointment first');
         return;
     }
-    
+    // Show an outgoing call window for caller immediately
+    try {
+        if (selectedAppointmentData) {
+            const role = document.getElementById('currentUserRole')?.value;
+            const callee = (role === 'doctor') ? selectedAppointmentData.patient : selectedAppointmentData.doctor;
+            const calleeName = callee ? (callee.first_name + ' ' + (callee.last_name || '')) : '';
+            const calleePic = callee ? (callee.profile_picture_url || '') : '';
+            const url = `/incoming-voice-call/${currentAppointmentId}?caller_name=${encodeURIComponent(calleeName)}&caller_profile_pic=${encodeURIComponent(calleePic)}`;
+            window.open(url, '_blank', 'width=420,height=720');
+        }
+    } catch (e) {
+        console.warn('Could not open outgoing call window:', e);
+    }
+
     socket.emit('initiate_voice_call', {
         appointment_id: currentAppointmentId
     });
@@ -1097,28 +1126,40 @@ function hideTypingIndicator() {
 }
 
 function showIncomingVideoCallNotification(data) {
-    if (confirm(`${data.initiator_name} is calling you for a video call. Accept?`)) {
-        socket.emit('accept_video_call', {
-            appointment_id: data.appointment_id
-        });
-        initiateVideoCall();
-    } else {
-        socket.emit('reject_video_call', {
-            appointment_id: data.appointment_id
-        });
+    // Open incoming call popup (will show accept/reject UI)
+    try {
+        const callerName = data.caller_name || data.initiator_name || 'Caller';
+        const callerPic = data.caller_profile_pic || '';
+        const url = `/incoming-video-call/${data.appointment_id}?caller_name=${encodeURIComponent(callerName)}&caller_profile_pic=${encodeURIComponent(callerPic)}`;
+        const win = window.open(url, '_blank', 'width=420,height=720');
+        // Optionally focus the incoming window
+        if (win) win.focus();
+    } catch (e) {
+        // Fallback to simple confirm if popup fails
+        if (confirm(`${data.caller_name || data.initiator_name} is calling you for a video call. Accept?`)) {
+            socket.emit('accept_video_call', { appointment_id: data.appointment_id });
+            initiateVideoCall();
+        } else {
+            socket.emit('reject_video_call', { appointment_id: data.appointment_id });
+        }
     }
 }
 
 function showIncomingVoiceCallNotification(data) {
-    if (confirm(`${data.initiator_name} is calling you. Accept?`)) {
-        socket.emit('accept_voice_call', {
-            appointment_id: data.appointment_id
-        });
-        initiateVoiceCall();
-    } else {
-        socket.emit('end_voice_call', {
-            appointment_id: data.appointment_id
-        });
+    // Open incoming voice call popup with rich UI
+    try {
+        const callerName = data.caller_name || data.initiator_name || 'Caller';
+        const callerPic = data.caller_profile_pic || '';
+        const url = `/incoming-voice-call/${data.appointment_id}?caller_name=${encodeURIComponent(callerName)}&caller_profile_pic=${encodeURIComponent(callerPic)}`;
+        const win = window.open(url, '_blank', 'width=420,height=720');
+        if (win) win.focus();
+    } catch (e) {
+        if (confirm(`${data.caller_name || data.initiator_name} is calling you. Accept?`)) {
+            socket.emit('accept_voice_call', { appointment_id: data.appointment_id });
+            initiateVoiceCall();
+        } else {
+            socket.emit('end_voice_call', { appointment_id: data.appointment_id });
+        }
     }
 }
 

@@ -5736,6 +5736,13 @@ def voice_call(appointment_id):
     
     return render_template('communication/voice_call.html', appointment=appointment)
 
+@app.route('/outgoing-call/<int:appointment_id>')
+@login_required
+def outgoing_call(appointment_id):
+    """Outgoing call UI for caller: opens a small window showing callee info and call status."""
+    appointment = db.session.get(Appointment, appointment_id)
+    return render_template('communication/outgoing_call.html', appointment=appointment)
+
 @app.route('/voice-call/doctor/<int:doctor_id>')
 @login_required
 def voice_call_doctor(doctor_id):
@@ -6529,6 +6536,7 @@ def handle_initiate_video_call(data):
             'appointment_id': appointment_id,
             'caller_id': current_user.id,
             'caller_name': caller_name,
+            'caller_profile_pic': get_user_profile_picture_url(current_user),
             'caller_role': caller_role,
             'callee_role': callee_role,
             'call_type': 'video',
@@ -6932,6 +6940,7 @@ def handle_initiate_voice_call(data):
             'appointment_id': appointment_id,
             'caller_id': current_user.id,
             'caller_name': caller_name,
+            'caller_profile_pic': get_user_profile_picture_url(current_user),
             'caller_role': caller_role,
             'callee_role': callee_role,
             'call_type': 'voice',
