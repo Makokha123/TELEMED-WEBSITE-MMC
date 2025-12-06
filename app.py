@@ -353,8 +353,9 @@ def initialize_database():
             import traceback
             traceback.print_exc()
 
-# Run database initialization
-initialize_database()
+# Run database initialization unless explicitly skipped (useful for quick dev tests)
+if os.getenv('SKIP_DB_INIT', '0') != '1':
+    initialize_database()
 
 def safe_display_name(user):
     try:
