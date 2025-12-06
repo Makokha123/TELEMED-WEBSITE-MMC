@@ -4306,6 +4306,55 @@ def submit_testimonial_api():
     return jsonify({'success': True, 'testimonial_id': testimonial.id, 'doctor_average': avg}), 201
 
 
+@app.route('/api/appointments/<int:appointment_id>/testimonial', methods=['POST'])
+@login_required
+@csrf.exempt
+def submit_testimonial_for_appointment(appointment_id):
+    """Submit a testimonial for a specific appointment (patient only).
+    This endpoint mirrors `/api/testimonial` but uses the appointment_id path parameter
+    because some client code posts to `/api/appointments/<id>/testimonial`.
+    """
+    if current_user.role != 'patient':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    data = request.get_json() or request.form
+    rating = data.get('rating')
+    content = data.get('content', '').strip()
+
+    if rating is None:
+        return jsonify({'success': False, 'error': 'Missing rating'}), 400
+
+    try:
+        rating = int(rating)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid rating'}), 400
+
+    if rating < 1 or rating > 5:
+        return jsonify({'success': False, 'error': 'Rating must be between 1 and 5'}), 400
+
+    appointment = Appointment.query.get_or_404(appointment_id)
+    patient = Patient.query.filter_by(user_id=current_user.id).first()
+    if not patient or appointment.patient_id != patient.id:
+        return jsonify({'success': False, 'error': 'Access denied for this appointment'}), 403
+
+    # Create testimonial
+    testimonial = Testimonial(
+        patient_id=patient.id,
+        doctor_id=appointment.doctor_id,
+        appointment_id=appointment.id,
+        rating=rating,
+    )
+    testimonial.content = content
+
+    db.session.add(testimonial)
+    db.session.commit()
+
+    doctor = db.session.get(Doctor, testimonial.doctor_id)
+    avg = doctor.average_rating if doctor else None
+
+    return jsonify({'success': True, 'testimonial_id': testimonial.id, 'doctor_average': avg}), 201
+
+
 @app.route('/api/testimonials')
 def get_testimonials():
     """Return recent public testimonials for display."""
