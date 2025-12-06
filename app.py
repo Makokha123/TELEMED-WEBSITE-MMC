@@ -4408,7 +4408,8 @@ def get_doctor_appointments():
                     'first_name': user.first_name,
                     'last_name': user.last_name,
                     'email': user.email,
-                    'phone': user.phone
+                    'phone': user.phone,
+                    'profile_picture_url': url_for('profile_picture', user_id=user.id, _external=True) if user else None
                 },
                 'today': [],
                 'upcoming': [],

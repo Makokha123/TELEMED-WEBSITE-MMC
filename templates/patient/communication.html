@@ -1292,7 +1292,8 @@ function selectAppointment(appointmentId, doctorData, appointmentData) {
     loadAppointmentDetails(appointmentId);
 }
 
-// Load appointment detailsfunction loadAppointmentDetails(appointmentId) {
+// Load appointment details
+function loadAppointmentDetails(appointmentId) {
     fetch(`/api/appointment/${appointmentId}/details`)
         .then(response => response.json())
         .then(data => {
@@ -2200,16 +2201,6 @@ function setupSocketIO() {
     
     socket.on('incoming_video_call', function(data) {
         handleIncomingCall(data, 'video');
-    });
-    
-    
-    // Add patient-specific handlers
-    socket.on('doctor_online', function(data) {
-        updateDoctorOnlineStatus(data.doctor_id, true);
-    });
-    
-    socket.on('doctor_offline', function(data) {
-        updateDoctorOnlineStatus(data.doctor_id, false);
     });
     
     // Listen for payment status updates
