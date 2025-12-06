@@ -6820,6 +6820,51 @@ def handle_call_chat_message(data):
         'timestamp': datetime.utcnow().isoformat()
     }, room=f'video_call_{appointment_id}')
 
+@socketio.on('call_file_share')
+def handle_call_file_share(data):
+    """Handle file sharing during call"""
+    if not current_user.is_authenticated:
+        return
+    
+    appointment_id = data.get('appointment_id')
+    appointment = db.session.get(Appointment, appointment_id)
+    
+    if not appointment or not verify_appointment_access(appointment, current_user):
+        return
+    
+    # Broadcast file share to all in the call
+    emit('call_file_share', {
+        'appointment_id': appointment_id,
+        'file_name': data.get('file_name'),
+        'file_data': data.get('file_data'),
+        'file_size': data.get('file_size'),
+        'sender_id': current_user.id,
+        'sender_name': safe_display_name(current_user),
+        'timestamp': datetime.utcnow().isoformat()
+    }, room=f'video_call_{appointment_id}', skip_sid=request.sid)
+
+@socketio.on('call_user_info')
+def handle_call_user_info(data):
+    """Handle user profile info during call"""
+    if not current_user.is_authenticated:
+        return
+    
+    appointment_id = data.get('appointment_id')
+    appointment = db.session.get(Appointment, appointment_id)
+    
+    if not appointment or not verify_appointment_access(appointment, current_user):
+        return
+    
+    # Broadcast user info to all in the call
+    emit('call_user_info', {
+        'appointment_id': appointment_id,
+        'user_id': data.get('user_id'),
+        'first_name': data.get('first_name'),
+        'last_name': data.get('last_name'),
+        'profile_picture_url': data.get('profile_picture_url'),
+        'timestamp': datetime.utcnow().isoformat()
+    }, room=f'video_call_{appointment_id}', skip_sid=request.sid)
+
 @socketio.on('end_call')
 def handle_end_call(data):
     """Handle call end"""

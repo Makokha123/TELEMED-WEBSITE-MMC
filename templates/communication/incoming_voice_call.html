@@ -181,6 +181,49 @@
             background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
         }
 
+        /* Call control buttons (mute, speaker, hold) */
+        .call-controls {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9;
+            display: flex;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px 20px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .control-btn.active {
+            background: #ef4444;
+        }
+
+        .control-btn.active:hover {
+            background: #dc2626;
+        }
+
         /* Ringtone animation */
         .ringtone-icon {
             animation: ring 0.6s ease-in-out infinite;
@@ -264,6 +307,19 @@
             <i class="fas fa-phone"></i>
         </div>
 
+        <!-- Call Control Buttons (appear after call accepted) -->
+        <div class="call-controls" id="callControls" style="display: none;">
+            <button class="control-btn" id="muteBtn" title="Mute Microphone">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="control-btn" id="speakerBtn" title="Speaker">
+                <i class="fas fa-volume-up"></i>
+            </button>
+            <button class="control-btn" id="holdBtn" title="Hold Call">
+                <i class="fas fa-pause"></i>
+            </button>
+        </div>
+
         <div class="caller-info">
             <div class="caller-avatar" id="callerAvatar">
                 <span id="callerInitials">DR</span>
@@ -315,6 +371,11 @@
         const callTimer = document.getElementById('callTimer');
         const callerInitials = document.getElementById('callerInitials');
 
+        // Audio stream variables
+        let localStream = null;
+        let peerConnection = null;
+        let ringtoneInterval = null;
+
         // Set caller info
         callerNameEl.textContent = callerName;
         callerRoleEl.textContent = callerRole;
@@ -324,49 +385,231 @@
         const initials = names.map(n => n.charAt(0)).join('').substring(0, 2).toUpperCase();
         callerInitials.textContent = initials;
 
-        // Play ringtone
+        // Play ringtone using female voice and dual-tone pattern
         function playRingtone() {
-            // Create a simple sine wave ringtone
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-
-            oscillator.connect(gain);
-            gain.connect(audioContext.destination);
-
-            oscillator.frequency.value = 800;
-            oscillator.type = 'sine';
-
-            gain.gain.setValueAtTime(0.1, audioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.5);
-
-            // Repeat ringtone every 2 seconds
-            setTimeout(playRingtone, 2000);
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                function playTone(frequency, duration) {
+                    const oscillator = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    oscillator.connect(gain);
+                    gain.connect(audioContext.destination);
+                    
+                    oscillator.frequency.value = frequency;
+                    oscillator.type = 'sine';
+                    
+                    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+                    
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + duration);
+                }
+                
+                // Female voice-like ringtone pattern: higher frequencies
+                ringtoneInterval = setInterval(() => {
+                    playTone(850, 0.4);   // First tone
+                    setTimeout(() => playTone(950, 0.4), 500);  // Second tone
+                }, 2000);
+                
+                playTone(850, 0.4);   // Initial tone
+            } catch (e) {
+                console.log('Audio context error:', e);
+            }
         }
 
         // Start ringtone
         playRingtone();
 
         // Accept call
-        acceptBtn.addEventListener('click', () => {
+        acceptBtn.addEventListener('click', async () => {
+            clearInterval(ringtoneInterval);
             statusText.textContent = 'Accepted';
             callTimer.textContent = 'Connecting...';
+            
+            // Initialize audio stream
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        latency: 0.01,
+                        channelCount: 1,
+                        sampleRate: 48000
+                    }
+                });
+
+                // Create peer connection
+                const rtcConfig = {
+                    iceServers: [
+                        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+                    ]
+                };
+
+                peerConnection = new RTCPeerConnection(rtcConfig);
+
+                // Add local audio tracks
+                localStream.getTracks().forEach(track => {
+                    if (track.kind === 'audio') {
+                        track.enabled = true;
+                        console.log('Local audio track enabled:', track.label);
+                    }
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle remote audio stream
+                peerConnection.ontrack = (event) => {
+                    console.log('Remote track received:', event.track.kind);
+                    if (event.track.kind === 'audio') {
+                        let remoteAudio = document.getElementById('remoteAudio');
+                        if (!remoteAudio) {
+                            remoteAudio = document.createElement('audio');
+                            remoteAudio.id = 'remoteAudio';
+                            remoteAudio.autoplay = true;
+                            remoteAudio.playsinline = true;
+                            document.body.appendChild(remoteAudio);
+                        }
+                        remoteAudio.srcObject = event.streams[0];
+                        remoteAudio.volume = 1;
+                        console.log('Remote audio track connected:', event.track.label);
+                        statusText.textContent = 'Connected';
+                    }
+                };
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('webrtc_ice_candidate', {
+                            appointment_id: appointmentId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+
+                // Join voice room
+                socket.emit('join_voice_room', { appointment_id: appointmentId });
+
+                // Create and send answer
+                const offer = await new Promise((resolve) => {
+                    socket.on('webrtc_offer', (data) => {
+                        resolve(data.offer);
+                    });
+                });
+
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                socket.emit('webrtc_answer', {
+                    appointment_id: appointmentId,
+                    answer: answer
+                });
+
+            } catch (error) {
+                console.error('Error accepting call:', error);
+                statusText.textContent = 'Connection error';
+            }
             
             // Signal acceptance to parent window via sessionStorage
             sessionStorage.setItem('callResponse', 'accepted');
             
-            // Redirect to voice call interface
-            setTimeout(() => {
-                window.location.href = `/communication/${appointmentId}`;
-            }, 1000);
+            // Show call control buttons
+            const callControls = document.getElementById('callControls');
+            if (callControls) {
+                callControls.style.display = 'flex';
+            }
+            
+            // Initialize call control handlers
+            initializeCallControls();
+            
+            // Don't redirect immediately, keep the call active
+            // Redirect only when call ends
         });
+
+        // Call control state variables
+        let isMuted = false;
+        let isSpeakerOn = false;
+        let isOnHold = false;
+
+        // Initialize call controls
+        function initializeCallControls() {
+            const muteBtn = document.getElementById('muteBtn');
+            const speakerBtn = document.getElementById('speakerBtn');
+            const holdBtn = document.getElementById('holdBtn');
+
+            // Mute button
+            if (muteBtn) {
+                muteBtn.addEventListener('click', () => {
+                    isMuted = !isMuted;
+                    muteBtn.classList.toggle('active', isMuted);
+                    muteBtn.innerHTML = isMuted 
+                        ? '<i class="fas fa-microphone-slash"></i>' 
+                        : '<i class="fas fa-microphone"></i>';
+                    
+                    // Mute/unmute local audio tracks
+                    if (localStream) {
+                        localStream.getAudioTracks().forEach(track => {
+                            track.enabled = !isMuted;
+                        });
+                    }
+                });
+            }
+
+            // Speaker button
+            if (speakerBtn) {
+                speakerBtn.addEventListener('click', () => {
+                    isSpeakerOn = !isSpeakerOn;
+                    speakerBtn.classList.toggle('active', isSpeakerOn);
+                    speakerBtn.innerHTML = isSpeakerOn 
+                        ? '<i class="fas fa-volume-mute"></i>' 
+                        : '<i class="fas fa-volume-up"></i>';
+                    
+                    // Control remote audio volume
+                    const remoteAudio = document.getElementById('remoteAudio');
+                    if (remoteAudio) {
+                        remoteAudio.volume = isSpeakerOn ? 0 : 1;
+                    }
+                });
+            }
+
+            // Hold button
+            if (holdBtn) {
+                holdBtn.addEventListener('click', () => {
+                    isOnHold = !isOnHold;
+                    holdBtn.classList.toggle('active', isOnHold);
+                    holdBtn.innerHTML = isOnHold 
+                        ? '<i class="fas fa-play"></i>' 
+                        : '<i class="fas fa-pause"></i>';
+                    
+                    // Pause/resume audio tracks
+                    if (localStream) {
+                        localStream.getAudioTracks().forEach(track => {
+                            track.enabled = !isOnHold;
+                        });
+                    }
+
+                    // Update status
+                    const newStatus = isOnHold ? 'Call on hold' : 'Connected';
+                    statusText.textContent = newStatus;
+                });
+            }
+        }
 
         // Reject call
         rejectBtn.addEventListener('click', () => {
+            clearInterval(ringtoneInterval);
             statusText.textContent = 'Declined';
+            
+            // Close connections
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
             
             // Signal rejection to parent window via sessionStorage
             sessionStorage.setItem('callResponse', 'rejected');
@@ -379,7 +622,16 @@
         // Handle call timeout
         setTimeout(() => {
             if (statusText.textContent === 'Calling...') {
+                clearInterval(ringtoneInterval);
                 statusText.textContent = 'Missed Call';
+                
+                // Close connections
+                if (peerConnection) {
+                    peerConnection.close();
+                }
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
                 
                 // Signal timeout to parent window
                 sessionStorage.setItem('callResponse', 'timeout');
@@ -389,6 +641,27 @@
                 }, 3000);
             }
         }, 60000); // 60 second timeout
+
+        // Socket.IO handlers
+        socket.on('webrtc_ice_candidate', async (data) => {
+            try {
+                if (data.candidate && peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        });
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+        });
     </script>
 </body>
 </html>

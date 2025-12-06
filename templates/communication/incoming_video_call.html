@@ -211,6 +211,49 @@
             background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
         }
 
+        /* Call control buttons (mute, speaker, hold) */
+        .call-controls {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9;
+            display: flex;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px 20px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .control-btn.active {
+            background: #ef4444;
+        }
+
+        .control-btn.active:hover {
+            background: #dc2626;
+        }
+
         /* Close button */
         .close-btn {
             position: absolute;
@@ -281,10 +324,24 @@
             <i class="fas fa-video"></i>
         </div>
 
+        <!-- Call Control Buttons (appear after call accepted) -->
+        <div class="call-controls" id="callControls" style="display: none;">
+            <button class="control-btn" id="muteBtn" title="Mute Microphone">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="control-btn" id="speakerBtn" title="Speaker">
+                <i class="fas fa-volume-up"></i>
+            </button>
+            <button class="control-btn" id="holdBtn" title="Hold Call">
+                <i class="fas fa-pause"></i>
+            </button>
+        </div>
+
         <div class="caller-video-section">
             <video id="callerVideo" playsinline autoplay muted></video>
             <div class="caller-avatar-large" id="callerAvatarLarge">
-                <span id="callerInitials">DR</span>
+                <img id="callerProfilePic" src="" alt="Caller" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+                <span id="callerInitials" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">DR</span>
             </div>
 
             <div class="caller-info-overlay">
@@ -315,6 +372,7 @@
         const callerId = callData.caller_id;
         const callerName = callData.caller_name || 'Unknown';
         const callerRole = callData.caller_role || 'Doctor';
+        const callerProfilePic = callData.caller_profile_pic || null;
 
         // Initialize Socket.IO
         const socket = io();
@@ -328,48 +386,87 @@
         const rejectBtn = document.getElementById('rejectBtn');
         const statusText = document.getElementById('statusText');
         const callerInitials = document.getElementById('callerInitials');
+        const callerProfilePicEl = document.getElementById('callerProfilePic');
 
         // Set caller info
         callerNameEl.textContent = callerName;
         callerRoleEl.textContent = callerRole;
 
-        // Generate initials
-        const names = callerName.split(' ');
-        const initials = names.map(n => n.charAt(0)).join('').substring(0, 2).toUpperCase();
-        callerInitials.textContent = initials;
+        // Display profile picture if available
+        if (callerProfilePic) {
+            callerProfilePicEl.src = callerProfilePic;
+            callerProfilePicEl.style.display = 'block';
+            callerInitials.style.display = 'none';
+        } else {
+            // Generate initials
+            const names = callerName.split(' ');
+            const initials = names.map(n => n.charAt(0)).join('').substring(0, 2).toUpperCase();
+            callerInitials.textContent = initials;
+        }
 
-        // Play ringtone using Web Audio API
+        // Play ringtone using female voice and tones
+        let ringtoneInterval;
         function playRingtone() {
             try {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioContext.createOscillator();
-                const gain = audioContext.createGain();
-
-                oscillator.connect(gain);
-                gain.connect(audioContext.destination);
-
-                oscillator.frequency.value = 800;
-                oscillator.type = 'sine';
-
-                gain.gain.setValueAtTime(0.1, audioContext.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-                oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.5);
-
-                setTimeout(playRingtone, 2000);
+                
+                function playTone(frequency, duration) {
+                    const oscillator = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    oscillator.connect(gain);
+                    gain.connect(audioContext.destination);
+                    
+                    oscillator.frequency.value = frequency;
+                    oscillator.type = 'sine';
+                    
+                    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+                    
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + duration);
+                }
+                
+                // Female voice-like ringtone pattern: higher frequencies
+                const playRingtonePattern = () => {
+                    const now = audioContext.currentTime;
+                    playTone(850, 0.3);  // Higher tone for female voice
+                    audioContext.createOscillator().frequency.setValueAtTime(850, now);
+                };
+                
+                ringtoneInterval = setInterval(() => {
+                    playTone(850, 0.4);   // First tone
+                    setTimeout(() => playTone(950, 0.4), 500);  // Second tone
+                }, 2000);
+                
+                playRingtonePattern();
             } catch (e) {
                 console.log('Audio context error:', e);
             }
         }
 
-
         // Start ringtone
         playRingtone();
 
+        // Call control state variables
+        let isMuted = false;
+        let isSpeakerOn = false;
+        let isOnHold = false;
+        let localStream = null;
+
         // Accept video call
         acceptBtn.addEventListener('click', () => {
+            clearInterval(ringtoneInterval);
             statusText.textContent = 'Accepted';
+            
+            // Show call control buttons
+            const callControls = document.getElementById('callControls');
+            if (callControls) {
+                callControls.style.display = 'flex';
+            }
+            
+            // Initialize call control handlers
+            initializeCallControls();
             
             // Signal acceptance to parent window via sessionStorage
             sessionStorage.setItem('callResponse', 'accepted');
@@ -386,8 +483,55 @@
             }, 1000);
         });
 
+        // Initialize call controls
+        function initializeCallControls() {
+            const muteBtn = document.getElementById('muteBtn');
+            const speakerBtn = document.getElementById('speakerBtn');
+            const holdBtn = document.getElementById('holdBtn');
+
+            // Mute button
+            if (muteBtn) {
+                muteBtn.addEventListener('click', () => {
+                    isMuted = !isMuted;
+                    muteBtn.classList.toggle('active', isMuted);
+                    muteBtn.innerHTML = isMuted 
+                        ? '<i class="fas fa-microphone-slash"></i>' 
+                        : '<i class="fas fa-microphone"></i>';
+                    
+                    // Note: Audio control will be managed by the main video call page
+                });
+            }
+
+            // Speaker button
+            if (speakerBtn) {
+                speakerBtn.addEventListener('click', () => {
+                    isSpeakerOn = !isSpeakerOn;
+                    speakerBtn.classList.toggle('active', isSpeakerOn);
+                    speakerBtn.innerHTML = isSpeakerOn 
+                        ? '<i class="fas fa-volume-mute"></i>' 
+                        : '<i class="fas fa-volume-up"></i>';
+                    
+                    // Note: Speaker control will be managed by the main video call page
+                });
+            }
+
+            // Hold button
+            if (holdBtn) {
+                holdBtn.addEventListener('click', () => {
+                    isOnHold = !isOnHold;
+                    holdBtn.classList.toggle('active', isOnHold);
+                    holdBtn.innerHTML = isOnHold 
+                        ? '<i class="fas fa-play"></i>' 
+                        : '<i class="fas fa-pause"></i>';
+                    
+                    // Note: Hold control will be managed by the main video call page
+                });
+            }
+        }
+
         // Reject video call
         rejectBtn.addEventListener('click', () => {
+            clearInterval(ringtoneInterval);
             statusText.textContent = 'Declined';
             
             // Signal rejection to parent window via sessionStorage
@@ -401,6 +545,7 @@
         // Handle call timeout
         setTimeout(() => {
             if (statusText.textContent === 'Calling...') {
+                clearInterval(ringtoneInterval);
                 statusText.textContent = 'Missed Call';
                 
                 // Signal timeout to parent window

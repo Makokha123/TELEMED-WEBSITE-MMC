@@ -308,6 +308,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
     let callStartTime;
     let callTimer;
@@ -315,8 +316,17 @@
     let isSpeakerOn = false;
     let isOnHold = false;
     let isRecording = true;
+    let localStream = null;
+    let peerConnection = null;
+    let socket = io();
+
+    // Get appointment ID from URL
+    const appointmentId = window.location.pathname.split('/').pop();
 
     $(document).ready(function() {
+        // Initialize audio connection
+        initializeAudioCall();
+
         // Start call timer
         startCallTimer();
 
@@ -325,6 +335,108 @@
 
         // Simulate call connection
         simulateCallConnection();
+    });
+
+    async function initializeAudioCall() {
+        try {
+            // Get local audio stream with enhanced constraints
+            localStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    latency: 0.01,
+                    channelCount: 1,
+                    sampleRate: 48000
+                }
+            });
+
+            console.log('Local audio stream initialized');
+
+            // Create peer connection
+            const rtcConfig = {
+                iceServers: [
+                    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+                ]
+            };
+
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            // Add local audio track
+            localStream.getTracks().forEach(track => {
+                if (track.kind === 'audio') {
+                    track.enabled = true;
+                    console.log('Local audio track enabled:', track.label);
+                }
+                peerConnection.addTrack(track, localStream);
+            });
+
+            // Handle remote audio stream
+            peerConnection.ontrack = (event) => {
+                console.log('Remote track received:', event.track.kind);
+                if (event.track.kind === 'audio') {
+                    let remoteAudio = document.getElementById('remoteAudio');
+                    if (!remoteAudio) {
+                        remoteAudio = document.createElement('audio');
+                        remoteAudio.id = 'remoteAudio';
+                        remoteAudio.autoplay = true;
+                        remoteAudio.playsinline = true;
+                        document.body.appendChild(remoteAudio);
+                    }
+                    remoteAudio.srcObject = event.streams[0];
+                    remoteAudio.volume = 1;
+                    console.log('Remote audio track connected:', event.track.label);
+                }
+            };
+
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('webrtc_ice_candidate', {
+                        appointment_id: appointmentId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // Join voice room
+            socket.emit('join_voice_room', { appointment_id: appointmentId });
+
+            // Create and send offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            socket.emit('webrtc_offer', {
+                appointment_id: appointmentId,
+                offer: offer
+            });
+
+            // Update status
+            $('#callStatus').text('Connected');
+
+        } catch (error) {
+            console.error('Error initializing audio call:', error);
+            $('#callStatus').text('Connection failed');
+        }
+    }
+
+    // Socket.IO handlers
+    socket.on('webrtc_answer', async (data) => {
+        try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        } catch (error) {
+            console.error('Error setting remote description:', error);
+        }
+    });
+
+    socket.on('webrtc_ice_candidate', async (data) => {
+        try {
+            if (data.candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        } catch (error) {
+            console.error('Error adding ICE candidate:', error);
+        }
     });
 
     function startCallTimer() {
@@ -351,6 +463,14 @@
             isMuted = !isMuted;
             $(this).toggleClass('active', isMuted);
             $(this).html(isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>');
+            
+            // Mute/unmute local audio tracks
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = !isMuted;
+                });
+            }
+            
             updateCallStatus(isMuted ? 'You are muted' : 'Connected');
         });
 
@@ -359,12 +479,26 @@
             isSpeakerOn = !isSpeakerOn;
             $(this).toggleClass('active', isSpeakerOn);
             $(this).html(isSpeakerOn ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>');
+            
+            // Control remote audio playback
+            const remoteAudio = document.getElementById('remoteAudio');
+            if (remoteAudio) {
+                remoteAudio.volume = isSpeakerOn ? 1 : 0;
+            }
         });
 
         // Hold button
         $('#holdBtn').click(function() {
             isOnHold = !isOnHold;
             $(this).toggleClass('active', isOnHold);
+            
+            // Pause/resume audio tracks
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = !isOnHold;
+                });
+            }
+            
             updateCallStatus(isOnHold ? 'Call on hold' : 'Connected');
         });
 
@@ -379,17 +513,40 @@
     }
 
     function simulateCallConnection() {
-        // Simulate call quality changes
+        // Monitor connection quality
         setInterval(() => {
-            const qualities = ['Excellent', 'Good', 'Fair', 'Poor'];
-            const randomQuality = qualities[Math.floor(Math.random() * qualities.length)];
-            $('.call-quality').html(`<i class="fas fa-signal me-1"></i> ${randomQuality}`);
-        }, 10000);
+            if (peerConnection) {
+                const state = peerConnection.connectionState;
+                let quality = 'Excellent';
+                
+                if (state === 'connected' || state === 'completed') {
+                    quality = 'Excellent';
+                } else if (state === 'connecting') {
+                    quality = 'Connecting';
+                } else if (state === 'disconnected') {
+                    quality = 'Poor';
+                } else if (state === 'failed') {
+                    quality = 'Failed';
+                }
+                
+                $('.call-quality').html(`<i class="fas fa-signal me-1"></i> ${quality}`);
+            }
+        }, 5000);
     }
 
     function endCall() {
         if (confirm('Are you sure you want to end the call?')) {
             clearInterval(callTimer);
+            
+            // Close peer connection
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            
+            // Stop audio tracks
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
             
             // Show call ended screen
             $('.voice-call-container').html(`
@@ -400,7 +557,7 @@
                     <div class="call-status">Call Ended</div>
                     <div class="call-timer">${$('#callTimer').text()}</div>
                     <div class="mt-4">
-                        <button class="btn btn-primary me-2" onclick="window.location.href='{{ url_for('communication_dashboard', appointment_id=1) }}'">
+                        <button class="btn btn-primary me-2" onclick="window.location.href='/communication/${appointmentId}'">
                             <i class="fas fa-comments me-1"></i>Send Message
                         </button>
                         <button class="btn btn-success" onclick="scheduleFollowUp()">

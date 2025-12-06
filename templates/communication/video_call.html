@@ -28,7 +28,7 @@
             height: 100vh;
             background: #000;
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 2fr 1fr;
             gap: 0;
             position: relative;
         }
@@ -70,6 +70,13 @@
             justify-content: center;
             font-size: 48px;
             margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .placeholder-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         /* Local video (small PiP) */
@@ -84,6 +91,10 @@
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
             z-index: 20;
             cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
         }
 
         .local-video-section:active {
@@ -108,7 +119,97 @@
             color: white;
         }
 
-        /* Call info overlay */
+        /* Chat sidebar */
+        .chat-sidebar {
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #333;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 15px;
+            border-bottom: 1px solid #333;
+            color: white;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .chat-message {
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            word-wrap: break-word;
+            max-width: 95%;
+        }
+
+        .chat-message.sent {
+            background: #667eea;
+            color: white;
+            align-self: flex-end;
+        }
+
+        .chat-message.received {
+            background: #333;
+            color: #e5e5e5;
+            align-self: flex-start;
+        }
+
+        .chat-input-area {
+            padding: 12px;
+            border-top: 1px solid #333;
+            display: flex;
+            gap: 8px;
+        }
+
+        .chat-input-area input {
+            flex: 1;
+            background: #333;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .chat-input-area input::placeholder {
+            color: #999;
+        }
+
+        .chat-input-area input:focus {
+            outline: none;
+            background: #444;
+        }
+
+        .chat-input-area button {
+            background: #667eea;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .chat-input-area button:hover {
+            background: #764ba2;
+        }
+
+        #chatInput {
+            width: 100%;
+        }
+
+        /* Caller info overlay */
         .call-info-overlay {
             position: absolute;
             top: 20px;
@@ -119,6 +220,40 @@
             color: white;
             z-index: 10;
             font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .caller-name-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .caller-avatar-small {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .caller-avatar-small img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .caller-name {
+            font-weight: 600;
+            font-size: 14px;
         }
 
         .call-duration {
@@ -126,6 +261,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            font-size: 12px;
         }
 
         .call-duration .dot {
@@ -266,9 +402,15 @@
 
         <!-- Call info and controls overlay -->
         <div class="call-info-overlay">
-            <div class="call-duration">
-                <span class="dot"></span>
-                <span id="callDuration">00:00</span>
+            <div class="caller-avatar-small" id="remoteAvatarSmall">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="caller-name-info">
+                <div class="caller-name" id="remoteNameInfo">Caller</div>
+                <div class="call-duration">
+                    <span class="dot"></span>
+                    <span id="callDuration">00:00</span>
+                </div>
             </div>
         </div>
 
@@ -289,6 +431,22 @@
             </div>
         </div>
 
+        <!-- Chat sidebar -->
+        <div class="chat-sidebar">
+            <div class="chat-header">Chat</div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Type a message...">
+                <button id="sendChatBtn" title="Send">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+                <button id="attachFileBtn" title="Attach file">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <input type="file" id="fileInput" style="display: none;">
+            </div>
+        </div>
+
         <!-- Call controls -->
         <div class="call-controls">
             <button class="control-btn" id="toggleMicBtn" title="Toggle Microphone">
@@ -305,6 +463,12 @@
             </button>
         </div>
     </div>
+
+    <!-- Hidden user data -->
+    <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
+    <input type="hidden" id="currentUserFirstName" value="{{ current_user.first_name }}">
+    <input type="hidden" id="currentUserLastName" value="{{ current_user.last_name }}">
+    <input type="hidden" id="currentUserProfilePic" value="{{ current_user.profile_picture_url or '' }}">
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
@@ -324,6 +488,14 @@
         const connectionStatus = document.getElementById('connectionStatus');
         const screenShareIndicator = document.getElementById('screenShareIndicator');
         const localVideoSection = document.getElementById('localVideoSection');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendChatBtn = document.getElementById('sendChatBtn');
+        const attachFileBtn = document.getElementById('attachFileBtn');
+        const fileInput = document.getElementById('fileInput');
+        const remoteNameInfo = document.getElementById('remoteNameInfo');
+        const remoteAvatarSmall = document.getElementById('remoteAvatarSmall');
+        const remoteAvatar = document.getElementById('remoteAvatar');
 
         // State
         let localStream = null;
@@ -334,6 +506,65 @@
         let isScreenSharing = false;
         let callStartTime = null;
         let socket = io();
+        let remoteUserName = 'Caller';
+        let remoteUserAvatar = null;
+
+        // Chat functions
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Add message to UI (sent)
+            addChatMessageToUI(message, 'sent');
+            
+            // Emit via Socket.IO
+            socket.emit('call_chat_message', {
+                appointment_id: appointmentId,
+                message: message
+            });
+
+            chatInput.value = '';
+            chatInput.focus();
+        }
+
+        function addChatMessageToUI(message, type) {
+            const msgElement = document.createElement('div');
+            msgElement.className = `chat-message ${type}`;
+            msgElement.textContent = message;
+            chatMessages.appendChild(msgElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                socket.emit('call_file_share', {
+                    appointment_id: appointmentId,
+                    file_name: file.name,
+                    file_data: event.target.result,
+                    file_size: file.size
+                });
+
+                // Add notification to chat
+                addChatMessageToUI(`📎 Shared file: ${file.name}`, 'sent');
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = '';
+        }
+
+        // Chat event listeners
+        sendChatBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+        attachFileBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileUpload);
 
         // WebRTC Configuration
         const rtcConfig = {
@@ -345,10 +576,17 @@
         // Initialize WebRTC
         async function initializeCall() {
             try {
-                // Get local media stream
+                // Get local media stream with enhanced audio constraints
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: { width: 1280, height: 720, facingMode: 'user' },
-                    audio: { echoCancellation: true, noiseSuppression: true }
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        latency: 0.01,
+                        channelCount: 1,
+                        sampleRate: 48000
+                    }
                 });
 
                 localVideo.srcObject = localStream;
@@ -357,17 +595,37 @@
                 // Create peer connection
                 peerConnection = new RTCPeerConnection(rtcConfig);
 
-                // Add local stream tracks
+                // Add local stream tracks with audio gain control
                 localStream.getTracks().forEach(track => {
+                    if (track.kind === 'audio') {
+                        // Ensure audio track is enabled and set constraints
+                        track.enabled = true;
+                        console.log('Local audio track added:', track.label);
+                    }
                     peerConnection.addTrack(track, localStream);
                 });
 
                 // Handle remote stream
                 peerConnection.ontrack = (event) => {
                     console.log('Remote track received:', event.track.kind);
-                    remoteStream = event.streams[0];
-                    remoteVideo.srcObject = remoteStream;
-                    remotePlaceholder.style.display = 'none';
+                    if (event.track.kind === 'audio') {
+                        // Create audio element for remote audio with proper playback
+                        let remoteAudio = document.getElementById('remoteAudio');
+                        if (!remoteAudio) {
+                            remoteAudio = document.createElement('audio');
+                            remoteAudio.id = 'remoteAudio';
+                            remoteAudio.autoplay = true;
+                            remoteAudio.playsinline = true;
+                            document.body.appendChild(remoteAudio);
+                        }
+                        remoteAudio.srcObject = event.streams[0];
+                        remoteAudio.volume = 1;
+                        console.log('Remote audio track connected:', event.track.label);
+                    } else {
+                        remoteStream = event.streams[0];
+                        remoteVideo.srcObject = remoteStream;
+                        remotePlaceholder.style.display = 'none';
+                    }
                 };
 
                 // Handle ICE candidates
@@ -387,6 +645,15 @@
 
                 // Join video room
                 socket.emit('join_video_room', { appointment_id: appointmentId });
+
+                // Emit current user info
+                socket.emit('call_user_info', {
+                    appointment_id: appointmentId,
+                    user_id: document.getElementById('currentUserId')?.value || 'unknown',
+                    first_name: document.getElementById('currentUserFirstName')?.value || 'User',
+                    last_name: document.getElementById('currentUserLastName')?.value || '',
+                    profile_picture_url: document.getElementById('currentUserProfilePic')?.value || null
+                });
 
                 // Send offer
                 const offer = await peerConnection.createOffer();
@@ -558,6 +825,36 @@
 
         socket.on('video_call_ended', () => {
             closeCall();
+        });
+
+        // Chat message handler
+        socket.on('call_chat_message', (data) => {
+            addChatMessageToUI(data.message, 'received');
+        });
+
+        // File share handler
+        socket.on('call_file_share', (data) => {
+            addChatMessageToUI(`📎 ${data.sender_name} shared: ${data.file_name}`, 'received');
+            const link = document.createElement('a');
+            link.href = data.file_data;
+            link.download = data.file_name;
+            link.click();
+        });
+
+        // User info handler
+        socket.on('call_user_info', (data) => {
+            remoteUserName = `${data.first_name} ${data.last_name}`;
+            remoteUserAvatar = data.profile_picture_url;
+            remoteNameInfo.textContent = remoteUserName;
+            
+            if (remoteUserAvatar) {
+                remoteAvatarSmall.innerHTML = `<img src="${remoteUserAvatar}" alt="${remoteUserName}">`;
+                remoteAvatar.innerHTML = `<img src="${remoteUserAvatar}" alt="${remoteUserName}">`;
+            } else {
+                const initials = `${data.first_name[0]}${data.last_name[0]}`;
+                remoteAvatarSmall.textContent = initials;
+                remoteAvatar.textContent = initials;
+            }
         });
 
         // Make local video draggable (PiP)
