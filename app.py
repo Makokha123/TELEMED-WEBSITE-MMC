@@ -6461,7 +6461,21 @@ def default_error_handler(e):
 def handle_connect():
     """Handle Socket.IO connection"""
     if current_user.is_authenticated:
-        user_sockets[current_user.id] = request.sid
+        # Ensure we keep a list of socket ids per user (support multiple tabs/devices)
+        existing = user_sockets.get(current_user.id)
+        sid = request.sid
+        if isinstance(existing, list):
+            if sid not in existing:
+                existing.append(sid)
+            user_sockets[current_user.id] = existing
+        elif existing:
+            # existing is present but not a list (legacy value), coerce to list
+            try:
+                user_sockets[current_user.id] = [existing, sid] if existing != sid else [sid]
+            except Exception:
+                user_sockets[current_user.id] = [sid]
+        else:
+            user_sockets[current_user.id] = [sid]
         user_last_seen[current_user.id] = datetime.now(timezone.utc).isoformat()
         
         emit('connection_response', {'data': 'Connected to server'})
@@ -6537,33 +6551,49 @@ def handle_message_delivered(data):
             }, room=f'appointment_{appointment_id}')
 
 @socketio.on('disconnect')
-def handle_disconnect(sid):
-    """Handle user disconnection with cleanup. Accepts the socket id passed by Socket.IO."""
+def handle_disconnect():
+    """Handle user disconnection with cleanup."""
+    sid = request.sid
     try:
+        # Remove this sid from any user's socket list
+        for uid, sids in list(user_sockets.items()):
+            try:
+                # ensure we treat sids as list
+                if isinstance(sids, list):
+                    if sid in sids:
+                        sids.remove(sid)
+                        if not sids:
+                            user_sockets.pop(uid, None)
+                            user_last_seen[uid] = datetime.now(timezone.utc).isoformat()
+                        else:
+                            user_sockets[uid] = sids
+                else:
+                    # legacy single-sid string
+                    if sids == sid:
+                        user_sockets.pop(uid, None)
+                        user_last_seen[uid] = datetime.now(timezone.utc).isoformat()
+            except Exception:
+                user_sockets.pop(uid, None)
+
+        # If current_user is authenticated, update last seen and cleanup active_calls
         if current_user.is_authenticated:
             user_id = current_user.id
-            if user_id in user_sockets:
-                try:
-                    del user_sockets[user_id]
-                except Exception:
-                    user_sockets.pop(user_id, None)
-            
-            # Update last seen
             user_last_seen[user_id] = datetime.now(timezone.utc).isoformat()
-            
-            # Clean up active calls
+            # Clean up active_calls entries referencing this user
             for apt_id, users in list(active_calls.items()):
-                if user_id in users:
-                    del users[user_id]
-                    if not users:
-                        del active_calls[apt_id]
-            
-            print(f'User {user_id} disconnected')
-            try:
-                print(f'Current user_sockets mapping ({len(user_sockets)}): {user_sockets}')
-            except Exception:
-                pass
-            
+                try:
+                    if isinstance(users, dict) and user_id in users:
+                        del users[user_id]
+                        if not users:
+                            del active_calls[apt_id]
+                except Exception:
+                    pass
+
+        try:
+            print(f'User disconnected (sid={sid}). Current user_sockets mapping ({len(user_sockets)}): {user_sockets}')
+        except Exception:
+            pass
+
     except Exception as e:
         print(f'Error in handle_disconnect: {e}')
 
