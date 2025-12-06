@@ -2595,28 +2595,24 @@ function updateUnreadCount(appointmentId) {
 
 // Handle incoming call
 function handleIncomingCall(data, callType) {
-    // Store call data in sessionStorage for the incoming call template
-    sessionStorage.setItem('incomingCallData', JSON.stringify({
-        appointment_id: data.appointment_id,
-        caller_id: data.caller_id,
-        caller_name: data.caller_name || 'Caller',
-        caller_role: data.caller_role || 'Healthcare Provider',
-        appointment_date: data.appointment_date,
-        appointment_time: data.appointment_time,
-        call_type: callType
-    }));
-    
-    // Open incoming call template in new window
-    if (callType === 'voice') {
-        window.open(`/incoming-voice-call/${data.appointment_id}`, 'incomingVoiceCall', 
-            'width=600,height=700,left=100,top=100');
-    } else if (callType === 'video') {
-        window.open(`/incoming-video-call/${data.appointment_id}`, 'incomingVideoCall', 
-            'width=600,height=700,left=100,top=100');
+    // Use in-page overlays (no new window)
+    const info = {
+        id: data.id || data.call_id || data.callId,
+        caller: data.caller || data.caller_id || data.from,
+        callee: data.callee || data.callee_id || data.to,
+        appointment_id: data.appointment_id || data.appointmentId,
+        caller_name: data.caller_name || data.callerName || 'Caller',
+        caller_role: data.caller_role || data.callerRole || 'Healthcare Provider',
+        caller_profile_picture: data.caller_profile_picture || data.caller_profile_picture_url || null
+    };
+
+    if (callType === 'video') {
+        try { showIncomingVideoOverlay(info); } catch (e) { console.error('showIncomingVideoOverlay failed', e); }
+    } else {
+        try { showIncomingVideoOverlay(info); } catch (e) { console.error('showIncomingVideoOverlay failed', e); }
     }
-    
-    // Setup handlers for the incoming call window
-    setupIncomingCallHandlers(data, callType);
+
+    // The overlay functions emit accept/reject/end events themselves; no setupIncomingCallHandlers needed.
 }
 
 function setupIncomingCallHandlers(data, callType) {
