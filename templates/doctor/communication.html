@@ -2764,22 +2764,30 @@ function unlockFeatures() {
 }
 
 // Setup Socket.IO
-window.socket = io();
+window.socket = null; // Initialize as null, will be set up in setupSocketIO
 
 function setupSocketIO() {
-    // Make sure socket is defined
+    // Make sure socket.io library is loaded
     if (typeof io === 'undefined') {
         console.error('Socket.IO library not loaded');
         setTimeout(setupSocketIO, 1000);
         return;
     }
     
-    // Connect with options
+    // Prevent double initialization
+    if (window.socket && window.socket.connected) {
+        console.log('Socket.IO already connected');
+        return;
+    }
+    
+    // Connect with options - connect ONLY here with proper configuration
     window.socket = io({
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        autoConnect: true
     });
     
     socket.on('connect', function() {

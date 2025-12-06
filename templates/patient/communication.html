@@ -2420,22 +2420,30 @@ function updateSidebarPreview(messageData) {
 }
 
 // Setup Socket.IO with patient-specific handlers
-window.socket = io();
+window.socket = null; // Initialize as null, will be set up in setupSocketIO
 
 function setupSocketIO() {
-    // Make sure socket is defined
+    // Make sure socket.io library is loaded
     if (typeof io === 'undefined') {
         console.error('Socket.IO library not loaded');
         setTimeout(setupSocketIO, 1000);
         return;
     }
     
-    // Connect with options
+    // Prevent double initialization
+    if (window.socket && window.socket.connected) {
+        console.log('Socket.IO already connected');
+        return;
+    }
+    
+    // Connect with options - connect ONLY here with proper configuration
     window.socket = io({
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        autoConnect: true
     });
     
     socket.on('connect', function() {
@@ -2615,6 +2623,20 @@ function setupSocketIO() {
             };
             showOutgoingVoiceOverlay(info);
         }
+    });
+
+    socket.on('incoming_video_call', function(data) {
+        console.log('Incoming video call:', data);
+        // Callee receives incoming video call
+        const info = {
+            appointment_id: data.appointment_id,
+            caller_id: data.caller_id,
+            caller_name: data.caller_name || 'Doctor',
+            caller_role: data.caller_role || 'doctor',
+            caller_profile_pic: data.caller_profile_pic,
+            call_type: 'video'
+        };
+        showIncomingVideoOverlay(info);
     });
 
     socket.on('incoming_voice_call', function(data) {
