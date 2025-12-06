@@ -894,6 +894,9 @@
                             <!-- Profile picture will be loaded here -->
                         </div>
                     </div>
+                            <button class="sidebar-action-btn" title="Contact Admin" id="contactAdminBtn">
+                                <i class="fas fa-shield-alt"></i>
+                            </button>
                             <button class="sidebar-action-btn" title="Status" id="statusBtn">
                                 <i class="fas fa-circle" id="statusIcon"></i>
                             </button>
@@ -1029,6 +1032,22 @@
                     <i class="fas fa-sync me-2"></i>
                     Check Payment Status
                 </button>
+                <button class="btn btn-link mt-2" id="backToDashboardBtn">
+                    <i class="fas fa-arrow-left me-2"></i>
+                    Back to Dashboard
+                </button>
+            </div>
+        </div>
+
+        <!-- Admin Contact Dropdown -->
+        <div class="admin-dropdown" id="adminDropdown" style="display: none; position: absolute; top: 60px; right: 20px; background: white; border: 1px solid #e5e5e5; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; min-width: 250px;">
+            <div style="padding: 12px; border-bottom: 1px solid #e5e5e5;">
+                <h6 style="margin: 0; font-weight: 600; color: #111b21;">Contact Support</h6>
+            </div>
+            <div id="adminListContainer" style="max-height: 300px; overflow-y: auto;">
+                <div style="padding: 12px; text-align: center; color: #999;">
+                    <i class="fas fa-spinner fa-spin"></i> Loading admins...
+                </div>
             </div>
         </div>
     </div>
@@ -1060,6 +1079,7 @@
 const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 const currentUserId = parseInt(document.getElementById('currentUserId').value);
 const currentUserRole = document.getElementById('currentUserRole').value;
+const DEFAULT_TIMEZONE = 'Africa/Nairobi'; // EAT (East Africa Time)
 
 // Global state
 let selectedAppointmentId = null;
@@ -1080,9 +1100,159 @@ document.addEventListener('DOMContentLoaded', function() {
     loadUserProfilePicture();
     loadDoctorsWithAppointments(); // Changed from loadDoctors()
     setupEventListeners();
+    setupAdminContact();
     setupSocketIO();
     setupEmojiPicker();
 });
+
+// Setup admin contact functionality
+function setupAdminContact() {
+    const contactAdminBtn = document.getElementById('contactAdminBtn');
+    if (contactAdminBtn) {
+        contactAdminBtn.addEventListener('click', toggleAdminDropdown);
+    }
+    
+    // Load admins list
+    loadAdminsList();
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        const dropdown = document.getElementById('adminDropdown');
+        if (dropdown && !dropdown.contains(e.target) && e.target.id !== 'contactAdminBtn') {
+            dropdown.style.display = 'none';
+        }
+    });
+}
+
+// Toggle admin dropdown
+function toggleAdminDropdown() {
+    const dropdown = document.getElementById('adminDropdown');
+    if (dropdown.style.display === 'none') {
+        dropdown.style.display = 'block';
+    } else {
+        dropdown.style.display = 'none';
+    }
+}
+
+// Load admins list
+function loadAdminsList() {
+    const container = document.getElementById('adminListContainer');
+    if (!container) {
+        console.error('Admin list container not found');
+        return;
+    }
+    
+    fetch('/api/admins-list')
+        .then(response => response.json())
+        .then(data => {
+            container.innerHTML = '';
+            
+            if (!data.admins || data.admins.length === 0) {
+                container.innerHTML = '<div style="padding: 12px; text-align: center; color: #999;">No admins available</div>';
+                return;
+            }
+            
+            data.admins.forEach(admin => {
+                const adminItem = document.createElement('div');
+                adminItem.style.cssText = 'padding: 12px; border-bottom: 1px solid #e5e5e5; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s;';
+                adminItem.onmouseover = () => adminItem.style.background = '#f0f0f0';
+                adminItem.onmouseout = () => adminItem.style.background = 'transparent';
+                
+                const avatar = document.createElement('div');
+                avatar.style.cssText = 'width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;';
+                avatar.textContent = getInitials(`${admin.first_name} ${admin.last_name}`);
+                
+                const info = document.createElement('div');
+                info.style.cssText = 'flex: 1;';
+                info.innerHTML = `<div style="font-weight: 500; color: #111b21;">${admin.first_name} ${admin.last_name}</div><div style="font-size: 12px; color: #999;">${admin.email}</div>`;
+                
+                adminItem.appendChild(avatar);
+                adminItem.appendChild(info);
+                adminItem.addEventListener('click', () => contactAdmin(admin.id, admin));
+                container.appendChild(adminItem);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading admins:', error);
+            if (container) {
+                container.innerHTML = '<div style="padding: 12px; text-align: center; color: #999;">Error loading admins</div>';
+            }
+        });
+}
+
+// Contact admin
+function contactAdmin(adminId, adminData) {
+    selectedAppointmentId = null;
+    selectedDoctorId = adminId;
+    selectedDoctorData = adminData;
+    
+    // Update chat header
+    const chatHeaderName = document.getElementById('chatHeaderName');
+    const chatHeaderStatus = document.getElementById('chatHeaderStatus');
+    const chatAvatar = document.getElementById('chatAvatar');
+    
+    const name = `${adminData.first_name} ${adminData.last_name}`;
+    const avatarText = getInitials(name);
+    
+    chatHeaderName.textContent = `${name} (Support)`;
+    chatHeaderStatus.innerHTML = `<span class="status-indicator online"></span>Online • Support`;
+    chatAvatar.textContent = avatarText;
+    chatAvatar.classList.add('initials');
+    
+    // Show chat area
+    if (window.innerWidth <= 768) {
+        document.getElementById('appointmentsSidebar').style.display = 'none';
+        document.getElementById('chatArea').style.display = 'flex';
+        document.getElementById('backToList').style.display = 'flex';
+    }
+    
+    // Unlock chat features (admin chats are always free)
+    const paymentOverlay = document.getElementById('paymentOverlay');
+    const messageInput = document.getElementById('messageInput');
+    const sendMessageBtn = document.getElementById('sendMessageBtn');
+    
+    paymentOverlay.style.display = 'none';
+    messageInput.disabled = false;
+    sendMessageBtn.disabled = false;
+    
+    // Load admin conversation
+    loadAdminConversation(adminId);
+    
+    // Close dropdown
+    document.getElementById('adminDropdown').style.display = 'none';
+}
+
+// Load admin conversation
+function loadAdminConversation(adminId) {
+    fetch(`/api/admin-conversation/${adminId}`)
+        .then(response => response.json())
+        .then(data => {
+            const messagesArea = document.getElementById('chatMessages');
+            messagesArea.innerHTML = '';
+            
+            if (data.messages && data.messages.length > 0) {
+                data.messages.forEach(msg => {
+                    const messageEl = createMessageElement(msg);
+                    messagesArea.appendChild(messageEl);
+                });
+            }
+            
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+            
+            // Join socket room for admin
+            if (typeof socket !== 'undefined') {
+                socket.emit('join_admin_chat', { admin_id: adminId });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading admin conversation:', error);
+        });
+}
+
+// Back to dashboard function
+function backToDashboard() {
+    window.location.href = '/patient/dashboard';
+}
 
 // Load patient's profile picture (same as doctor version but for patient)
 function loadUserProfilePicture() {
@@ -1371,6 +1541,9 @@ function checkPaymentStatus(appointmentId) {
                 document.getElementById('checkPaymentStatusBtn').onclick = () => {
                     checkPaymentStatus(appointmentId);
                 };
+                
+                // Back to dashboard button
+                document.getElementById('backToDashboardBtn').onclick = backToDashboard;
             } else {
                 paymentOverlay.style.display = 'none';
                 messageInput.disabled = false;

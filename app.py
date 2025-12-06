@@ -4652,6 +4652,74 @@ def get_appointment_payment_status(appointment_id):
         'payment_required': payment_status != 'paid' and current_user.role == 'patient'
     })
 
+@app.route('/api/admins-list')
+@login_required
+def get_admins_list():
+    """Get list of all admins for contact dropdown"""
+    # Only allow patients and doctors to contact admins
+    if current_user.role not in ['patient', 'doctor']:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    admins = User.query.filter_by(role='admin').all()
+    
+    admin_list = []
+    for admin in admins:
+        admin_data = {
+            'id': admin.id,
+            'first_name': admin.first_name,
+            'last_name': admin.last_name,
+            'email': admin.email,
+            'profile_picture_url': admin.profile_picture_url or '/static/images/default_avatar.png'
+        }
+        admin_list.append(admin_data)
+    
+    return jsonify({'admins': admin_list})
+
+@app.route('/api/admin-conversation/<int:admin_id>')
+@login_required
+def get_admin_conversation(admin_id):
+    """Get conversation messages between user and admin"""
+    # Verify admin exists
+    admin = User.query.get_or_404(admin_id)
+    if admin.role != 'admin':
+        return jsonify({'error': 'Not an admin'}), 400
+    
+    # Only allow patients and doctors
+    if current_user.role not in ['patient', 'doctor']:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Get messages from the conversation between current user and admin
+    # Messages are stored with admin_id as recipient_id and current user as sender
+    messages = Message.query.filter(
+        db.or_(
+            db.and_(
+                Message.sender_id == current_user.id,
+                Message.recipient_id == admin_id
+            ),
+            db.and_(
+                Message.sender_id == admin_id,
+                Message.recipient_id == current_user.id
+            )
+        )
+    ).order_by(Message.created_at.asc()).all()
+    
+    message_list = []
+    for msg in messages:
+        message_data = {
+            'id': msg.id,
+            'sender_id': msg.sender_id,
+            'recipient_id': msg.recipient_id,
+            'content': msg.content,
+            'created_at': msg.created_at.isoformat() if msg.created_at else None,
+            'is_read': msg.is_read,
+            'sender_name': f"{msg.sender.first_name} {msg.sender.last_name}",
+            'sender_avatar': msg.sender.profile_picture_url or '/static/images/default_avatar.png'
+        }
+        message_list.append(message_data)
+    
+    return jsonify({'messages': message_list})
+
+
 @app.route('/api/patient/appointments/categorized')
 @login_required
 def get_patient_appointments_categorized():
@@ -7098,6 +7166,41 @@ def handle_mark_notification_read(data):
         print(f'Error marking notification as read: {str(e)}')
     
     return {'success': False}
+
+@socketio.on('join_admin_chat')
+def handle_join_admin_chat(data):
+    """Join admin chat room"""
+    if not current_user.is_authenticated:
+        return {'error': 'Not authenticated'}
+    
+    # Only allow patients and doctors to contact admins
+    if current_user.role not in ['patient', 'doctor']:
+        return {'error': 'Access denied'}
+    
+    admin_id = data.get('admin_id')
+    user_id = data.get('user_id')
+    user_role = data.get('user_role')
+    
+    # Verify admin exists
+    admin = User.query.get(admin_id)
+    if not admin or admin.role != 'admin':
+        return {'error': 'Invalid admin'}
+    
+    # Create room name for this conversation
+    room_name = f'admin_chat_{min(user_id, admin_id)}_{max(user_id, admin_id)}'
+    
+    # Join the room
+    join_room(room_name)
+    
+    # Notify admin that someone is chatting with them
+    socketio.emit('admin_chat_started', {
+        'user_id': user_id,
+        'user_name': f"{current_user.first_name} {current_user.last_name}",
+        'user_role': user_role,
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }, room=room_name)
+    
+    return {'success': True, 'room': room_name}
 
 @app.route('/api/notifications', methods=['GET'])
 @login_required

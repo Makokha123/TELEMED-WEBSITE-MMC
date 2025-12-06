@@ -873,6 +873,9 @@
                             <!-- Profile picture will be loaded here -->
                         </div>
                     </div>
+                    <button class="sidebar-action-btn" title="Contact Admin" id="contactAdminBtn">
+                        <i class="fas fa-shield-alt"></i>
+                    </button>
                     <button class="sidebar-action-btn" title="Status">
                         <i class="fas fa-circle"></i>
                     </button>
@@ -1000,6 +1003,41 @@
     </div>
 </div>
 
+<!-- Payment Overlay -->
+<div class="payment-overlay" id="paymentOverlay" style="display: none;">
+    <div class="payment-icon">
+        <i class="fas fa-lock"></i>
+    </div>
+    <div class="payment-message">
+        <h4>Complete Payment to Unlock Features</h4>
+        <p>Please complete your payment to access messaging, voice calls, video calls, and file sharing for this consultation.</p>
+        <button class="btn btn-primary" id="goToPaymentBtn">
+            <i class="fas fa-credit-card me-2"></i>
+            Complete Payment
+        </button>
+        <button class="btn btn-outline-secondary mt-2" id="checkPaymentStatusBtn">
+            <i class="fas fa-sync me-2"></i>
+            Check Payment Status
+        </button>
+        <button class="btn btn-link mt-2" id="backToDashboardBtn">
+            <i class="fas fa-arrow-left me-2"></i>
+            Back to Dashboard
+        </button>
+    </div>
+</div>
+
+<!-- Admin Contact Dropdown -->
+<div class="admin-dropdown" id="adminDropdown" style="display: none; position: absolute; top: 60px; right: 20px; background: white; border: 1px solid #e5e5e5; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; min-width: 250px;">
+    <div style="padding: 12px; border-bottom: 1px solid #e5e5e5;">
+        <h6 style="margin: 0; font-weight: 600; color: #111b21;">Contact Support</h6>
+    </div>
+    <div id="adminListContainer" style="max-height: 300px; overflow-y: auto;">
+        <div style="padding: 12px; text-align: center; color: #999;">
+            <i class="fas fa-spinner fa-spin"></i> Loading admins...
+        </div>
+    </div>
+</div>
+
 <!-- Hidden elements for data -->
 <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
 <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
@@ -1053,6 +1091,7 @@
 const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 const currentUserId = parseInt(document.getElementById('currentUserId').value);
 const currentUserRole = document.getElementById('currentUserRole').value;
+const DEFAULT_TIMEZONE = 'Africa/Nairobi'; // EAT (East Africa Time)
 
 // Global state
 let selectedAppointmentId = null;
@@ -1072,9 +1111,155 @@ document.addEventListener('DOMContentLoaded', function() {
     loadUserProfilePicture();
     loadPatients();
     setupEventListeners();
+    setupAdminContact();
     setupSocketIO();
     setupEmojiPicker();
 });
+
+// ============================================
+// ADMIN CONTACT SETUP & FUNCTIONS
+// ============================================
+
+function setupAdminContact() {
+    const contactAdminBtn = document.getElementById('contactAdminBtn');
+    if (contactAdminBtn) {
+        contactAdminBtn.addEventListener('click', toggleAdminDropdown);
+    }
+    
+    // Close dropdown if clicking outside
+    document.addEventListener('click', function(event) {
+        const dropdown = document.getElementById('adminDropdown');
+        const contactBtn = document.getElementById('contactAdminBtn');
+        if (dropdown && !dropdown.contains(event.target) && !contactBtn.contains(event.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+}
+
+function toggleAdminDropdown() {
+    const dropdown = document.getElementById('adminDropdown');
+    if (dropdown.style.display === 'none' || dropdown.style.display === '') {
+        dropdown.style.display = 'block';
+        loadAdminsList();
+    } else {
+        dropdown.style.display = 'none';
+    }
+}
+
+function loadAdminsList() {
+    const adminList = document.getElementById('adminListContainer');
+    if (!adminList) {
+        console.error('Admin list container not found');
+        return;
+    }
+    
+    adminList.innerHTML = '<div class="loading">Loading admins...</div>';
+    
+    fetch('/api/admins-list')
+        .then(response => response.json())
+        .then(data => {
+            if (data.admins && data.admins.length > 0) {
+                adminList.innerHTML = '';
+                data.admins.forEach(admin => {
+                    const adminItem = document.createElement('div');
+                    adminItem.className = 'admin-item';
+                    adminItem.innerHTML = `
+                        <img src="${admin.profile_picture_url || '/static/images/default_avatar.png'}" 
+                             alt="${admin.first_name}" class="admin-avatar">
+                        <div class="admin-info">
+                            <div class="admin-name">${admin.first_name} ${admin.last_name}</div>
+                            <div class="admin-role">Administrator</div>
+                        </div>
+                    `;
+                    adminItem.addEventListener('click', () => {
+                        contactAdmin(admin.id, admin);
+                    });
+                    adminList.appendChild(adminItem);
+                });
+            } else {
+                adminList.innerHTML = '<div class="no-admins">No admins available</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading admins:', error);
+            if (adminList) {
+                adminList.innerHTML = '<div class="error">Error loading admins</div>';
+            }
+        });
+}
+
+function contactAdmin(adminId, adminData) {
+    selectedPatientId = adminId;
+    selectedPatientData = adminData;
+    document.getElementById('adminDropdown').style.display = 'none';
+    
+    // Load admin conversation
+    loadAdminConversation(adminId);
+    
+    // Update header with admin info
+    const recipientHeader = document.getElementById('messageRecipientHeader');
+    if (recipientHeader) {
+        recipientHeader.innerHTML = `
+            <img src="${adminData.profile_picture_url || '/static/images/default_avatar.png'}" 
+                 alt="${adminData.first_name}" class="recipient-avatar">
+            <div class="recipient-info">
+                <div class="recipient-name">${adminData.first_name} ${adminData.last_name}</div>
+                <div class="recipient-role">Administrator</div>
+            </div>
+        `;
+    }
+    
+    // Show communication area
+    const communicationArea = document.getElementById('communicationArea');
+    if (communicationArea) {
+        communicationArea.style.display = 'block';
+    }
+    
+    // Unlock all features (admin chats are always available)
+    unlockFeatures();
+}
+
+function loadAdminConversation(adminId) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
+    chatMessages.innerHTML = '<div class="loading-messages">Loading conversation...</div>';
+    
+    fetch(`/api/admin-conversation/${adminId}`)
+        .then(response => response.json())
+        .then(data => {
+            chatMessages.innerHTML = '';
+            if (data.messages && data.messages.length > 0) {
+                data.messages.forEach(msg => {
+                    displayMessage(msg);
+                });
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } else {
+                chatMessages.innerHTML = '<div class="no-messages">Start the conversation by sending a message</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading conversation:', error);
+            chatMessages.innerHTML = '<div class="error-messages">Error loading conversation</div>';
+        });
+    
+    // Join admin chat room via Socket.IO
+    if (socket && socket.connected) {
+        socket.emit('join_admin_chat', {
+            admin_id: adminId,
+            user_id: currentUserId,
+            user_role: currentUserRole
+        });
+    }
+}
+
+function backToDashboard() {
+    window.location.href = '/doctor/dashboard';
+}
+
+// ============================================
+// END ADMIN CONTACT SETUP & FUNCTIONS
+// ============================================
 
 // Load doctor's profile picture
 function loadUserProfilePicture() {
@@ -1314,6 +1499,9 @@ function selectAppointment(appointmentId, patientData, appointmentData) {
     
     // Load appointment details
     loadAppointmentDetails(appointmentId);
+    
+    // Check payment status
+    checkPaymentStatus(appointmentId);
 }
 
 function loadAppointmentDetails(appointmentId) {
@@ -2199,6 +2387,80 @@ function showPatientInfo() {
             modal.show();
         })
         .catch(err => { console.error(err); alert('Could not load patient info'); });
+}
+
+// Check payment status and manage feature access
+function checkPaymentStatus(appointmentId) {
+    fetch(`/api/appointment/${appointmentId}/payment-status`)
+        .then(response => response.json())
+        .then(data => {
+            const paymentOverlay = document.getElementById('paymentOverlay');
+            const paymentRequired = data.payment_required;
+            const paymentStatus = data.payment_status;
+            
+            if (paymentRequired && paymentStatus !== 'paid') {
+                // Show payment overlay
+                if (paymentOverlay) {
+                    paymentOverlay.style.display = 'flex';
+                }
+                lockFeatures();
+                
+                // Set up payment button
+                const goToPaymentBtn = document.getElementById('goToPaymentBtn');
+                if (goToPaymentBtn) {
+                    goToPaymentBtn.onclick = function() {
+                        window.location.href = `/payment/appointment/${appointmentId}`;
+                    };
+                }
+                
+                // Set up check status button
+                const checkPaymentStatusBtn = document.getElementById('checkPaymentStatusBtn');
+                if (checkPaymentStatusBtn) {
+                    checkPaymentStatusBtn.onclick = function() {
+                        checkPaymentStatus(appointmentId);
+                    };
+                }
+            } else {
+                // Hide payment overlay and unlock features
+                if (paymentOverlay) {
+                    paymentOverlay.style.display = 'none';
+                }
+                unlockFeatures();
+            }
+        })
+        .catch(error => {
+            console.error('Error checking payment status:', error);
+        });
+}
+
+// Lock features (disable communication controls)
+function lockFeatures() {
+    document.getElementById('messageInput').disabled = true;
+    document.getElementById('sendMessageBtn').disabled = true;
+    document.getElementById('attachBtn').disabled = true;
+    
+    const voiceRecordBtn = document.getElementById('voiceRecordBtn');
+    const voiceCallBtn = document.getElementById('voiceCallBtn');
+    const videoCallBtn = document.getElementById('videoCallBtn');
+    
+    if (voiceRecordBtn) voiceRecordBtn.disabled = true;
+    if (voiceCallBtn) voiceCallBtn.disabled = true;
+    if (videoCallBtn) videoCallBtn.disabled = true;
+}
+
+// Unlock features (enable communication controls)
+function unlockFeatures() {
+    document.getElementById('messageInput').disabled = false;
+    document.getElementById('sendMessageBtn').disabled = false;
+    document.getElementById('attachBtn').disabled = false;
+    
+    const voiceRecordBtn = document.getElementById('voiceRecordBtn');
+    const voiceCallBtn = document.getElementById('voiceCallBtn');
+    const videoCallBtn = document.getElementById('videoCallBtn');
+    
+    if (voiceRecordBtn) voiceRecordBtn.disabled = false;
+    if (voiceCallBtn) voiceCallBtn.disabled = false;
+    if (videoCallBtn) videoCallBtn.disabled = false;
 }
 
 // Setup Socket.IO
