@@ -7352,13 +7352,10 @@ def handle_initiate_voice_call(data):
         })
         
         # Send incoming call notification to callee
-        callee_socket_id = user_sockets.get(callee_user_id)
-        if callee_socket_id:
-            emit('incoming_voice_call', call_data, room=callee_socket_id)
+        if callee_user_id in user_sockets and user_sockets[callee_user_id]:
+            emit('incoming_voice_call', call_data, room=f'user_{callee_user_id}')
         else:
-            caller_socket_id = user_sockets.get(current_user.id)
-            if caller_socket_id:
-                emit('call_error', {'error': 'Callee is not online or not connected to real-time service.'}, room=caller_socket_id)
+            emit('call_error', {'error': 'Callee is not online or not connected to real-time service.'}, room=f'user_{current_user.id}')
         
         # Set call timeout (1 minute)
         def call_timeout():
@@ -7367,13 +7364,12 @@ def handle_initiate_voice_call(data):
                 active_calls[appointment_id]['status'] = 'timeout'
                 
                 # Notify caller
-                caller_socket_id = user_sockets.get(current_user.id)
-                if caller_socket_id:
+                if current_user.id in user_sockets and user_sockets[current_user.id]:
                     emit('call_ended', {
                         'appointment_id': appointment_id,
                         'reason': 'timeout',
                         'message': 'Call timed out - no answer'
-                    }, room=caller_socket_id)
+                    }, room=f'user_{current_user.id}')
                 
                 # Create missed call notification for callee
                 missed_call_data = {
@@ -7386,8 +7382,8 @@ def handle_initiate_voice_call(data):
                     'type': 'missed_voice_call'
                 }
                 
-                if callee_socket_id:
-                    emit('missed_call', missed_call_data, room=callee_socket_id)
+                if callee_user_id in user_sockets and user_sockets[callee_user_id]:
+                    emit('missed_call', missed_call_data, room=f'user_{callee_user_id}')
                 
                 # Clean up
                 if appointment_id in active_calls:
@@ -7423,9 +7419,6 @@ def handle_accept_voice_call(data):
         call_info['accepted_time'] = datetime.now(timezone.utc).isoformat()
         
         # Notify both parties that call is connected
-        caller_socket_id = user_sockets.get(call_info['caller_id'])
-        callee_socket_id = user_sockets.get(current_user.id)
-        
         call_data = {
             'appointment_id': appointment_id,
             'caller_id': call_info['caller_id'],
@@ -7433,11 +7426,11 @@ def handle_accept_voice_call(data):
             'call_type': 'voice'
         }
         
-        if caller_socket_id:
-            emit('voice_call_accepted', call_data, room=caller_socket_id)
+        if call_info['caller_id'] in user_sockets and user_sockets[call_info['caller_id']]:
+            emit('voice_call_accepted', call_data, room=f'user_{call_info["caller_id"]}')
         
-        if callee_socket_id:
-            emit('voice_call_accepted', call_data, room=callee_socket_id)
+        if current_user.id in user_sockets and user_sockets[current_user.id]:
+            emit('voice_call_accepted', call_data, room=f'user_{current_user.id}')
         
         print(f'Voice call accepted for appointment {appointment_id}')
         
