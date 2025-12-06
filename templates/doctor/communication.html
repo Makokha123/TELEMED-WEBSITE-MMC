@@ -2341,6 +2341,12 @@ function initiateVoiceCall() {
         return;
     }
     
+    if (typeof socket === 'undefined' || !socket.connected) {
+        console.warn('Socket.IO not connected - cannot initiate voice call', { appointment_id: selectedAppointmentId });
+        alert('Real-time connection not ready. Try again in a moment.');
+        return;
+    }
+    console.log('Initiating voice call', { appointment_id: selectedAppointmentId, patient_id: selectedPatientId });
     socket.emit('initiate_voice_call', {
         appointment_id: selectedAppointmentId
     });
@@ -2364,6 +2370,12 @@ function initiateVideoCall() {
     
     modal.show();
     
+    if (typeof socket === 'undefined' || !socket.connected) {
+        console.warn('Socket.IO not connected - cannot initiate video call', { appointment_id: selectedAppointmentId });
+        alert('Real-time connection not ready. Try again in a moment.');
+        return;
+    }
+    console.log('Initiating video call', { appointment_id: selectedAppointmentId, patient_id: selectedPatientId });
     socket.emit('initiate_video_call', {
         appointment_id: selectedAppointmentId
     });
@@ -2671,6 +2683,29 @@ function setupSocketIO() {
     
     socket.on('incoming_video_call', function(data) {
         handleIncomingCall(data, 'video');
+    });
+
+    // When a call is accepted, hide doctor outgoing modals and navigate to call
+    socket.on('video_call_accepted', function(data) {
+        try {
+            const modalEl = document.getElementById('outgoingVideoCallModal');
+            const modalInst = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+            modalInst.hide();
+        } catch (e) {}
+        if (data && data.appointment_id) {
+            window.location.href = `/video-call/${data.appointment_id}`;
+        }
+    });
+
+    socket.on('voice_call_accepted', function(data) {
+        try {
+            const modalEl = document.getElementById('outgoingVoiceCallModal');
+            const modalInst = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+            modalInst.hide();
+        } catch (e) {}
+        if (data && data.appointment_id) {
+            window.location.href = `/voice-call/${data.appointment_id}`;
+        }
     });
     
     // Handle payment status updates

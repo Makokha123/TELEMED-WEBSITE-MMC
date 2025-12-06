@@ -550,6 +550,50 @@
     </div>
 </div>
 
+<!-- Incoming Video Call Modal (callee) -->
+<div class="modal fade" id="incomingVideoModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div id="incomingVideoCallerAvatar" style="width:96px;height:96px;border-radius:50%;background:#f8f9ff;display:inline-flex;align-items:center;justify-content:center;font-size:28px;color:#333;margin:0 auto;"></div>
+                </div>
+                <h5 id="incomingVideoCallerName">Incoming Video Call</h5>
+                <p id="incomingVideoCallerStatus" class="text-muted">Incoming video call...</p>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-success me-2" id="incomingVideoAcceptBtn">Accept</button>
+                    <button type="button" class="btn btn-danger" id="incomingVideoRejectBtn">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incoming Voice Call Modal (callee) -->
+<div class="modal fade" id="incomingVoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div id="incomingVoiceCallerAvatar" style="width:96px;height:96px;border-radius:50%;background:#f8f9ff;display:inline-flex;align-items:center;justify-content:center;font-size:28px;color:#333;margin:0 auto;"></div>
+                </div>
+                <h5 id="incomingVoiceCallerName">Incoming Voice Call</h5>
+                <p id="incomingVoiceCallerStatus" class="text-muted">Incoming voice call...</p>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-success me-2" id="incomingVoiceAcceptBtn">Accept</button>
+                    <button type="button" class="btn btn-danger" id="incomingVoiceRejectBtn">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ringtone audio file (optional) - place your file at static/audio/ringtone.mp3 -->
+<audio id="incomingRingtone" preload="auto" style="display:none;">
+    <source src="{{ url_for('static', filename='audio/ringtone.mp3') }}" type="audio/mpeg">
+    Your browser does not support the audio element.
+</audio>
+
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 
@@ -1022,6 +1066,103 @@ function sendVoiceNote() {
 // Outgoing call modal helpers
 let outgoingCallModalInstance = null;
 let outgoingCallCurrentType = null;
+let incomingVideoModalInstance = null;
+let incomingVoiceModalInstance = null;
+// WebAudio ringtone resources
+let _audioCtx = null;
+let _ringtoneOsc = null;
+let _ringtoneGain = null;
+let _ringtoneUsingFile = false;
+
+function startRingtone() {
+    try {
+        if (!_audioCtx) {
+            _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        stopRingtone();
+        _ringtoneOsc = _audioCtx.createOscillator();
+        _ringtoneGain = _audioCtx.createGain();
+        _ringtoneOsc.type = 'sine';
+        _ringtoneOsc.frequency.value = 480; // base frequency
+        _ringtoneGain.gain.value = 0.06;
+        _ringtoneOsc.connect(_ringtoneGain);
+        _ringtoneGain.connect(_audioCtx.destination);
+        // simple pulsing: change frequency slightly every 300ms
+        _ringtoneOsc.start();
+        // implement subtle pulse using gain automation
+        _ringtoneGain.gain.setValueAtTime(0.0001, _audioCtx.currentTime);
+        _ringtoneGain.gain.linearRampToValueAtTime(0.06, _audioCtx.currentTime + 0.05);
+        // periodic pulse
+        _ringtonePulseInterval = setInterval(() => {
+            try {
+                _ringtoneGain.gain.cancelScheduledValues(_audioCtx.currentTime);
+                _ringtoneGain.gain.setValueAtTime(0.0001, _audioCtx.currentTime);
+                _ringtoneGain.gain.linearRampToValueAtTime(0.06, _audioCtx.currentTime + 0.03);
+                _ringtoneGain.gain.linearRampToValueAtTime(0.0001, _audioCtx.currentTime + 0.28);
+            } catch (e) {}
+        }, 450);
+    } catch (e) {
+        console.warn('Ringtone start failed:', e);
+    }
+}
+
+function playRingtone() {
+    // Try the static audio file first, fall back to WebAudio if unavailable or playback blocked
+    try {
+        const audioEl = document.getElementById('incomingRingtone');
+        if (audioEl) {
+            // reset
+            try { audioEl.pause(); audioEl.currentTime = 0; } catch(e){}
+            const p = audioEl.play();
+            if (p && typeof p.then === 'function') {
+                p.then(() => {
+                    _ringtoneUsingFile = true;
+                }).catch(err => {
+                    console.warn('Static ringtone play failed, falling back to WebAudio:', err);
+                    _ringtoneUsingFile = false;
+                    startRingtone();
+                });
+            } else {
+                // play may be synchronous in older browsers
+                _ringtoneUsingFile = true;
+            }
+        } else {
+            startRingtone();
+        }
+    } catch (e) {
+        console.warn('playRingtone error, falling back to WebAudio', e);
+        startRingtone();
+    }
+}
+
+function stopRingtone() {
+    try {
+        if (typeof _ringtonePulseInterval !== 'undefined') {
+            clearInterval(_ringtonePulseInterval);
+            _ringtonePulseInterval = undefined;
+        }
+        if (_ringtoneOsc) {
+            try { _ringtoneOsc.stop(); } catch (e) {}
+            _ringtoneOsc.disconnect();
+            _ringtoneOsc = null;
+        }
+        if (_ringtoneGain) {
+            try { _ringtoneGain.disconnect(); } catch (e) {}
+            _ringtoneGain = null;
+        }
+        // stop HTML audio if used
+        try {
+            const audioEl = document.getElementById('incomingRingtone');
+            if (audioEl) {
+                try { audioEl.pause(); audioEl.currentTime = 0; } catch(e){}
+            }
+            _ringtoneUsingFile = false;
+        } catch (e) {}
+        // do not close audio context; leave it reusable
+    } catch (e) {
+        console.warn('Ringtone stop failed:', e);
+    }
+}
 
 function showOutgoingCallModal(callType, calleeName, calleePic) {
     outgoingCallCurrentType = callType;
@@ -1211,40 +1352,102 @@ function hideTypingIndicator() {
 }
 
 function showIncomingVideoCallNotification(data) {
-    // Open incoming call popup (will show accept/reject UI)
+    // Show incoming in-page modal for callee
     try {
         const callerName = data.caller_name || data.initiator_name || 'Caller';
         const callerPic = data.caller_profile_pic || '';
-        const url = `/incoming-video-call/${data.appointment_id}?caller_name=${encodeURIComponent(callerName)}&caller_profile_pic=${encodeURIComponent(callerPic)}`;
-        const win = window.open(url, '_blank', 'width=420,height=720');
-        // Optionally focus the incoming window
-        if (win) win.focus();
-    } catch (e) {
-        // Fallback to simple confirm if popup fails
-        if (confirm(`${data.caller_name || data.initiator_name} is calling you for a video call. Accept?`)) {
-            socket.emit('accept_video_call', { appointment_id: data.appointment_id });
-            initiateVideoCall();
-        } else {
-            socket.emit('reject_video_call', { appointment_id: data.appointment_id });
+        const callerNameEl = document.getElementById('incomingVideoCallerName');
+        const callerAvatarEl = document.getElementById('incomingVideoCallerAvatar');
+        const acceptBtn = document.getElementById('incomingVideoAcceptBtn');
+        const rejectBtn = document.getElementById('incomingVideoRejectBtn');
+
+        if (callerNameEl) callerNameEl.textContent = callerName;
+        if (callerAvatarEl) {
+            if (callerPic) {
+                callerAvatarEl.style.backgroundImage = `url('${callerPic}')`;
+                callerAvatarEl.style.backgroundSize = 'cover';
+                callerAvatarEl.textContent = '';
+            } else {
+                callerAvatarEl.style.backgroundImage = '';
+                callerAvatarEl.textContent = (callerName.split(' ').map(n => n[0]).slice(0,2).join('') || '?').toUpperCase();
+            }
         }
+
+        // Bind handlers (overwrite previous)
+        acceptBtn.onclick = function() {
+            try { socket.emit('accept_video_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVideoModalInstance.hide(); } catch(e){}
+        };
+        rejectBtn.onclick = function() {
+            try { socket.emit('reject_video_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVideoModalInstance.hide(); } catch(e){}
+        };
+
+        // Show modal and start ringtone
+        try {
+            incomingVideoModalInstance = new bootstrap.Modal(document.getElementById('incomingVideoModal'));
+            incomingVideoModalInstance.show();
+            playRingtone();
+            // stop ringtone when modal is hidden
+            document.getElementById('incomingVideoModal').addEventListener('hidden.bs.modal', () => { stopRingtone(); });
+        } catch(e) {
+            // Fallback to confirm
+            if (confirm(`${callerName} is calling you for a video call. Accept?`)) {
+                socket.emit('accept_video_call', { appointment_id: data.appointment_id });
+            } else {
+                socket.emit('reject_video_call', { appointment_id: data.appointment_id });
+            }
+        }
+    } catch (e) {
+        console.error('Error showing incoming video call modal:', e);
     }
 }
 
 function showIncomingVoiceCallNotification(data) {
-    // Open incoming voice call popup with rich UI
+    // Show incoming voice call in-page modal
     try {
         const callerName = data.caller_name || data.initiator_name || 'Caller';
         const callerPic = data.caller_profile_pic || '';
-        const url = `/incoming-voice-call/${data.appointment_id}?caller_name=${encodeURIComponent(callerName)}&caller_profile_pic=${encodeURIComponent(callerPic)}`;
-        const win = window.open(url, '_blank', 'width=420,height=720');
-        if (win) win.focus();
-    } catch (e) {
-        if (confirm(`${data.caller_name || data.initiator_name} is calling you. Accept?`)) {
-            socket.emit('accept_voice_call', { appointment_id: data.appointment_id });
-            initiateVoiceCall();
-        } else {
-            socket.emit('end_voice_call', { appointment_id: data.appointment_id });
+        const callerNameEl = document.getElementById('incomingVoiceCallerName');
+        const callerAvatarEl = document.getElementById('incomingVoiceCallerAvatar');
+        const acceptBtn = document.getElementById('incomingVoiceAcceptBtn');
+        const rejectBtn = document.getElementById('incomingVoiceRejectBtn');
+
+        if (callerNameEl) callerNameEl.textContent = callerName;
+        if (callerAvatarEl) {
+            if (callerPic) {
+                callerAvatarEl.style.backgroundImage = `url('${callerPic}')`;
+                callerAvatarEl.style.backgroundSize = 'cover';
+                callerAvatarEl.textContent = '';
+            } else {
+                callerAvatarEl.style.backgroundImage = '';
+                callerAvatarEl.textContent = (callerName.split(' ').map(n => n[0]).slice(0,2).join('') || '?').toUpperCase();
+            }
         }
+
+        acceptBtn.onclick = function() {
+            try { socket.emit('accept_voice_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVoiceModalInstance.hide(); } catch(e){}
+        };
+        rejectBtn.onclick = function() {
+            try { socket.emit('end_voice_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVoiceModalInstance.hide(); } catch(e){}
+        };
+
+        try {
+            incomingVoiceModalInstance = new bootstrap.Modal(document.getElementById('incomingVoiceModal'));
+            incomingVoiceModalInstance.show();
+            playRingtone();
+            document.getElementById('incomingVoiceModal').addEventListener('hidden.bs.modal', () => { stopRingtone(); });
+        } catch(e) {
+            if (confirm(`${callerName} is calling you. Accept?`)) {
+                socket.emit('accept_voice_call', { appointment_id: data.appointment_id });
+            } else {
+                socket.emit('end_voice_call', { appointment_id: data.appointment_id });
+            }
+        }
+    } catch (e) {
+        console.error('Error showing incoming voice call modal:', e);
     }
 }
 

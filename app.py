@@ -4669,7 +4669,7 @@ def get_admins_list():
             'first_name': admin.first_name,
             'last_name': admin.last_name,
             'email': admin.email,
-            'profile_picture_url': admin.profile_picture_url or '/static/images/default_avatar.png'
+            'profile_picture_url': get_user_profile_picture_url(admin) or '/static/images/default_avatar.png'
         }
         admin_list.append(admin_data)
     
@@ -6151,6 +6151,10 @@ def handle_connect():
         
         emit('connection_response', {'data': 'Connected to server'})
         print(f'User {current_user.id} connected: {request.sid}')
+        try:
+            print(f'Current user_sockets mapping ({len(user_sockets)}): {user_sockets}')
+        except Exception:
+            pass
         return True
     return False
 
@@ -6214,7 +6218,10 @@ def handle_disconnect(sid):
         if current_user.is_authenticated:
             user_id = current_user.id
             if user_id in user_sockets:
-                del user_sockets[user_id]
+                try:
+                    del user_sockets[user_id]
+                except Exception:
+                    user_sockets.pop(user_id, None)
             
             # Update last seen
             user_last_seen[user_id] = datetime.now(timezone.utc).isoformat()
@@ -6227,6 +6234,10 @@ def handle_disconnect(sid):
                         del active_calls[apt_id]
             
             print(f'User {user_id} disconnected')
+            try:
+                print(f'Current user_sockets mapping ({len(user_sockets)}): {user_sockets}')
+            except Exception:
+                pass
             
     except Exception as e:
         print(f'Error in handle_disconnect: {e}')
@@ -6549,6 +6560,11 @@ def handle_initiate_video_call(data):
         callee_socket_id = user_sockets.get(callee_user_id)
         if callee_socket_id:
             emit('incoming_video_call', call_data, room=callee_socket_id)
+        else:
+            # Callee not connected to Socket.IO - notify caller immediately
+            caller_socket_id = user_sockets.get(current_user.id)
+            if caller_socket_id:
+                emit('call_error', {'error': 'Callee is not online or not connected to real-time service.'}, room=caller_socket_id)
         
         # Set call timeout (1 minute)
         def call_timeout():
@@ -6959,6 +6975,10 @@ def handle_initiate_voice_call(data):
         callee_socket_id = user_sockets.get(callee_user_id)
         if callee_socket_id:
             emit('incoming_voice_call', call_data, room=callee_socket_id)
+        else:
+            caller_socket_id = user_sockets.get(current_user.id)
+            if caller_socket_id:
+                emit('call_error', {'error': 'Callee is not online or not connected to real-time service.'}, room=caller_socket_id)
         
         # Set call timeout (1 minute)
         def call_timeout():

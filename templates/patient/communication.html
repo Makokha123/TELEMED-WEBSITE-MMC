@@ -2311,11 +2311,15 @@ function initiateVoiceCall() {
         return;
     }
     
-    if (typeof socket !== 'undefined') {
-        socket.emit('initiate_voice_call', {
-            appointment_id: selectedAppointmentId
-        });
+    if (typeof socket === 'undefined' || !socket.connected) {
+        console.warn('Socket.IO not connected - cannot initiate voice call', { appointment_id: selectedAppointmentId });
+        alert('Real-time connection not ready. Try again in a moment.');
+        return;
     }
+    console.log('Initiating voice call (patient)', { appointment_id: selectedAppointmentId });
+    socket.emit('initiate_voice_call', {
+        appointment_id: selectedAppointmentId
+    });
 }
 
 // Initiate video call
@@ -2329,9 +2333,9 @@ function initiateVideoCall() {
     const modal = new bootstrap.Modal(document.getElementById('outgoingVideoCallModal'));
     
     // Update modal with doctor name
-    if (selectedPatientData) {
-        document.getElementById('outgoingVideoDoctorName').textContent = `${selectedPatientData.first_name} ${selectedPatientData.last_name}`;
-        document.getElementById('outgoingVideoDoctorAvatar').textContent = `${selectedPatientData.first_name[0]}${selectedPatientData.last_name[0]}`;
+    if (selectedDoctorData) {
+        document.getElementById('outgoingVideoDoctorName').textContent = `${selectedDoctorData.first_name} ${selectedDoctorData.last_name}`;
+        document.getElementById('outgoingVideoDoctorAvatar').textContent = `${selectedDoctorData.first_name[0]}${selectedDoctorData.last_name[0]}`;
     }
     
     modal.show();
@@ -2353,9 +2357,9 @@ function initiateVoiceCall() {
     const modal = new bootstrap.Modal(document.getElementById('outgoingVoiceCallModal'));
     
     // Update modal with doctor name
-    if (selectedPatientData) {
-        document.getElementById('outgoingVoiceDoctorName').textContent = `${selectedPatientData.first_name} ${selectedPatientData.last_name}`;
-        document.getElementById('outgoingVoiceDoctorAvatar').textContent = `${selectedPatientData.first_name[0]}${selectedPatientData.last_name[0]}`;
+    if (selectedDoctorData) {
+        document.getElementById('outgoingVoiceDoctorName').textContent = `${selectedDoctorData.first_name} ${selectedDoctorData.last_name}`;
+        document.getElementById('outgoingVoiceDoctorAvatar').textContent = `${selectedDoctorData.first_name[0]}${selectedDoctorData.last_name[0]}`;
     }
     
     modal.show();
@@ -2503,6 +2507,29 @@ function setupSocketIO() {
     
     socket.on('incoming_video_call', function(data) {
         handleIncomingCall(data, 'video');
+    });
+
+    // When a call is accepted, hide any outgoing modals and navigate to the call page
+    socket.on('video_call_accepted', function(data) {
+        try {
+            const modalEl = document.getElementById('outgoingVideoCallModal');
+            const modalInst = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+            modalInst.hide();
+        } catch (e) {}
+        if (data && data.appointment_id) {
+            window.location.href = `/video-call/${data.appointment_id}`;
+        }
+    });
+
+    socket.on('voice_call_accepted', function(data) {
+        try {
+            const modalEl = document.getElementById('outgoingVoiceCallModal');
+            const modalInst = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+            modalInst.hide();
+        } catch (e) {}
+        if (data && data.appointment_id) {
+            window.location.href = `/voice-call/${data.appointment_id}`;
+        }
     });
     
     // Listen for payment status updates
