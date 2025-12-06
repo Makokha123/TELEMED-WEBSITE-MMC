@@ -1196,8 +1196,19 @@ function loadAdminsList() {
         return;
     }
     
-    fetch('/api/admins-list')
-        .then(response => response.json())
+    fetch('/api/admins-list', { credentials: 'same-origin' })
+        .then(response => {
+            if (!response.ok) {
+                // Try to read text for debugging (could be HTML login page on redirect)
+                return response.text().then(text => { throw new Error('Network error: ' + response.status + ' - ' + text); });
+            }
+            const ct = response.headers.get('content-type') || '';
+            if (ct.includes('application/json')) {
+                return response.json();
+            }
+            // Unexpected content-type (likely HTML) - fetch text for debugging
+            return response.text().then(text => { throw new Error('Unexpected response (not JSON): ' + text); });
+        })
         .then(data => {
             container.innerHTML = '';
             

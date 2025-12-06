@@ -1209,8 +1209,17 @@ function loadAdminsList() {
     
     adminList.innerHTML = '<div class="loading">Loading admins...</div>';
     
-    fetch('/api/admins-list')
-        .then(response => response.json())
+    fetch('/api/admins-list', { credentials: 'same-origin' })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => { throw new Error('Network error: ' + response.status + ' - ' + text); });
+            }
+            const ct = response.headers.get('content-type') || '';
+            if (ct.includes('application/json')) {
+                return response.json();
+            }
+            return response.text().then(text => { throw new Error('Unexpected response (not JSON): ' + text); });
+        })
         .then(data => {
             if (data.admins && data.admins.length > 0) {
                 adminList.innerHTML = '';

@@ -531,6 +531,25 @@
     </div>
 </div>
 
+<!-- Outgoing Call Modal (in-page, replaces popup for caller) -->
+<div class="modal fade" id="outgoingCallModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div id="outgoingCallAvatar" style="width:96px;height:96px;border-radius:50%;background:#eef2ff;display:inline-flex;align-items:center;justify-content:center;font-size:32px;color:#667eea;margin:0 auto;"></div>
+                </div>
+                <h5 id="outgoingCallName">Calling...</h5>
+                <p id="outgoingCallStatus" class="text-muted">Ringing...</p>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-secondary me-2" id="outgoingCallCancelBtn">Cancel</button>
+                    <button type="button" class="btn btn-danger d-none" id="outgoingCallEndBtn">End</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 
@@ -782,18 +801,17 @@ function initiateVideoCall() {
         alert('Please select an appointment first');
         return;
     }
-    // Show an outgoing call window for caller immediately
+    // Show an outgoing in-page modal for caller immediately (replaces popup)
     try {
         if (selectedAppointmentData) {
             const role = document.getElementById('currentUserRole')?.value;
             const callee = (role === 'doctor') ? selectedAppointmentData.patient : selectedAppointmentData.doctor;
             const calleeName = callee ? (callee.first_name + ' ' + (callee.last_name || '')) : '';
             const calleePic = callee ? (callee.profile_picture_url || '') : '';
-            const url = `/incoming-video-call/${currentAppointmentId}?caller_name=${encodeURIComponent(calleeName)}&caller_profile_pic=${encodeURIComponent(calleePic)}`;
-            window.open(url, '_blank', 'width=420,height=720');
+            showOutgoingCallModal('video', calleeName, calleePic);
         }
     } catch (e) {
-        console.warn('Could not open outgoing call window:', e);
+        console.warn('Could not show outgoing call modal:', e);
     }
 
     socket.emit('initiate_video_call', {
@@ -807,18 +825,17 @@ function initiateVoiceCall() {
         alert('Please select an appointment first');
         return;
     }
-    // Show an outgoing call window for caller immediately
+    // Show an outgoing in-page modal for caller immediately (replaces popup)
     try {
         if (selectedAppointmentData) {
             const role = document.getElementById('currentUserRole')?.value;
             const callee = (role === 'doctor') ? selectedAppointmentData.patient : selectedAppointmentData.doctor;
             const calleeName = callee ? (callee.first_name + ' ' + (callee.last_name || '')) : '';
             const calleePic = callee ? (callee.profile_picture_url || '') : '';
-            const url = `/incoming-voice-call/${currentAppointmentId}?caller_name=${encodeURIComponent(calleeName)}&caller_profile_pic=${encodeURIComponent(calleePic)}`;
-            window.open(url, '_blank', 'width=420,height=720');
+            showOutgoingCallModal('voice', calleeName, calleePic);
         }
     } catch (e) {
-        console.warn('Could not open outgoing call window:', e);
+        console.warn('Could not show outgoing call modal:', e);
     }
 
     socket.emit('initiate_voice_call', {
@@ -1002,6 +1019,72 @@ function sendVoiceNote() {
     });
 }
 
+// Outgoing call modal helpers
+let outgoingCallModalInstance = null;
+let outgoingCallCurrentType = null;
+
+function showOutgoingCallModal(callType, calleeName, calleePic) {
+    outgoingCallCurrentType = callType;
+    const nameEl = document.getElementById('outgoingCallName');
+    const avatarEl = document.getElementById('outgoingCallAvatar');
+    const statusEl = document.getElementById('outgoingCallStatus');
+
+    if (nameEl) nameEl.textContent = calleeName || 'Calling...';
+    if (statusEl) statusEl.textContent = 'Ringing...';
+
+    if (avatarEl) {
+        if (calleePic) {
+            avatarEl.style.backgroundImage = `url('${calleePic}')`;
+            avatarEl.style.backgroundSize = 'cover';
+            avatarEl.style.backgroundPosition = 'center';
+            avatarEl.textContent = '';
+        } else {
+            avatarEl.style.backgroundImage = '';
+            const initials = (calleeName || '').split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase() || '?';
+            avatarEl.textContent = initials;
+        }
+    }
+
+    try {
+        outgoingCallModalInstance = new bootstrap.Modal(document.getElementById('outgoingCallModal'));
+        outgoingCallModalInstance.show();
+    } catch (e) {
+        console.warn('Bootstrap modal unavailable:', e);
+    }
+}
+
+// Cancel / End button handling
+document.addEventListener('DOMContentLoaded', () => {
+    const cancelBtn = document.getElementById('outgoingCallCancelBtn');
+    const endBtn = document.getElementById('outgoingCallEndBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            try {
+                if (outgoingCallCurrentType === 'video') {
+                    socket.emit('end_video_call', { appointment_id: currentAppointmentId });
+                } else if (outgoingCallCurrentType === 'voice') {
+                    socket.emit('end_voice_call', { appointment_id: currentAppointmentId });
+                }
+            } catch (e) {
+                console.warn('Socket not available to cancel call yet:', e);
+            }
+            try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
+        });
+    }
+    if (endBtn) {
+        endBtn.addEventListener('click', () => {
+            try {
+                if (outgoingCallCurrentType === 'video') {
+                    socket.emit('end_video_call', { appointment_id: currentAppointmentId });
+                } else if (outgoingCallCurrentType === 'voice') {
+                    socket.emit('end_voice_call', { appointment_id: currentAppointmentId });
+                }
+            } catch (e) {}
+            try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
+        });
+    }
+});
+
 // Real-time Socket.IO setup for FAST messaging
 function setupSocketIO() {
     // Join room when appointment is selected
@@ -1057,6 +1140,7 @@ function setupSocketIO() {
 
     socket.on('video_call_accepted', function(data) {
         console.log('Video call accepted');
+        try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
         proceedWithVideoCall(data.appointment_id);
     });
 
@@ -1071,6 +1155,7 @@ function setupSocketIO() {
 
     socket.on('voice_call_accepted', function(data) {
         console.log('Voice call accepted');
+        try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
         proceedWithVoiceCall(data.appointment_id);
     });
 
