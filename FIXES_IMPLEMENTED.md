@@ -207,3 +207,188 @@
 - Single message in UI instead of duplicates - less DOM manipulation
 - File uploads handled entirely by backend - cleaner frontend code
 
+---
+
+# Advanced Call Management System - Implementation Summary
+
+## Features Implemented
+
+### 1. **Video Call Handler Improvements** 
+**Changes Made**:
+- **`app.py` lines ~425-570**: Enhanced `handle_initiate_video_call()` to:
+  - Check if callee is on another call (busy status)
+  - Check if callee is online vs offline
+  - Handle offline users with extended timeouts (90 seconds)
+  - Create missed call notifications automatically
+  - Notify caller if user is busy with specific message
+  
+- **`app.py` lines ~580-620**: Updated `handle_accept_video_call()` to:
+  - Check for call collisions (caller can't accept if they have another active call)
+  - Remove from missed call tracking
+  - Update appointment status to "ongoing"
+  
+- **`app.py` lines ~625-660**: Enhanced `handle_reject_video_call()` to:
+  - Create rejection notifications for caller
+  - Store rejection status in database
+  - Include callee name in rejection message
+  
+- **`app.py` lines ~665-735**: Improved `handle_end_call()` to:
+  - Create call end notifications for both parties
+  - Track when call ended by whom
+  - Maintain call session history with duration
+
+**Behavior**:
+- If user is **online but on another call**: Caller gets "User Busy" notification
+- If user is **offline**: System attempts connection for 90 seconds, then creates "connection failed" notification
+- If user **doesn't answer**: Creates "missed call" notification visible in inbox
+- Call window automatically appears at top of screen with z-index: 2147483647
+
+### 2. **Voice Call Handler Improvements**
+**Changes Made**:
+- **`app.py` lines ~7517-7650**: Enhanced `handle_initiate_voice_call()` with:
+  - Same busy status checking as video calls
+  - Online/offline detection
+  - Missed call tracking with notifications
+  - Extended timeout for offline users (90 seconds)
+  - Connection failure handling
+  
+- **`app.py` lines ~7655-7710**: Updated `handle_accept_voice_call()` with:
+  - Call collision detection
+  - Accepted call notifications
+  - Callee ID tracking
+  
+- **`app.py` lines ~7715-7760**: Enhanced `handle_end_voice_call()` with:
+  - Call end notifications
+  - Proper cleanup of active calls
+  - Duration tracking
+
+**Behavior**: Same as video calls but for voice communication
+
+### 3. **Database Model Updates**
+**Changes Made** in `models.py`:
+- **Notification Model** (lines ~724-742):
+  - Added `call_status` field to track: missed, busy, unanswered, connection_failed, ended
+  - Extended `notification_type` to include: missed_voice_call, missed_video_call, busy_voice_call, busy_video_call, video_call_rejected, video_call_ended, voice_call_accepted, voice_call_ended, voice_call_failed
+
+**Result**: Comprehensive call history and notification system in database
+
+### 4. **Incoming Video Call Template**
+**Changes Made** in `templates/communication/incoming_video_call.html`:
+- **CSS Updates**:
+  - Set `position: fixed` on body with `z-index: 2147483647` to ensure window appears on top
+  - Added `.status-badge` styling with animated slide-down effect
+  - Added badge variants: `.busy`, `.offline`, `.attempting`
+  
+- **HTML Updates**:
+  - Added status badge element to display busy/offline/attempting messages
+  - Badge appears at top of window with appropriate icon and color
+  
+- **JavaScript Updates**:
+  - Added `showStatusBadge(type, message)` function to display status
+  - Added Socket.IO listeners for:
+    - `call_failed_busy`: Shows user is busy, disables accept button
+    - `outgoing_video_call_started`: Shows attempting connection status
+    - `video_call_connection_failed`: Shows connection error
+  - Auto-closes after timeout (5 seconds for busy/connection failed)
+
+### 5. **Incoming Voice Call Template**
+**Changes Made** in `templates/communication/incoming_voice_call.html`:
+- Same improvements as video call template:
+  - Fixed positioning with maximum z-index
+  - Status badge for busy/offline/attempting states
+  - Socket.IO event listeners for call status
+  - Animated feedback for user
+
+---
+
+## Call Flow Scenarios
+
+### Scenario 1: User is Online and Available
+1. Caller initiates call
+2. Recipient sees incoming call window appear on top
+3. Recipient accepts/rejects
+4. Call proceeds or ends with appropriate notification
+
+### Scenario 2: User is Online but on Another Call (Busy)
+1. Caller initiates call
+2. Server checks active calls, detects callee is busy
+3. Server sends `call_failed_busy` event to caller
+4. Caller's window shows: "⚠️ [User Name] is currently busy"
+5. Accept button is disabled
+6. Window closes after 5 seconds
+7. Caller receives notification: "User is currently busy - Please wait or end attempt"
+
+### Scenario 3: User is Offline
+1. Caller initiates call
+2. Server detects user is offline
+3. Caller sees: "⏳ Attempting to reach [User Name]..."
+4. Server waits 90 seconds for user to come online
+5. If user doesn't respond:
+   - Caller gets "Connection Failed" message
+   - Callee gets "Missed Call" notification
+6. Notifications stored in database
+
+### Scenario 4: Call Unanswered (Timeout)
+1. Caller initiates call
+2. Recipient is online but doesn't answer
+3. After 60 seconds, call times out
+4. Caller gets "Call Unanswered" message
+5. Callee gets "Missed Call" notification in inbox
+6. Appointment status updated to "missed"
+
+---
+
+## Database Notifications Created
+
+For each scenario, appropriate `Notification` records are created:
+
+| Scenario | Notification Type | Status | Recipient |
+|----------|------------------|--------|-----------|
+| User Busy | busy_video_call / busy_voice_call | busy | Caller |
+| Offline Timeout | video_call_failed / voice_call_failed | connection_failed | Caller |
+| Missed Call | missed_video_call / missed_voice_call | missed | Callee |
+| Call Rejected | video_call_rejected | rejected | Caller |
+| Call Accepted | video_call_accepted / voice_call_accepted | accepted | Caller |
+| Call Ended | video_call_ended / voice_call_ended | ended | Both |
+
+---
+
+## Frontend User Experience
+
+### Status Badge Indicators
+- **⚠️ Orange**: User is busy - try again later
+- **🔴 Red**: Connection failed - user unreachable
+- **🔵 Blue**: Attempting to reach - please wait
+- **📞 Green**: Call accepted - connection established
+
+### Window Behavior
+- Window appears at top of all applications (z-index: 2147483647)
+- Window cannot be covered by other windows
+- Ringtone plays automatically
+- Auto-closes on missed/busy/failed (after 5 seconds)
+- Manual close available with button
+
+---
+
+## Configuration & Timeouts
+
+- **Online busy check timeout**: 60 seconds
+- **Offline attempt timeout**: 90 seconds  
+- **Notification auto-close**: 5 seconds (for busy/failed)
+- **Call window lifecycle**: Remains until answered, rejected, or timed out
+
+---
+
+## Testing Checklist
+
+- [ ] Video call: User online and available - call goes through
+- [ ] Video call: User on another call - caller sees busy message
+- [ ] Video call: User offline - system waits 90 seconds then shows connection failed
+- [ ] Video call: User doesn't answer - missed call notification created
+- [ ] Voice call: All above scenarios with voice calls
+- [ ] Call window appears on top of other applications
+- [ ] Notifications properly stored in database
+- [ ] Missed call notifications visible in user's notification panel
+- [ ] User can dismiss incoming call window
+- [ ] Accept/Reject buttons work correctly
+

@@ -1021,6 +1021,33 @@ function loadEmojiPicker() {
 </script>
 
 <script>
+// Safe storage utility to handle Tracking Prevention
+const safeStorage = {
+    getItem: function(key) {
+        try {
+            return sessionStorage.getItem(key);
+        } catch (e) {
+            console.warn('sessionStorage blocked by tracking prevention, using fallback');
+            return window[`__storage_${key}`] || null;
+        }
+    },
+    setItem: function(key, value) {
+        try {
+            sessionStorage.setItem(key, value);
+        } catch (e) {
+            console.warn('sessionStorage blocked, using fallback storage');
+            window[`__storage_${key}`] = value;
+        }
+    },
+    removeItem: function(key) {
+        try {
+            sessionStorage.removeItem(key);
+        } catch (e) {
+            delete window[`__storage_${key}`];
+        }
+    }
+};
+
 // Safely get CSRF token and user data
 function getCsrfToken() {
     const csrfInput = document.querySelector('input[name="csrf_token"]');
@@ -2618,7 +2645,7 @@ function handleIncomingCall(data, callType) {
 function setupIncomingCallHandlers(data, callType) {
     // Listen for accept/reject from incoming call window
     const checkCallResponse = setInterval(() => {
-        const callResponse = sessionStorage.getItem('callResponse');
+        const callResponse = safeStorage.getItem('callResponse');
         
         if (callResponse) {
             clearInterval(checkCallResponse);
@@ -2646,7 +2673,7 @@ function setupIncomingCallHandlers(data, callType) {
                 }
             }
             
-            sessionStorage.removeItem('callResponse');
+            safeStorage.removeItem('callResponse');
         }
     }, 100);
     
@@ -2658,14 +2685,14 @@ function setupIncomingCallHandlers(data, callType) {
     // Timeout after 60 seconds
     setTimeout(() => {
         clearInterval(checkCallResponse);
-        if (!sessionStorage.getItem('callResponse')) {
+        if (!safeStorage.getItem('callResponse')) {
             if (typeof socket !== 'undefined' && socket.connected) {
                 socket.emit(`reject_${callType}_call`, {
                     appointment_id: data.appointment_id,
                     reason: 'timeout'
                 });
             }
-            sessionStorage.removeItem('incomingCallData');
+            safeStorage.removeItem('incomingCallData');
         }
     }, 60000);
 }

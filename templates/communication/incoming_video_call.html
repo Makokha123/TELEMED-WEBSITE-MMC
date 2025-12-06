@@ -21,6 +21,12 @@
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2147483647;
         }
 
         .incoming-video-call-container {
@@ -34,6 +40,7 @@
             justify-content: center;
             position: relative;
             overflow: hidden;
+            z-index: 2147483647;
         }
 
         /* Animated background */
@@ -139,6 +146,49 @@
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.3; }
+        }
+
+        /* Status display for busy/offline */
+        .status-badge {
+            position: absolute;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 152, 0, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 14;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .status-badge.busy {
+            background: rgba(239, 68, 68, 0.9);
+        }
+
+        .status-badge.offline {
+            background: rgba(107, 114, 128, 0.9);
+        }
+
+        .status-badge.attempting {
+            background: rgba(59, 130, 246, 0.9);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
         }
 
         /* Ringtone indicator */
@@ -324,6 +374,9 @@
             <i class="fas fa-video"></i>
         </div>
 
+        <!-- Status Badge for Busy/Offline -->
+        <div class="status-badge" id="statusBadge"></div>
+
         <!-- Call Control Buttons (appear after call accepted) -->
         <div class="call-controls" id="callControls" style="display: none;">
             <button class="control-btn" id="muteBtn" title="Mute Microphone">
@@ -366,8 +419,35 @@
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
+        // Safe storage utility to handle Tracking Prevention
+        const safeStorage = {
+            getItem: function(key) {
+                try {
+                    return sessionStorage.getItem(key);
+                } catch (e) {
+                    console.warn('sessionStorage blocked by tracking prevention, using fallback');
+                    return window[`__storage_${key}`] || null;
+                }
+            },
+            setItem: function(key, value) {
+                try {
+                    sessionStorage.setItem(key, value);
+                } catch (e) {
+                    console.warn('sessionStorage blocked, using fallback storage');
+                    window[`__storage_${key}`] = value;
+                }
+            },
+            removeItem: function(key) {
+                try {
+                    sessionStorage.removeItem(key);
+                } catch (e) {
+                    delete window[`__storage_${key}`];
+                }
+            }
+        };
+
         // Get call data
-        const callData = JSON.parse(sessionStorage.getItem('incomingCallData') || '{}');
+        const callData = JSON.parse(safeStorage.getItem('incomingCallData') || '{}');
         const appointmentId = callData.appointment_id || new URLSearchParams(window.location.search).get('appointment_id');
         const callerId = callData.caller_id;
         const callerName = callData.caller_name || 'Unknown';
@@ -376,6 +456,43 @@
 
         // Initialize Socket.IO
         const socket = io();
+
+        // Socket event listeners
+        socket.on('connect', () => {
+            console.log('Connected to socket server');
+        });
+
+        // Handle busy notification
+        socket.on('call_failed_busy', (data) => {
+            clearInterval(ringtoneInterval);
+            showStatusBadge('busy', `⚠️ ${data.callee_name} is currently busy`);
+            statusText.textContent = 'User Busy';
+            
+            setTimeout(() => {
+                window.close();
+            }, 5000);
+        });
+
+        // Handle offline/attempting connection
+        socket.on('outgoing_video_call_started', (data) => {
+            if (data.status === 'offline_attempting') {
+                showStatusBadge('attempting', `⏳ Attempting to reach ${data.callee_name}...`);
+            }
+        });
+
+        // Handle connection failed
+        socket.on('video_call_connection_failed', (data) => {
+            clearInterval(ringtoneInterval);
+            statusText.textContent = 'Connection Failed';
+            statusBadge.className = 'status-badge';
+            statusBadge.innerHTML = '<i class="fas fa-exclamation-circle"></i> Unable to connect';
+            statusBadge.style.background = 'rgba(239, 68, 68, 0.9)';
+            statusBadge.style.display = 'flex';
+            
+            setTimeout(() => {
+                window.close();
+            }, 5000);
+        });
 
         // DOM Elements
         const callerVideo = document.getElementById('callerVideo');
@@ -387,6 +504,21 @@
         const statusText = document.getElementById('statusText');
         const callerInitials = document.getElementById('callerInitials');
         const callerProfilePicEl = document.getElementById('callerProfilePic');
+        const statusBadge = document.getElementById('statusBadge');
+
+        // Display status badge
+        function showStatusBadge(type, message) {
+            statusBadge.textContent = message;
+            statusBadge.className = `status-badge ${type}`;
+            statusBadge.style.display = 'flex';
+            
+            // Disable accept button if busy
+            if (type === 'busy') {
+                acceptBtn.disabled = true;
+                acceptBtn.style.opacity = '0.5';
+                acceptBtn.title = 'User is currently busy';
+            }
+        }
 
         // Set caller info
         callerNameEl.textContent = callerName;
@@ -468,11 +600,11 @@
             // Initialize call control handlers
             initializeCallControls();
             
-            // Signal acceptance to parent window via sessionStorage
-            sessionStorage.setItem('callResponse', 'accepted');
+            // Signal acceptance to parent window via safeStorage
+            safeStorage.setItem('callResponse', 'accepted');
             
             // Store call state
-            sessionStorage.setItem('activeVideoCall', JSON.stringify({
+            safeStorage.setItem('activeVideoCall', JSON.stringify({
                 appointment_id: appointmentId,
                 caller_id: callerId,
                 callee_id: callerId
@@ -534,8 +666,8 @@
             clearInterval(ringtoneInterval);
             statusText.textContent = 'Declined';
             
-            // Signal rejection to parent window via sessionStorage
-            sessionStorage.setItem('callResponse', 'rejected');
+            // Signal rejection to parent window via safeStorage
+            safeStorage.setItem('callResponse', 'rejected');
             
             setTimeout(() => {
                 window.close();
@@ -549,7 +681,7 @@
                 statusText.textContent = 'Missed Call';
                 
                 // Signal timeout to parent window
-                sessionStorage.setItem('callResponse', 'timeout');
+                safeStorage.setItem('callResponse', 'timeout');
                 
                 setTimeout(() => {
                     window.close();

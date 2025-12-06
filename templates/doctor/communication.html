@@ -1160,6 +1160,31 @@ let isTyping = false;
 let typingTimeout = null;
 let emojiPicker = null;
 
+// SafeStorage utility for Tracking Prevention compatibility
+const safeStorage = {
+    getItem: function(key) {
+        try {
+            return sessionStorage.getItem(key);
+        } catch (e) {
+            return window[`__storage_${key}`] || null;
+        }
+    },
+    setItem: function(key, value) {
+        try {
+            sessionStorage.setItem(key, value);
+        } catch (e) {
+            window[`__storage_${key}`] = value;
+        }
+    },
+    removeItem: function(key) {
+        try {
+            sessionStorage.removeItem(key);
+        } catch (e) {
+            delete window[`__storage_${key}`];
+        }
+    }
+};
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     loadUserProfilePicture();
@@ -2526,8 +2551,8 @@ function initiateVideoCall() {
         callee_id: calleeId,
         appointment_id: selectedAppointmentId
     });
-}
-    }
+
+    
     
     // Show outgoing call modal
     const modal = new bootstrap.Modal(document.getElementById('outgoingVoiceCallModal'));
@@ -3053,8 +3078,6 @@ function updatePaymentBadge(status) {
 // -------------------------
 // In-page Video Call UI (doctor)
 // -------------------------
-let _ringAudioCtx_doc = null;
-let _ringOsc_doc = null;
 function playRingtoneDoc(loop=true, frequency=440) {
     try {
         if (!_ringAudioCtx_doc) _ringAudioCtx_doc = new (window.AudioContext || window.webkitAudioContext)();
@@ -3236,7 +3259,7 @@ function handleIncomingCall(data, callType) {
 function setupIncomingCallHandlers(data, callType) {
     // Listen for accept/reject from incoming call window
     const checkCallResponse = setInterval(() => {
-        const callResponse = sessionStorage.getItem('callResponse');
+        const callResponse = safeStorage.getItem('callResponse');
         
         if (callResponse) {
             clearInterval(checkCallResponse);
@@ -3264,7 +3287,7 @@ function setupIncomingCallHandlers(data, callType) {
                 }
             }
             
-            sessionStorage.removeItem('callResponse');
+            safeStorage.removeItem('callResponse');
         }
     }, 100);
     

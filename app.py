@@ -400,18 +400,6 @@ def handle_register_user(data):
     emit('registered', {'status': 'ok'})
 
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    sid = request.sid
-    # remove sid from user_sockets
-    for uid, sids in list(user_sockets.items()):
-        if sid in sids:
-            sids.remove(sid)
-            if not sids:
-                user_sockets.pop(uid, None)
-                user_last_seen[uid] = datetime.now(timezone.utc)
-            else:
-                user_sockets[uid] = sids
 
 
 def _emit_to_user(user_id, event, payload):
@@ -441,10 +429,9 @@ def handle_initiate_video_call(data):
         'callee': callee_id,
         'appointment_id': appointment_id,
         'started_at': datetime.now(timezone.utc).isoformat(),
-        'status': 'ringing'
+        'status': 'ringing',
+        'call_type': 'video'
     }
-    active_calls[call_id] = call_info
-    incoming_call_notifications[callee_id] = call_info
 
     # Enrich call info with user display names and profile pictures when available
     try:
@@ -459,6 +446,45 @@ def handle_initiate_video_call(data):
     except Exception:
         pass
 
+    # Check if callee is on another call (busy)
+    is_busy = any(c['callee'] == callee_id and c['status'] in ['ringing', 'ongoing'] 
+                  for c in active_calls.values() if c.get('id') != call_id)
+    
+    if is_busy:
+        # Notify caller that callee is busy
+        busy_notification = {
+            'call_id': call_id,
+            'status': 'busy',
+            'message': f'{call_info.get("callee_name", "User")} is currently on another call',
+            'callee_name': call_info.get('callee_name', 'User'),
+            'recommendation': 'Please wait or end this attempt'
+        }
+        _emit_to_user(caller_id, 'call_failed_busy', busy_notification)
+        
+        # Create notification for caller
+        try:
+            notif = Notification(
+                user_id=caller_id,
+                appointment_id=appointment_id,
+                notification_type='busy_video_call',
+                sender_id=callee_id,
+                title='User Busy',
+                body=f'{call_info.get("callee_name", "User")} is currently on another call',
+                call_status='busy'
+            )
+            db.session.add(notif)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return
+
+    # Check if callee is online (connected via socket)
+    callee_is_online = callee_id in user_sockets and bool(user_sockets[callee_id])
+    
+    # Store call info
+    active_calls[call_id] = call_info
+    incoming_call_notifications[callee_id] = call_info
+
     # update appointment status if present
     if appointment_id:
         try:
@@ -470,10 +496,110 @@ def handle_initiate_video_call(data):
         except Exception:
             db.session.rollback()
 
-    # Notify callee
-    _emit_to_user(callee_id, 'incoming_video_call', call_info)
-    # Notify caller that ringing started
-    _emit_to_user(caller_id, 'outgoing_video_call_started', call_info)
+    if callee_is_online:
+        # Callee is online - send incoming call notification
+        _emit_to_user(callee_id, 'incoming_video_call', call_info)
+        _emit_to_user(caller_id, 'outgoing_video_call_started', call_info)
+        
+        # Set timeout for missed call (60 seconds)
+        def video_call_timeout():
+            if call_id in active_calls and active_calls[call_id]['status'] == 'ringing':
+                active_calls[call_id]['status'] = 'unanswered'
+                incoming_call_notifications.pop(callee_id, None)
+                
+                # Update appointment to missed
+                try:
+                    if appointment_id:
+                        apt = Appointment.query.get(appointment_id)
+                        if apt:
+                            apt.call_status = 'missed'
+                            db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                
+                # Notify caller of missed call
+                _emit_to_user(caller_id, 'video_call_unanswered', {
+                    'call_id': call_id,
+                    'message': f'{call_info.get("callee_name", "User")} did not answer',
+                    'status': 'unanswered'
+                })
+                
+                # Create missed call notification for callee
+                try:
+                    notif = Notification(
+                        user_id=callee_id,
+                        appointment_id=appointment_id,
+                        notification_type='missed_video_call',
+                        sender_id=caller_id,
+                        title='Missed Video Call',
+                        body=f'{call_info.get("caller_name", "User")} called you',
+                        call_status='missed'
+                    )
+                    db.session.add(notif)
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                
+                # Clean up
+                active_calls.pop(call_id, None)
+        
+        socketio.start_background_task(lambda: (socketio.sleep(60), video_call_timeout()))
+    else:
+        # Callee is offline but might be accessible via web/browser
+        offline_notification = {
+            'call_id': call_id,
+            'status': 'offline_attempting',
+            'message': f'{call_info.get("callee_name", "User")} is currently offline',
+            'callee_name': call_info.get('callee_name', 'User'),
+            'recommendation': 'Attempting to reach via web/browser...'
+        }
+        _emit_to_user(caller_id, 'outgoing_video_call_started', offline_notification)
+        
+        # Still allow the call to go through and wait for a response
+        # with extended timeout for offline users
+        def video_call_offline_timeout():
+            if call_id in active_calls and active_calls[call_id]['status'] == 'ringing':
+                active_calls[call_id]['status'] = 'connection_failed'
+                incoming_call_notifications.pop(callee_id, None)
+                
+                # Update appointment to missed
+                try:
+                    if appointment_id:
+                        apt = Appointment.query.get(appointment_id)
+                        if apt:
+                            apt.call_status = 'missed'
+                            db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                
+                # Notify caller of connection failure
+                _emit_to_user(caller_id, 'video_call_connection_failed', {
+                    'call_id': call_id,
+                    'message': f'Unable to connect to {call_info.get("callee_name", "User")}',
+                    'status': 'connection_failed'
+                })
+                
+                # Create connection failed notification for caller
+                try:
+                    notif = Notification(
+                        user_id=caller_id,
+                        appointment_id=appointment_id,
+                        notification_type='video_call_failed',
+                        sender_id=callee_id,
+                        title='Call Connection Failed',
+                        body=f'Unable to reach {call_info.get("callee_name", "User")}',
+                        call_status='connection_failed'
+                    )
+                    db.session.add(notif)
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                
+                # Clean up
+                active_calls.pop(call_id, None)
+        
+        # Extended timeout for offline users (90 seconds)
+        socketio.start_background_task(lambda: (socketio.sleep(90), video_call_offline_timeout()))
 
 
 @socketio.on('accept_video_call')
@@ -485,6 +611,16 @@ def handle_accept_video_call(data):
     if not info:
         emit('call_error', {'message': 'call_not_found'})
         return
+    
+    # Check if caller has another active call (call collision)
+    has_active_call = any(c['caller'] == info['caller'] and c.get('status') == 'ongoing' 
+                         for c in active_calls.values() if c.get('id') != call_id)
+    
+    if has_active_call:
+        # Reject if caller is busy too
+        emit('call_error', {'message': 'caller_has_active_call'})
+        return
+    
     # mark as ongoing
     info['status'] = 'ongoing'
     info['accepted_at'] = datetime.now(timezone.utc).isoformat()
@@ -494,6 +630,19 @@ def handle_accept_video_call(data):
         db.session.add(cs)
         db.session.commit()
         info['call_session_id'] = cs.id
+    except Exception:
+        db.session.rollback()
+
+    # Remove from missed call tracking
+    incoming_call_notifications.pop(info.get('callee'), None)
+    
+    # Update appointment status
+    try:
+        if info.get('appointment_id'):
+            apt = Appointment.query.get(info.get('appointment_id'))
+            if apt:
+                apt.call_status = 'ongoing'
+                db.session.commit()
     except Exception:
         db.session.rollback()
 
@@ -509,6 +658,23 @@ def handle_reject_video_call(data):
     info = active_calls.pop(call_id, None)
     if info:
         incoming_call_notifications.pop(info.get('callee'), None)
+        
+        # Create rejection notification for caller
+        try:
+            rejection_reason = 'Call declined' if reason == 'rejected' else f'Call {reason}'
+            notif = Notification(
+                user_id=info['caller'],
+                appointment_id=info.get('appointment_id'),
+                notification_type='video_call_rejected',
+                sender_id=info['callee'],
+                title='Call Declined',
+                body=f'{info.get("callee_name", "User")} declined your video call',
+                call_status='rejected'
+            )
+            db.session.add(notif)
+        except Exception:
+            pass
+        
         # update appointment
         try:
             if info.get('appointment_id'):
@@ -519,7 +685,7 @@ def handle_reject_video_call(data):
         except Exception:
             db.session.rollback()
 
-        _emit_to_user(info['caller'], 'call_rejected', {'call_id': call_id, 'reason': reason})
+        _emit_to_user(info['caller'], 'call_rejected', {'call_id': call_id, 'reason': reason, 'callee_name': info.get('callee_name', 'User')})
         _emit_to_user(info['callee'], 'call_rejected', {'call_id': call_id, 'reason': reason})
 
 
@@ -530,6 +696,23 @@ def handle_end_call(data):
     info = active_calls.pop(call_id, None)
     if info:
         incoming_call_notifications.pop(info.get('callee'), None)
+        
+        # Create call end notification
+        other_user_id = info['callee'] if info['caller'] != ended_by else info['caller']
+        try:
+            notif = Notification(
+                user_id=other_user_id,
+                appointment_id=info.get('appointment_id'),
+                notification_type='video_call_ended',
+                sender_id=ended_by,
+                title='Video Call Ended',
+                body=f'Video call with {info.get("caller_name" if other_user_id == info["callee"] else "callee_name", "User")} has ended',
+                call_status='ended'
+            )
+            db.session.add(notif)
+        except Exception:
+            pass
+        
         # update call session and appointment
         try:
             cs_id = info.get('call_session_id')
@@ -6552,7 +6735,7 @@ def handle_message_delivered(data):
             }, room=f'appointment_{appointment_id}')
 
 @socketio.on('disconnect')
-def handle_disconnect():
+def handle_disconnect(reason=None):
     """Handle user disconnection with cleanup."""
     sid = request.sid
     try:
@@ -6902,6 +7085,17 @@ def handle_initiate_video_call(data):
             callee_user_id = appointment.patient.user_id
             callee_role = 'patient'
         
+        # CHECK 1: Is callee already on an active call (busy)?
+        for active_apt_id, active_call in active_calls.items():
+            if active_call['callee_id'] == callee_user_id and active_call['status'] in ['ringing', 'accepted']:
+                # Callee is busy on another call
+                emit('user_busy', {
+                    'appointment_id': appointment_id,
+                    'message': f'{caller_name} is currently on another call. Please wait or try again later.',
+                    'callee_name': safe_display_name(User.query.get(callee_user_id))
+                })
+                return
+        
         # Store call information
         call_info = {
             'appointment_id': appointment_id,
@@ -6936,48 +7130,65 @@ def handle_initiate_video_call(data):
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
-        # Send incoming call notification to callee with ringtone
+        # CHECK 2: Is callee connected to Socket.IO (online in app)?
         callee_socket_id = user_sockets.get(callee_user_id)
         if callee_socket_id:
-            emit('incoming_video_call', call_data, room=callee_socket_id)
+            # Callee is online in app - send incoming call notification with ringtone
+            emit('incoming_video_call', call_data, room=f'user_{callee_user_id}')
         else:
-            # Callee not connected to Socket.IO - notify caller immediately
-            caller_socket_id = user_sockets.get(current_user.id)
-            if caller_socket_id:
-                emit('call_error', {'error': 'Callee is not online or not connected to real-time service.'}, room=caller_socket_id)
+            # Callee offline from app but may have browser/network access
+            # Send browser notification that will appear on top even if app is closed
+            emit('browser_notification_video_call', {
+                'appointment_id': appointment_id,
+                'caller_name': caller_name,
+                'caller_role': caller_role,
+                'message': f'{caller_name} ({caller_role}) is calling you',
+                'notification_type': 'incoming_call'
+            }, room=f'user_{callee_user_id}')
         
         # Set call timeout (1 minute)
         def call_timeout():
             if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
-                # Call timed out
+                # Call timed out - no answer
                 active_calls[appointment_id]['status'] = 'timeout'
-                emit('call_timeout', {
-                    'appointment_id': appointment_id,
-                    'reason': 'No answer'
-                })
                 
-                # Notify caller
-                caller_socket_id = user_sockets.get(current_user.id)
-                if caller_socket_id:
+                # Notify caller that call was not answered
+                if current_user.id in user_sockets and user_sockets[current_user.id]:
                     emit('call_ended', {
                         'appointment_id': appointment_id,
                         'reason': 'timeout',
-                        'message': 'Call timed out - no answer'
-                    }, room=caller_socket_id)
+                        'message': 'Call timed out - no answer',
+                        'call_type': 'video'
+                    }, room=f'user_{current_user.id}')
                 
-                # Create missed call notification for callee
-                missed_call_data = {
-                    'appointment_id': appointment_id,
-                    'caller_name': caller_name,
-                    'caller_role': caller_role,
-                    'appointment_date': appointment.appointment_date.isoformat(),
-                    'appointment_time': appointment.appointment_date.strftime('%H:%M'),
-                    'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'type': 'missed_video_call'
-                }
+                # Create missed call notification for callee (whether online or offline)
+                # This will appear in their notification center
+                try:
+                    callee_user = User.query.get(callee_user_id)
+                    from models import CallNotification
+                    missed_notification = CallNotification(
+                        user_id=callee_user_id,
+                        caller_id=current_user.id,
+                        call_type='video',
+                        status='missed',
+                        appointment_id=appointment_id,
+                        created_at=datetime.now(timezone.utc)
+                    )
+                    db.session.add(missed_notification)
+                    db.session.commit()
+                except Exception as e:
+                    print(f'Error creating missed call notification: {e}')
+                    db.session.rollback()
                 
-                if callee_socket_id:
-                    emit('missed_call', missed_call_data, room=callee_socket_id)
+                # Also send Socket.IO missed_call event if callee is online
+                if callee_user_id in user_sockets and user_sockets[callee_user_id]:
+                    emit('missed_call', {
+                        'appointment_id': appointment_id,
+                        'caller_name': caller_name,
+                        'caller_role': caller_role,
+                        'call_type': 'video',
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }, room=f'user_{callee_user_id}')
                 
                 # Clean up
                 if appointment_id in active_calls:
@@ -7012,10 +7223,7 @@ def handle_accept_video_call(data):
         call_info['status'] = 'accepted'
         call_info['accepted_time'] = datetime.now(timezone.utc).isoformat()
         
-        # Notify both parties that call is connected
-        caller_socket_id = user_sockets.get(call_info['caller_id'])
-        callee_socket_id = user_sockets.get(current_user.id)
-        
+        # Notify both parties that call is connected using per-user rooms
         call_data = {
             'appointment_id': appointment_id,
             'caller_id': call_info['caller_id'],
@@ -7023,11 +7231,13 @@ def handle_accept_video_call(data):
             'call_type': 'video'
         }
         
-        if caller_socket_id:
-            emit('video_call_accepted', call_data, room=caller_socket_id)
+        # Notify caller
+        if call_info['caller_id'] in user_sockets and user_sockets[call_info['caller_id']]:
+            emit('video_call_accepted', call_data, room=f'user_{call_info["caller_id"]}')
         
-        if callee_socket_id:
-            emit('video_call_accepted', call_data, room=callee_socket_id)
+        # Notify callee
+        if current_user.id in user_sockets and user_sockets[current_user.id]:
+            emit('video_call_accepted', call_data, room=f'user_{current_user.id}')
         
         print(f'Video call accepted for appointment {appointment_id}')
         
@@ -7317,6 +7527,40 @@ def handle_initiate_voice_call(data):
             callee_user_id = appointment.patient.user_id
             callee_role = 'patient'
         
+        # Check if callee is on another call (busy)
+        is_busy = any(c.get('appointment_id') != appointment_id and 
+                     c.get('callee_id') == callee_user_id and 
+                     c.get('status') in ['ringing', 'accepted'] 
+                     for c in active_calls.values())
+        
+        if is_busy:
+            # Notify caller that callee is busy
+            busy_notification = {
+                'appointment_id': appointment_id,
+                'status': 'busy',
+                'message': f'{caller_name} is currently on another call',
+                'callee_name': caller_name,
+                'recommendation': 'Please wait or end this attempt'
+            }
+            emit('call_failed_busy', busy_notification, room=f'user_{current_user.id}')
+            
+            # Create notification for caller
+            try:
+                notif = Notification(
+                    user_id=current_user.id,
+                    appointment_id=appointment_id,
+                    notification_type='busy_voice_call',
+                    sender_id=callee_user_id,
+                    title='User Busy',
+                    body=f'{caller_name} is currently on another call',
+                    call_status='busy'
+                )
+                db.session.add(notif)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            return {'success': False, 'error': 'User is busy'}
+        
         # Store call information
         call_info = {
             'appointment_id': appointment_id,
@@ -7351,46 +7595,87 @@ def handle_initiate_voice_call(data):
             'call_type': 'voice'
         })
         
-        # Send incoming call notification to callee
-        if callee_user_id in user_sockets and user_sockets[callee_user_id]:
+        # Check if callee is online
+        callee_is_online = callee_user_id in user_sockets and bool(user_sockets[callee_user_id])
+        
+        if callee_is_online:
+            # Send incoming call notification to callee
             emit('incoming_voice_call', call_data, room=f'user_{callee_user_id}')
-        else:
-            emit('call_error', {'error': 'Callee is not online or not connected to real-time service.'}, room=f'user_{current_user.id}')
-        
-        # Set call timeout (1 minute)
-        def call_timeout():
-            if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
-                # Call timed out
-                active_calls[appointment_id]['status'] = 'timeout'
-                
-                # Notify caller
-                if current_user.id in user_sockets and user_sockets[current_user.id]:
-                    emit('call_ended', {
+            
+            # Set call timeout (60 seconds)
+            def voice_call_timeout():
+                if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
+                    active_calls[appointment_id]['status'] = 'unanswered'
+                    
+                    # Notify caller of missed call
+                    emit('voice_call_unanswered', {
                         'appointment_id': appointment_id,
-                        'reason': 'timeout',
-                        'message': 'Call timed out - no answer'
+                        'message': f'{caller_name} did not answer',
+                        'status': 'unanswered'
                     }, room=f'user_{current_user.id}')
-                
-                # Create missed call notification for callee
-                missed_call_data = {
-                    'appointment_id': appointment_id,
-                    'caller_name': caller_name,
-                    'caller_role': caller_role,
-                    'appointment_date': appointment.appointment_date.isoformat(),
-                    'appointment_time': appointment.appointment_date.strftime('%H:%M'),
-                    'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'type': 'missed_voice_call'
-                }
-                
-                if callee_user_id in user_sockets and user_sockets[callee_user_id]:
-                    emit('missed_call', missed_call_data, room=f'user_{callee_user_id}')
-                
-                # Clean up
-                if appointment_id in active_calls:
-                    del active_calls[appointment_id]
-        
-        # Schedule timeout
-        socketio.start_background_task(lambda: socketio.sleep(60) or call_timeout())
+                    
+                    # Create missed call notification for callee
+                    try:
+                        notif = Notification(
+                            user_id=callee_user_id,
+                            appointment_id=appointment_id,
+                            notification_type='missed_voice_call',
+                            sender_id=current_user.id,
+                            title='Missed Voice Call',
+                            body=f'{caller_name} called you',
+                            call_status='missed'
+                        )
+                        db.session.add(notif)
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                    
+                    # Clean up
+                    active_calls.pop(appointment_id, None)
+            
+            socketio.start_background_task(lambda: (socketio.sleep(60), voice_call_timeout()))
+        else:
+            # Callee is offline but try to reach via web/browser
+            offline_notification = {
+                'appointment_id': appointment_id,
+                'status': 'offline_attempting',
+                'message': f'{caller_name} is currently offline',
+                'recommendation': 'Attempting to reach via web/browser...'
+            }
+            emit('call_ringing', offline_notification, room=f'user_{current_user.id}')
+            
+            # Extended timeout for offline users (90 seconds)
+            def voice_call_offline_timeout():
+                if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
+                    active_calls[appointment_id]['status'] = 'connection_failed'
+                    
+                    # Notify caller of connection failure
+                    emit('voice_call_connection_failed', {
+                        'appointment_id': appointment_id,
+                        'message': f'Unable to connect to {caller_name}',
+                        'status': 'connection_failed'
+                    }, room=f'user_{current_user.id}')
+                    
+                    # Create notification
+                    try:
+                        notif = Notification(
+                            user_id=current_user.id,
+                            appointment_id=appointment_id,
+                            notification_type='voice_call_failed',
+                            sender_id=callee_user_id,
+                            title='Call Connection Failed',
+                            body=f'Unable to reach {caller_name}',
+                            call_status='connection_failed'
+                        )
+                        db.session.add(notif)
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                    
+                    # Clean up
+                    active_calls.pop(appointment_id, None)
+            
+            socketio.start_background_task(lambda: (socketio.sleep(90), voice_call_offline_timeout()))
         
         return {'success': True, 'message': 'Call initiated'}
         
@@ -7414,9 +7699,21 @@ def handle_accept_voice_call(data):
         
         call_info = active_calls[appointment_id]
         
+        # Check if caller has another active call (call collision)
+        has_active_call = any(c.get('appointment_id') != appointment_id and 
+                             c.get('caller_id') == call_info['caller_id'] and 
+                             c.get('status') == 'accepted' 
+                             for c in active_calls.values())
+        
+        if has_active_call:
+            # Reject if caller is busy too
+            emit('call_error', {'error': 'caller_has_active_call'})
+            return
+        
         # Update call status
         call_info['status'] = 'accepted'
         call_info['accepted_time'] = datetime.now(timezone.utc).isoformat()
+        call_info['callee_id'] = current_user.id
         
         # Notify both parties that call is connected
         call_data = {
@@ -7426,11 +7723,24 @@ def handle_accept_voice_call(data):
             'call_type': 'voice'
         }
         
-        if call_info['caller_id'] in user_sockets and user_sockets[call_info['caller_id']]:
-            emit('voice_call_accepted', call_data, room=f'user_{call_info["caller_id"]}')
+        # Create accepted call notification for caller
+        try:
+            notif = Notification(
+                user_id=call_info['caller_id'],
+                appointment_id=appointment_id,
+                notification_type='voice_call_accepted',
+                sender_id=current_user.id,
+                title='Call Accepted',
+                body=f'{call_info.get("caller_name", "User")} accepted your voice call',
+                call_status='accepted'
+            )
+            db.session.add(notif)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         
-        if current_user.id in user_sockets and user_sockets[current_user.id]:
-            emit('voice_call_accepted', call_data, room=f'user_{current_user.id}')
+        emit('voice_call_accepted', call_data, room=f'user_{call_info["caller_id"]}')
+        emit('voice_call_accepted', call_data, room=f'user_{current_user.id}')
         
         print(f'Voice call accepted for appointment {appointment_id}')
         
@@ -7452,14 +7762,27 @@ def handle_end_voice_call(data):
         
         call_info = active_calls[appointment_id]
         
-        # Determine who is ending the call
-        caller_socket_id = user_sockets.get(call_info['caller_id'])
-        callee_socket_id = user_sockets.get(call_info.get('callee_id'))
-        
         # Update call status
         call_info['status'] = 'ended'
         call_info['ended_time'] = datetime.now(timezone.utc).isoformat()
         call_info['ended_by'] = current_user.id
+        
+        # Create call end notification
+        other_user_id = call_info['caller_id'] if current_user.id != call_info['caller_id'] else call_info.get('callee_id')
+        try:
+            notif = Notification(
+                user_id=other_user_id,
+                appointment_id=appointment_id,
+                notification_type='voice_call_ended',
+                sender_id=current_user.id,
+                title='Voice Call Ended',
+                body=f'Voice call has ended',
+                call_status='ended'
+            )
+            db.session.add(notif)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         
         # Notify both parties
         call_ended_data = {
@@ -7468,14 +7791,12 @@ def handle_end_voice_call(data):
             'call_type': 'voice'
         }
         
-        if caller_socket_id:
-            emit('voice_call_ended', call_ended_data, room=caller_socket_id)
+        emit('voice_call_ended', call_ended_data, room=f'user_{call_info["caller_id"]}')
+        if call_info.get('callee_id'):
+            emit('voice_call_ended', call_ended_data, room=f'user_{call_info["callee_id"]}')
         
-        if callee_socket_id:
-            emit('voice_call_ended', call_ended_data, room=callee_socket_id)
-        
-        # Clean up after short delay
-        socketio.start_background_task(lambda: (socketio.sleep(2), active_calls.pop(appointment_id, None)))
+        # Clean up
+        active_calls.pop(appointment_id, None)
         
         print(f'Voice call ended for appointment {appointment_id}')
         

@@ -727,12 +727,13 @@ class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=True)
-    notification_type = db.Column(db.String(50), nullable=False)  # message, voice_call, video_call
+    notification_type = db.Column(db.String(50), nullable=False)  # message, voice_call, video_call, missed_voice_call, missed_video_call, busy_voice_call, busy_video_call
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     title = db.Column(db.String(255))
     body = db.Column(db.Text)
     is_read = db.Column(db.Boolean, default=False)
     sound_enabled = db.Column(db.Boolean, default=True)
+    call_status = db.Column(db.String(50), nullable=True)  # missed, busy, unanswered, connection_failed
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
