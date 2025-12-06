@@ -339,17 +339,53 @@
 
     async function initializeAudioCall() {
         try {
-            // Get local audio stream with enhanced constraints
-            localStream = await navigator.mediaDevices.getUserMedia({
+            // Check browser compatibility
+            const mediaDevices = navigator.mediaDevices || (navigator.getUserMedia && {
+                getUserMedia: (constraints) => {
+                    return new Promise((resolve, reject) => {
+                        navigator.getUserMedia(constraints, resolve, reject);
+                    });
+                }
+            });
+
+            if (!mediaDevices || !mediaDevices.getUserMedia) {
+                $('#callStatus').text('WebRTC not supported on this browser');
+                return;
+            }
+
+            // Enhanced audio constraints with fallback
+            const constraints = {
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true,
-                    latency: 0.01,
-                    channelCount: 1,
-                    sampleRate: 48000
+                    autoGainControl: true
                 }
-            });
+            };
+
+            // Get local audio stream with fallback strategy
+            try {
+                localStream = await mediaDevices.getUserMedia(constraints);
+            } catch (error) {
+                console.warn('Enhanced audio constraints failed, trying basic:', error);
+                // Fallback: try with minimal constraints
+                try {
+                    localStream = await mediaDevices.getUserMedia({ audio: true });
+                } catch (fallbackError) {
+                    console.error('All audio access attempts failed:', fallbackError);
+                    
+                    // Detailed error messages
+                    if (fallbackError.name === 'NotAllowedError') {
+                        $('#callStatus').text('Permission denied. Allow microphone access in browser settings.');
+                    } else if (fallbackError.name === 'NotFoundError') {
+                        $('#callStatus').text('No microphone found. Check device connections.');
+                    } else if (fallbackError.name === 'NotReadableError') {
+                        $('#callStatus').text('Microphone in use. Close other apps using it.');
+                    } else {
+                        $('#callStatus').text('Failed to access microphone: ' + fallbackError.name);
+                    }
+                    return;
+                }
+            }
 
             console.log('Local audio stream initialized');
 

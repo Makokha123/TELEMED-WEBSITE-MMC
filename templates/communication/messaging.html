@@ -842,6 +842,7 @@ function handleFileUpload(event) {
 }
 
 // One-time emoji picker initialization
+// One-time emoji picker initialization
 let emojiPickerInitialized = false;
 function initEmojiPickerOnce(event) {
     if (emojiPickerInitialized) return;
@@ -850,7 +851,8 @@ function initEmojiPickerOnce(event) {
     
     const input = document.getElementById('messageInput');
     const emojis = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '👏', '💯', '😍', '😢', '🤔', '😎'];
-    const emojiMenu = document.createElement('div');\n    emojiMenu.className = 'emoji-menu';
+    const emojiMenu = document.createElement('div');
+    emojiMenu.className = 'emoji-menu';
     emojiMenu.style.cssText = 'position: absolute; background: white; border: 1px solid #ccc; border-radius: 4px; padding: 8px; bottom: 50px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; z-index: 1000;';
     
     emojis.forEach(emoji => {

@@ -576,18 +576,64 @@
         // Initialize WebRTC
         async function initializeCall() {
             try {
-                // Get local media stream with enhanced audio constraints
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 1280, height: 720, facingMode: 'user' },
+                // Check browser compatibility
+                const mediaDevices = navigator.mediaDevices || (navigator.getUserMedia && {
+                    getUserMedia: (constraints) => {
+                        return new Promise((resolve, reject) => {
+                            navigator.getUserMedia(constraints, resolve, reject);
+                        });
+                    }
+                });
+
+                if (!mediaDevices || !mediaDevices.getUserMedia) {
+                    connectionStatus.textContent = 'WebRTC not supported';
+                    connectionStatus.style.color = '#ef4444';
+                    return;
+                }
+
+                // Enhanced audio/video constraints with fallbacks for all devices
+                const constraints = {
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    },
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true,
-                        latency: 0.01,
-                        channelCount: 1,
-                        sampleRate: 48000
+                        autoGainControl: true
                     }
-                });
+                };
+
+                // Get local media stream with fallback strategy
+                try {
+                    localStream = await mediaDevices.getUserMedia(constraints);
+                } catch (error) {
+                    console.warn('High quality constraints failed, trying standard:', error);
+                    // Fallback: try with minimal constraints
+                    const fallbackConstraints = {
+                        video: true,
+                        audio: true
+                    };
+                    try {
+                        localStream = await mediaDevices.getUserMedia(fallbackConstraints);
+                    } catch (fallbackError) {
+                        console.error('All media access attempts failed:', fallbackError);
+                        
+                        // Detailed error messages for users
+                        if (fallbackError.name === 'NotAllowedError') {
+                            connectionStatus.textContent = 'Permission denied. Please allow camera/microphone access in browser settings.';
+                        } else if (fallbackError.name === 'NotFoundError') {
+                            connectionStatus.textContent = 'No camera/microphone found. Check device connections.';
+                        } else if (fallbackError.name === 'NotReadableError') {
+                            connectionStatus.textContent = 'Camera/microphone in use. Close other apps using them.';
+                        } else {
+                            connectionStatus.textContent = 'Failed to access camera/microphone: ' + fallbackError.name;
+                        }
+                        connectionStatus.style.color = '#ef4444';
+                        return;
+                    }
+                }
 
                 localVideo.srcObject = localStream;
                 localPlaceholder.style.display = 'none';
