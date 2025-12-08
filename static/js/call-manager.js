@@ -44,6 +44,14 @@ class CallManager {
     this.onLocalStream = null;
 
     // Setup signaling event handlers
+    // Defensive checks: ensure signaling provides required interface
+    if (!this.signaling || (typeof this.signaling.addEventListener !== 'function' && typeof this.signaling.on !== 'function')) {
+      const msg = 'CallManager: invalid signaling client provided — expected addEventListener or on';
+      console.error(msg, this.signaling);
+      if (this.onError) this.onError({ message: msg });
+      throw new Error(msg);
+    }
+
     this._setupSignalingListeners();
   }
 
@@ -51,6 +59,34 @@ class CallManager {
    * Setup event listeners on signaling client
    */
   _setupSignalingListeners() {
+    // If signaling does not expose addEventListener but exposes `on`, adapt it.
+    if (typeof this.signaling.addEventListener !== 'function' && typeof this.signaling.on === 'function') {
+      // Map CallManager event names to signaling event keys
+      const map = {
+        'onIncomingCall': 'call:ringing',
+        'onCallAccepted': 'call:accepted',
+        'onCallDeclined': 'call:declined',
+        'onCallBusy': 'call:busy',
+        'onCallConnected': 'call:connected',
+        'onCallEnded': 'call:ended',
+        'onCallMissed': 'call:missed',
+        'onWebRTCOffer': 'webrtc:offer',
+        'onWebRTCAnswer': 'webrtc:answer',
+        'onWebRTCIce': 'webrtc:ice'
+      };
+      Object.keys(map).forEach(k => {
+        this.signaling.on(map[k], (data) => {
+          try {
+            this[`_${k.replace(/^on/, '')}`] ? this[`_${k.replace(/^on/, '')}`](data) : null;
+          } catch (e) {
+            console.error('Error handling adapted signaling event', k, e);
+          }
+        });
+      });
+      // Continue — we adapted handlers
+      return;
+    }
+
     this.signaling.addEventListener('onIncomingCall', (data) => {
       this._handleIncomingCall(data);
     });
@@ -136,7 +172,15 @@ class CallManager {
       };
 
       this.webrtc.onIceCandidate = (candidate) => {
-        this.signaling.sendIceCandidate(this.callId, candidate);
+        try {
+          if (this.signaling && typeof this.signaling.sendIceCandidate === 'function') {
+            this.signaling.sendIceCandidate(this.callId, candidate);
+          } else {
+            console.warn('Signaling.sendIceCandidate not available');
+          }
+        } catch (e) {
+          console.error('Error sending ICE candidate via signaling', e);
+        }
       };
 
       this.webrtc.onError = (error) => {
@@ -157,9 +201,19 @@ class CallManager {
       this._startRingingTimeout();
       const offer = await this.webrtc.createOffer();
 
-      // Notify signaling server
-      this.signaling.initiateCall(remoteUserId, appointmentId, callType);
-      this.signaling.sendOffer(this.callId, offer);
+      // Notify signaling server (defensive)
+      try {
+        if (this.signaling) {
+          if (typeof this.signaling.initiateCall === 'function') this.signaling.initiateCall(remoteUserId, appointmentId, callType);
+          else console.warn('Signaling client missing initiateCall method');
+          if (typeof this.signaling.sendOffer === 'function') this.signaling.sendOffer(this.callId, offer);
+          else console.warn('Signaling client missing sendOffer method');
+        } else {
+          console.warn('No signaling client available to initiate call');
+        }
+      } catch (e) {
+        console.error('Error calling signaling methods for initiateCall', e);
+      }
 
     } catch (error) {
       this._error('Failed to initiate call', error);
@@ -219,8 +273,21 @@ class CallManager {
 
       // Create and send answer
       const answer = await this.webrtc.receiveOffer(callData.offer);
-      this.signaling.sendAnswer(this.callId, answer);
-      this.signaling.acceptCall(this.callId);
+      try {
+        if (this.signaling && typeof this.signaling.sendAnswer === 'function') {
+          this.signaling.sendAnswer(this.callId, answer);
+        } else {
+          console.warn('Signaling.sendAnswer not available');
+        }
+        if (this.signaling && typeof this.signaling.acceptCall === 'function') {
+          // Prefer to include appointmentId when available
+          this.signaling.acceptCall(this.callId, this.appointmentId);
+        } else {
+          console.warn('Signaling.acceptCall not available');
+        }
+      } catch (e) {
+        console.error('Error sending answer/accept via signaling', e);
+      }
 
     } catch (error) {
       this._error('Failed to accept call', error);
@@ -234,7 +301,17 @@ class CallManager {
    */
   declineCall(reason = 'user_declined') {
     if (this.callId) {
-      this.signaling.declineCall(this.callId, reason);
+      try {
+        if (this.signaling && typeof this.signaling.declineCall === 'function') {
+          this.signaling.declineCall(this.callId, reason, this.appointmentId);
+        } else if (this.signaling && typeof this.signaling.declineCall === 'function') {
+          this.signaling.declineCall(this.callId, reason);
+        } else {
+          console.warn('Signaling.declineCall not available');
+        }
+      } catch (e) {
+        console.error('Error calling signaling.declineCall', e);
+      }
     }
     this._cleanup();
   }
@@ -244,7 +321,17 @@ class CallManager {
    */
   endCall(reason = 'user_hangup') {
     if (this.callId) {
-      this.signaling.hangupCall(this.callId, reason);
+      try {
+        if (this.signaling && typeof this.signaling.hangupCall === 'function') {
+          this.signaling.hangupCall(this.callId, reason, this.appointmentId);
+        } else if (this.signaling && typeof this.signaling.hangupCall === 'function') {
+          this.signaling.hangupCall(this.callId, reason);
+        } else {
+          console.warn('Signaling.hangupCall not available');
+        }
+      } catch (e) {
+        console.error('Error calling signaling.hangupCall', e);
+      }
     }
     this._cleanup();
   }

@@ -1235,7 +1235,8 @@ function initializeCallManager() {
             updateQualityIndicator(metrics);
             // Send metrics to server
             if (window.socket) {
-                const metricsData = Object.assign({ call_id: window.callManager.currentCallId }, metrics);
+                const meta = (typeof window.callManager.getCallMetadata === 'function') ? window.callManager.getCallMetadata() : { callId: window.callManager.callId, appointmentId: window.callManager.appointmentId };
+                const metricsData = Object.assign({ call_id: meta.callId, appointment_id: meta.appointmentId }, metrics);
                 window.socket.emit('quality:metrics', metricsData);
             }
         };

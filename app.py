@@ -382,6 +382,26 @@ def safe_username(user_or_name):
 # Socket.IO call handlers
 # ----------------------
 from flask import copy_current_request_context
+
+def find_active_call(call_id=None, appointment_id=None):
+    """
+    Helper to find an active call by call_id or appointment_id.
+    Returns (key, call_info) where key is the dict key in active_calls.
+    """
+    if call_id:
+        if call_id in active_calls:
+            return call_id, active_calls[call_id]
+    if appointment_id:
+        if appointment_id in active_calls:
+            return appointment_id, active_calls[appointment_id]
+    # fallback: search by values
+    for k, v in active_calls.items():
+        if call_id and v.get('id') == call_id:
+            return k, v
+        if appointment_id and v.get('appointment_id') == appointment_id:
+            return k, v
+    return None, None
+
 @socketio.on('register_user')
 def handle_register_user(data):
     """Register a connected socket for a user: {user_id} """
@@ -484,6 +504,12 @@ def handle_initiate_video_call(data):
     
     # Store call info
     active_calls[call_id] = call_info
+    # Also store by appointment_id when available for compatibility with other handlers
+    if appointment_id:
+        try:
+            active_calls[appointment_id] = call_info
+        except Exception:
+            pass
     incoming_call_notifications[callee_id] = call_info
 
     # update appointment status if present
@@ -504,8 +530,11 @@ def handle_initiate_video_call(data):
         
         # Set timeout for missed call (60 seconds)
         def video_call_timeout():
-            if call_id in active_calls and active_calls[call_id]['status'] == 'ringing':
-                active_calls[call_id]['status'] = 'unanswered'
+            key, current = find_active_call(call_id=call_id, appointment_id=appointment_id)
+            if current and current.get('status') == 'ringing':
+                # update stored status
+                if key in active_calls:
+                    active_calls[key]['status'] = 'unanswered'
                 incoming_call_notifications.pop(callee_id, None)
                 
                 # Update appointment to missed
@@ -520,7 +549,8 @@ def handle_initiate_video_call(data):
                 
                 # Notify caller of missed call
                 _emit_to_user(caller_id, 'video_call_unanswered', {
-                    'call_id': call_id,
+                    'call_id': current.get('id') if current else call_id,
+                    'appointment_id': current.get('appointment_id') if current else appointment_id,
                     'message': f'{call_info.get("callee_name", "User")} did not answer',
                     'status': 'unanswered'
                 })
@@ -542,7 +572,8 @@ def handle_initiate_video_call(data):
                     db.session.rollback()
                 
                 # Clean up
-                active_calls.pop(call_id, None)
+                if key:
+                    active_calls.pop(key, None)
         
         socketio.start_background_task(lambda: (socketio.sleep(60), video_call_timeout()))
     else:
@@ -559,8 +590,10 @@ def handle_initiate_video_call(data):
         # Still allow the call to go through and wait for a response
         # with extended timeout for offline users
         def video_call_offline_timeout():
-            if call_id in active_calls and active_calls[call_id]['status'] == 'ringing':
-                active_calls[call_id]['status'] = 'connection_failed'
+            key, current = find_active_call(call_id=call_id, appointment_id=appointment_id)
+            if current and current.get('status') == 'ringing':
+                if key in active_calls:
+                    active_calls[key]['status'] = 'connection_failed'
                 incoming_call_notifications.pop(callee_id, None)
                 
                 # Update appointment to missed
@@ -575,7 +608,8 @@ def handle_initiate_video_call(data):
                 
                 # Notify caller of connection failure
                 _emit_to_user(caller_id, 'video_call_connection_failed', {
-                    'call_id': call_id,
+                    'call_id': current.get('id') if current else call_id,
+                    'appointment_id': current.get('appointment_id') if current else appointment_id,
                     'message': f'Unable to connect to {call_info.get("callee_name", "User")}',
                     'status': 'connection_failed'
                 })
@@ -597,7 +631,8 @@ def handle_initiate_video_call(data):
                     db.session.rollback()
                 
                 # Clean up
-                active_calls.pop(call_id, None)
+                if key:
+                    active_calls.pop(key, None)
         
         # Extended timeout for offline users (90 seconds)
         socketio.start_background_task(lambda: (socketio.sleep(90), video_call_offline_timeout()))
@@ -607,15 +642,17 @@ def handle_initiate_video_call(data):
 def handle_accept_video_call(data):
     # data: {call_id, user_id}
     call_id = data.get('call_id')
+    appointment_id = data.get('appointment_id') or data.get('apt')
     user_id = data.get('user_id')
-    info = active_calls.get(call_id)
+    key, info = find_active_call(call_id=call_id, appointment_id=appointment_id)
     if not info:
+        app.logger.warning('accept_video_call: call not found (call_id=%s appointment_id=%s)', call_id, appointment_id)
         emit('call_error', {'message': 'call_not_found'})
         return
     
     # Check if caller has another active call (call collision)
-    has_active_call = any(c['caller'] == info['caller'] and c.get('status') == 'ongoing' 
-                         for c in active_calls.values() if c.get('id') != call_id)
+    has_active_call = any(c['caller'] == info['caller'] and c.get('status') == 'ongoing'
+                         for c in active_calls.values() if c.get('id') != info.get('id'))
     
     if has_active_call:
         # Reject if caller is busy too
@@ -655,8 +692,13 @@ def handle_accept_video_call(data):
 @socketio.on('reject_video_call')
 def handle_reject_video_call(data):
     call_id = data.get('call_id')
+    appointment_id = data.get('appointment_id') or data.get('apt')
     reason = data.get('reason') or 'rejected'
-    info = active_calls.pop(call_id, None)
+    key, info = find_active_call(call_id=call_id, appointment_id=appointment_id)
+    if key:
+        info = active_calls.pop(key, None)
+    else:
+        info = None
     if info:
         incoming_call_notifications.pop(info.get('callee'), None)
         
@@ -686,8 +728,8 @@ def handle_reject_video_call(data):
         except Exception:
             db.session.rollback()
 
-        _emit_to_user(info['caller'], 'call_rejected', {'call_id': call_id, 'reason': reason, 'callee_name': info.get('callee_name', 'User')})
-        _emit_to_user(info['callee'], 'call_rejected', {'call_id': call_id, 'reason': reason})
+        _emit_to_user(info['caller'], 'call_rejected', {'call_id': info.get('id'), 'reason': reason, 'callee_name': info.get('callee_name', 'User'), 'appointment_id': info.get('appointment_id')})
+        _emit_to_user(info['callee'], 'call_rejected', {'call_id': info.get('id'), 'reason': reason, 'appointment_id': info.get('appointment_id')})
 
 
 @socketio.on('end_call')
@@ -695,13 +737,10 @@ def handle_end_call(data):
     call_id = data.get('call_id')
     appointment_id = data.get('appointment_id')
     ended_by = data.get('ended_by')
-
     # Support both call_id and appointment_id keys (clients may send either)
-    info = None
-    if appointment_id and appointment_id in active_calls:
-        info = active_calls.pop(appointment_id, None)
-    elif call_id and call_id in active_calls:
-        info = active_calls.pop(call_id, None)
+    key, info = find_active_call(call_id=call_id, appointment_id=appointment_id)
+    if key:
+        info = active_calls.pop(key, None)
     if info:
         incoming_call_notifications.pop(info.get('callee'), None)
         
@@ -764,8 +803,8 @@ def handle_end_call(data):
             db.session.rollback()
 
         # notify other participant
-        _emit_to_user(info['caller'], 'call_ended', {'call_id': call_id, 'ended_by': ended_by})
-        _emit_to_user(info['callee'], 'call_ended', {'call_id': call_id, 'ended_by': ended_by})
+        _emit_to_user(info['caller'], 'call_ended', {'call_id': info.get('id'), 'appointment_id': info.get('appointment_id'), 'ended_by': ended_by})
+        _emit_to_user(info['callee'], 'call_ended', {'call_id': info.get('id'), 'appointment_id': info.get('appointment_id'), 'ended_by': ended_by})
 
 
 

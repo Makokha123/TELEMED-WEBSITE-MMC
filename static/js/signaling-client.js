@@ -352,61 +352,64 @@ class SignalingClient {
   /**
    * Accept incoming call (callee)
    */
-  acceptCall(callId) {
-    this.emit('accept_call', {
+  acceptCall(callId, appointmentId = null) {
+    const payload = {
       call_id: callId,
       user_id: this.userId
-    });
+    };
+    if (appointmentId) payload.appointment_id = appointmentId;
+    this.emit('accept_call', payload);
   }
 
   /**
    * Decline incoming call (callee)
    */
-  declineCall(callId, reason = 'user_declined') {
-    this.emit('decline_call', {
+  declineCall(callId, reason = 'user_declined', appointmentId = null) {
+    const payload = {
       call_id: callId,
       reason: reason
-    });
+    };
+    if (appointmentId) payload.appointment_id = appointmentId;
+    this.emit('decline_call', payload);
   }
 
   /**
    * Hangup active call
    */
-  hangupCall(callId, reason = 'user_hangup') {
-    this.emit('hangup_call', {
+  hangupCall(callId, reason = 'user_hangup', appointmentId = null) {
+    const payload = {
       call_id: callId,
       reason: reason
-    });
+    };
+    if (appointmentId) payload.appointment_id = appointmentId;
+    this.emit('hangup_call', payload);
   }
 
   /**
    * Send WebRTC offer
    */
-  sendOffer(callId, offer) {
-    this.emit('webrtc:offer', {
-      call_id: callId,
-      offer: offer
-    });
+  sendOffer(callId, offer, appointmentId = null) {
+    const payload = { call_id: callId, offer: offer };
+    if (appointmentId) payload.appointment_id = appointmentId;
+    this.emit('webrtc:offer', payload);
   }
 
   /**
    * Send WebRTC answer
    */
-  sendAnswer(callId, answer) {
-    this.emit('webrtc:answer', {
-      call_id: callId,
-      answer: answer
-    });
+  sendAnswer(callId, answer, appointmentId = null) {
+    const payload = { call_id: callId, answer: answer };
+    if (appointmentId) payload.appointment_id = appointmentId;
+    this.emit('webrtc:answer', payload);
   }
 
   /**
    * Send ICE candidate
    */
-  sendIceCandidate(callId, candidate) {
-    this.emit('webrtc:ice', {
-      call_id: callId,
-      candidate: candidate
-    });
+  sendIceCandidate(callId, candidate, appointmentId = null) {
+    const payload = { call_id: callId, candidate: candidate };
+    if (appointmentId) payload.appointment_id = appointmentId;
+    this.emit('webrtc:ice', payload);
   }
 
   /**

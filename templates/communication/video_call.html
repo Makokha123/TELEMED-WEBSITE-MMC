@@ -386,6 +386,51 @@
             z-index: 15;
         }
     </style>
+    <style>
+        /* Tap-to-enable prompt (mobile autoplay fallback) */
+        .enable-media-prompt {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 60;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            padding: 20px;
+        }
+
+        .enable-media-card {
+            background: rgba(255,255,255,0.06);
+            color: #fff;
+            padding: 18px 22px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 320px;
+            width: 100%;
+        }
+
+        .enable-media-card p { margin-bottom: 12px; font-size: 15px; }
+
+        .enable-media-btn {
+            background: #667eea;
+            border: none;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        /* Further narrow-screen tweaks: hide chat for compact mobile view */
+        @media (max-width: 600px) {
+            .chat-sidebar { display: none; }
+            .local-video-section { width: 140px; height: 100px; bottom: 14px; right: 14px; }
+            .call-controls { left: 8px; right: 8px; transform: none; width: auto; justify-content: center; }
+            #remoteVideo { object-fit: contain; }
+            .enable-media-prompt { display: flex; }
+        }
+    </style>
 </head>
 <body>
     <div class="video-call-container">
@@ -666,11 +711,31 @@
                         }
                         remoteAudio.srcObject = event.streams[0];
                         remoteAudio.volume = 1;
+                        // Try to start playback; if blocked, show tap-to-enable prompt
+                        try {
+                            remoteAudio.play().catch((e) => {
+                                console.warn('Remote audio autoplay blocked:', e);
+                                showEnableMediaPrompt();
+                            });
+                        } catch (err) {
+                            console.warn('Error attempting remote audio play:', err);
+                            showEnableMediaPrompt();
+                        }
                         console.log('Remote audio track connected:', event.track.label);
                     } else {
                         remoteStream = event.streams[0];
                         remoteVideo.srcObject = remoteStream;
                         remotePlaceholder.style.display = 'none';
+                        // Try to play remote video (may be blocked on mobile)
+                        try {
+                            remoteVideo.play().catch((e) => {
+                                console.warn('Remote video autoplay blocked:', e);
+                                showEnableMediaPrompt();
+                            });
+                        } catch (err) {
+                            console.warn('Error attempting remote video play:', err);
+                            showEnableMediaPrompt();
+                        }
                     }
                 };
 
@@ -851,6 +916,45 @@
         }
 
         // Socket.IO event handlers
+        // When another user joins, initiate offer (so only the joiner/other side creates the offer)
+        socket.on('user_joined_video_room', async (data) => {
+            try {
+                // Avoid creating multiple offers
+                if (!peerConnection) return;
+                if (peerConnection.signalingState === 'stable') {
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    socket.emit('webrtc_offer', {
+                        appointment_id: appointmentId,
+                        offer: offer
+                    });
+                } else {
+                    console.log('Skipping offer creation due to signalingState=', peerConnection.signalingState);
+                }
+            } catch (err) {
+                console.error('Error creating offer on user_joined_video_room:', err);
+            }
+        });
+
+        // Handle incoming WebRTC offer from remote and reply with an answer
+        socket.on('webrtc_offer', async (data) => {
+            try {
+                if (!peerConnection) return;
+                const remoteDesc = new RTCSessionDescription(data.offer);
+                await peerConnection.setRemoteDescription(remoteDesc);
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                socket.emit('webrtc_answer', {
+                    appointment_id: appointmentId,
+                    answer: answer
+                });
+            } catch (error) {
+                console.error('Error handling incoming offer:', error);
+            }
+        });
+
         socket.on('webrtc_answer', async (data) => {
             try {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
@@ -903,6 +1007,31 @@
             }
         });
 
+        // Tap-to-enable prompt helpers
+        function showEnableMediaPrompt() {
+            let prompt = document.getElementById('enableMediaPrompt');
+            if (!prompt) return;
+            prompt.style.display = 'flex';
+        }
+
+        function hideEnableMediaPrompt() {
+            let prompt = document.getElementById('enableMediaPrompt');
+            if (!prompt) return;
+            prompt.style.display = 'none';
+        }
+
+        function enableMediaPlayback() {
+            // Try to play remote video/audio elements
+            const remoteAudio = document.getElementById('remoteAudio');
+            if (remoteAudio) {
+                remoteAudio.play().catch(e => console.warn('Play rejected after tap (audio):', e));
+            }
+            if (remoteVideo && remoteVideo.srcObject) {
+                remoteVideo.play().catch(e => console.warn('Play rejected after tap (video):', e));
+            }
+            hideEnableMediaPrompt();
+        }
+
         // Make local video draggable (PiP)
         let isDragging = false;
         let currentX = 0;
@@ -935,6 +1064,25 @@
 
         // Initialize call on load
         window.addEventListener('load', initializeCall);
+    </script>
+    <!-- Tap-to-enable prompt markup -->
+    <div id="enableMediaPrompt" class="enable-media-prompt" style="display:none;">
+        <div class="enable-media-card">
+            <p>Tap to enable audio/video for this call.</p>
+            <button class="enable-media-btn" id="enableMediaBtn">Enable</button>
+        </div>
+    </div>
+    <script>
+        // Wire up enable button after DOM is ready
+        document.getElementById('enableMediaBtn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            enableMediaPlayback();
+        });
+        // If user interacts elsewhere (tap), also try to enable playback
+        document.addEventListener('click', function onFirstTap() {
+            enableMediaPlayback();
+            document.removeEventListener('click', onFirstTap);
+        }, { once: true });
     </script>
 </body>
 </html>
