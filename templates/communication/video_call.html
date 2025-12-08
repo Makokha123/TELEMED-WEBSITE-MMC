@@ -550,7 +550,21 @@
         let videoEnabled = true;
         let isScreenSharing = false;
         let callStartTime = null;
-        let socket = io();
+        // Explicit Socket.IO options for more robust reconnection and transport fallbacks
+        let socket = io({
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            timeout: 20000
+        });
+        socket.on('connect', () => console.log('Socket.IO connected', socket.id));
+        socket.on('connect_error', (err) => {
+            console.error('Socket.IO connect_error', err);
+            connectionStatus.textContent = 'Socket connection error';
+            connectionStatus.style.color = '#ef4444';
+        });
+        socket.on('reconnect_attempt', (attempt) => console.log('Socket.IO reconnect attempt', attempt));
         let remoteUserName = 'Caller';
         let remoteUserAvatar = null;
 
@@ -751,7 +765,12 @@
 
                 // Handle connection state changes
                 peerConnection.onconnectionstatechange = () => {
-                    updateConnectionStatus(peerConnection.connectionState);
+                    const state = peerConnection.connectionState;
+                    updateConnectionStatus(state);
+                    if (state === 'connected' && !callStartTime) {
+                        callStartTime = Date.now();
+                        updateCallDuration();
+                    }
                 };
 
                 // Join video room
@@ -766,21 +785,11 @@
                     profile_picture_url: document.getElementById('currentUserProfilePic')?.value || null
                 });
 
-                // Send offer
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-
-                socket.emit('webrtc_offer', {
-                    appointment_id: appointmentId,
-                    offer: offer
-                });
-
-                // Start call duration timer
-                callStartTime = Date.now();
-                updateCallDuration();
-
-                connectionStatus.textContent = 'Connected';
-                connectionStatus.style.color = '#4ade80';
+                // Do not create an offer here. The server will notify existing participants
+                // via `user_joined_video_room` and those participants will create the offer.
+                // Start call duration timer when the connection is established (ontrack/onconnectionstatechange).
+                connectionStatus.textContent = 'Ready';
+                connectionStatus.style.color = '#f59e0b';
 
             } catch (error) {
                 console.error('Error initializing call:', error);
