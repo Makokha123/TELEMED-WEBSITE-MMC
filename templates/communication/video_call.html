@@ -514,6 +514,7 @@
     <input type="hidden" id="currentUserFirstName" value="{{ current_user.first_name }}">
     <input type="hidden" id="currentUserLastName" value="{{ current_user.last_name }}">
     <input type="hidden" id="currentUserProfilePic" value="{{ current_user.profile_picture_url or '' }}">
+    <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
@@ -551,20 +552,30 @@
         let isScreenSharing = false;
         let callStartTime = null;
         // Explicit Socket.IO options for more robust reconnection and transport fallbacks
-        let socket = io({
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionAttempts: 10,
-            reconnectionDelay: 1000,
-            timeout: 20000
-        });
-        socket.on('connect', () => console.log('Socket.IO connected', socket.id));
-        socket.on('connect_error', (err) => {
-            console.error('Socket.IO connect_error', err);
-            connectionStatus.textContent = 'Socket connection error';
-            connectionStatus.style.color = '#ef4444';
-        });
-        socket.on('reconnect_attempt', (attempt) => console.log('Socket.IO reconnect attempt', attempt));
+        if (!window.socket) {
+            try {
+                window.socket = io({
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: 10,
+                    reconnectionDelay: 1000,
+                    timeout: 20000
+                });
+            } catch (e) {
+                console.error('Socket.IO initialization failed', e);
+                window.socket = null;
+            }
+        }
+        var socket = window.socket;
+        if (socket) {
+            socket.on('connect', () => console.log('Socket.IO connected', socket.id));
+            socket.on('connect_error', (err) => {
+                console.error('Socket.IO connect_error', err);
+                connectionStatus.textContent = 'Socket connection error';
+                connectionStatus.style.color = '#ef4444';
+            });
+            socket.on('reconnect_attempt', (attempt) => console.log('Socket.IO reconnect attempt', attempt));
+        }
         let remoteUserName = 'Caller';
         let remoteUserAvatar = null;
 
@@ -982,8 +993,32 @@
             }
         });
 
-        socket.on('video_call_ended', () => {
-            closeCall();
+        socket.on('video_call_ended', (data) => {
+            try {
+                // perform local cleanup
+                closeCall();
+
+                // role-aware redirect: doctor -> dashboard, patient -> testimonial page
+                const role = document.getElementById('currentUserRole')?.value || '';
+                const appointment_id = data?.appointment_id || appointmentId;
+                const doctor_user_id = data?.doctor_user_id || null;
+
+                // small delay to ensure socket leave and cleanup finished
+                setTimeout(() => {
+                    if (role === 'doctor') {
+                        window.location.href = '/doctor/dashboard';
+                    } else if (role === 'patient') {
+                        // Redirect patient to testimonial submission page for this appointment
+                        window.location.href = `/appointments/${appointment_id}/testimonial`;
+                    } else {
+                        // Fallback to communication page
+                        window.location.href = `/communication/${appointment_id}`;
+                    }
+                }, 400);
+            } catch (err) {
+                console.error('Error handling video_call_ended redirect:', err);
+                closeCall();
+            }
         });
 
         // Chat message handler

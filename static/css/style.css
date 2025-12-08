@@ -209,6 +209,29 @@ body[data-theme="dark"] .footer-contact-icon.message { color: #0f1724; }
    CALL INTERFACE STYLES
    ============================================ */
 
+/* Call Logs Styles */
+.call-logs-list { }
+.call-group .fw-semibold { font-size: 0.95rem; }
+.call-log-item { background: var(--card-bg); border-radius: 12px; box-shadow: 0 6px 18px rgba(14,18,30,0.06); }
+.call-avatar { width:56px; height:56px; border-radius:12px; overflow:hidden; flex:0 0 56px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#e9eefc,#f5f7ff); box-shadow: inset 0 -4px 8px rgba(0,0,0,0.03); }
+.call-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+.call-avatar-initials{ font-weight:700; color:var(--primary-color); font-size:1.05rem; }
+.call-log-item .btn { border-radius: 10px; padding: .25rem .6rem; }
+.call-log-item .fa-arrow-up-right-from-square{ transform: rotate(-20deg); }
+
+/* Compact summary and filter styles */
+.call-logs-list .call-group + .call-group { margin-top: .75rem; }
+.call-logs-list .small.text-muted { font-size: .82rem; }
+
+/* Responsive tweaks */
+@media (max-width: 576px){
+  .call-avatar{ width:48px; height:48px; border-radius:10px; }
+  .call-log-item { padding: .6rem; }
+}
+
+/* Modal body scroll for call logs */
+.modal-body .call-logs-list { max-height: calc(75vh); overflow-y: auto; padding-right: 6px; }
+
 /* Incoming Call Modal */
 .incoming-call-modal {
   position: fixed;
@@ -939,6 +962,16 @@ body[data-theme="dark"] .footer-contact-icon.message { color: #0f1724; }
   .incoming-call-container {
     padding: 2rem 1.5rem;
   }
+
+/* Call logs specific */
+.call-logs-card { border-radius: 10px; padding: 8px; }
+.call-logs-card .badge { font-weight: 600; }
+
+/* Notification toast */
+.call-notification { position: fixed; bottom: 24px; right: 24px; z-index: 1050; }
+
+/* Small adjustments for local video tile */
+.video-tile.local-video { box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
 
   .incoming-call-avatar {
     width: 100px;

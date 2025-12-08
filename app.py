@@ -12,6 +12,7 @@ from flask import send_file, abort
 from datetime import datetime, timedelta, timezone, date
 
 import urllib
+import math
 
 def timeago(dt):
     if not dt:
@@ -71,6 +72,7 @@ from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm import aliased, joinedload
 from sqlalchemy import QueuePool, func, distinct
+from sqlalchemy import event as sqlalchemy_event
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from werkzeug.utils import secure_filename
@@ -85,6 +87,7 @@ import hmac
 import hashlib
 from flask_migrate import Migrate
 import psutil
+from sqlalchemy import inspect, text
 
 # Load environment from .env if python-dotenv is available
 try:
@@ -178,10 +181,12 @@ def configure_app():
     app.config['LOG_LEVEL'] = os.getenv('LOG_LEVEL', 'INFO')
 
     # Session / cookie security defaults
-    app.config.setdefault('SESSION_COOKIE_SECURE', True)
+    # Use secure cookies only in production (allow local dev over HTTP otherwise)
+    is_production = os.getenv('ENVIRONMENT', '').lower() == 'production'
+    app.config.setdefault('SESSION_COOKIE_SECURE', is_production)
     app.config.setdefault('SESSION_COOKIE_HTTPONLY', True)
     app.config.setdefault('SESSION_COOKIE_SAMESITE', 'Lax')
-    app.config.setdefault('REMEMBER_COOKIE_SECURE', True)
+    app.config.setdefault('REMEMBER_COOKIE_SECURE', is_production)
     app.config.setdefault('REMEMBER_COOKIE_HTTPONLY', True)
     app.config.setdefault('PREFERRED_URL_SCHEME', 'https')
 
@@ -224,6 +229,7 @@ def set_security_headers(response):
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         # HSTS - enforce HTTPS for 1 week (adjust in production)
         response.headers.setdefault('Strict-Transport-Security', 'max-age=604800; includeSubDomains')
+
         # Basic Permissions-Policy: deny by default but allow camera/microphone
         # for call-related pages (same-origin). You can override via
         # the PERMISSIONS_POLICY env var if needed.
@@ -232,20 +238,26 @@ def set_security_headers(response):
             response.headers.setdefault('Permissions-Policy', env_policy)
         else:
             try:
-                # Allow camera/microphone on call pages (same-origin only)
+                # Allow camera/microphone on call/communication pages (same-origin only)
                 path = request.path or ''
                 allow_camera_mic = False
-                # Paths that typically need media access
-                if path.startswith('/communication') or path.startswith('/video') or '/call' in path or path.startswith('/communication/'):
+                # Paths that typically need media access. Use substring checks so
+                # routes like '/patient/communication' are covered.
+                if ('communication' in path) or path.startswith('/video') or '/call' in path:
                     allow_camera_mic = True
                 if allow_camera_mic:
                     # Allow only same-origin (self)
                     response.headers.setdefault('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()')
+                    # Legacy header for older browsers (Feature-Policy)
+                    response.headers.setdefault('Feature-Policy', "microphone 'self'; camera 'self'")
                 else:
                     # Deny by default
                     response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+                    response.headers.setdefault('Feature-Policy', "microphone 'none'; camera 'none'")
             except Exception:
+                # On any error, be conservative and deny media access
                 response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+                response.headers.setdefault('Feature-Policy', "microphone 'none'; camera 'none'")
     except Exception:
         pass
     return response
@@ -345,6 +357,21 @@ def initialize_database():
             # Create all tables if they don't exist
             db.create_all()
             print("✓ Database tables verified/created")
+
+            # Ensure notifications table has expected columns (hotfix for missing migrations)
+            try:
+                insp = inspect(db.engine)
+                if 'notifications' in insp.get_table_names():
+                    cols = [c['name'] for c in insp.get_columns('notifications')]
+                    if 'call_status' not in cols:
+                        try:
+                            with db.engine.begin() as conn:
+                                conn.execute(text("ALTER TABLE notifications ADD COLUMN call_status VARCHAR(50)"))
+                            print('✓ Added missing column notifications.call_status')
+                        except Exception as e:
+                            print('✗ Failed to add notifications.call_status:', e)
+            except Exception as e:
+                print('✗ Failed to inspect notifications table:', e)
             
             # Create default users
             create_default_users()
@@ -429,6 +456,42 @@ def _emit_to_user(user_id, event, payload):
         socketio.emit(event, payload, room=f'user_{user_id}')
     except Exception:
         pass
+
+
+# SQLAlchemy event listener: when a Notification row is inserted, emit a Socket.IO 'notification' event
+def _on_notification_insert(mapper, connection, target):
+    try:
+        payload = {
+            'id': target.id,
+            'type': target.notification_type,
+            'title': target.title,
+            'body': target.body,
+            'sender_id': target.sender_id,
+            'appointment_id': target.appointment_id,
+            'is_read': target.is_read,
+            'created_at': target.created_at.isoformat() if getattr(target, 'created_at', None) else None
+        }
+        # Emit to the user's personal room so connected browsers get the notification in real-time
+        try:
+            socketio.emit('notification', payload, room=f'user_{target.user_id}')
+            # Also emit an unread_count event so clients can update badge cheaply
+            try:
+                unread = Notification.query.filter_by(user_id=target.user_id, is_read=False).count()
+                socketio.emit('unread_count', {'unread_count': unread}, room=f'user_{target.user_id}')
+            except Exception:
+                # best-effort: if counting fails, ignore
+                pass
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+# Register the listener
+try:
+    sqlalchemy_event.listen(Notification, 'after_insert', _on_notification_insert)
+except Exception:
+    # If Notification isn't available yet or registration fails, ignore gracefully
+    pass
 
 
 @socketio.on('initiate_video_call')
@@ -530,50 +593,55 @@ def handle_initiate_video_call(data):
         
         # Set timeout for missed call (60 seconds)
         def video_call_timeout():
-            key, current = find_active_call(call_id=call_id, appointment_id=appointment_id)
-            if current and current.get('status') == 'ringing':
-                # update stored status
-                if key in active_calls:
-                    active_calls[key]['status'] = 'unanswered'
-                incoming_call_notifications.pop(callee_id, None)
-                
-                # Update appointment to missed
-                try:
-                    if appointment_id:
-                        apt = Appointment.query.get(appointment_id)
-                        if apt:
-                            apt.call_status = 'missed'
+            try:
+                with app.app_context():
+                    key, current = find_active_call(call_id=call_id, appointment_id=appointment_id)
+                    if current and current.get('status') == 'ringing':
+                        # update stored status
+                        if key in active_calls:
+                            active_calls[key]['status'] = 'unanswered'
+                        incoming_call_notifications.pop(callee_id, None)
+
+                        # Update appointment to missed
+                        try:
+                            if appointment_id:
+                                apt = Appointment.query.get(appointment_id)
+                                if apt:
+                                    apt.call_status = 'missed'
+                                    db.session.commit()
+                        except Exception:
+                            db.session.rollback()
+
+                        # Notify caller of missed call
+                        _emit_to_user(caller_id, 'video_call_unanswered', {
+                            'call_id': current.get('id') if current else call_id,
+                            'appointment_id': current.get('appointment_id') if current else appointment_id,
+                            'message': f'{call_info.get("callee_name", "User")} did not answer',
+                            'status': 'unanswered'
+                        })
+
+                        # Create missed call notification for callee
+                        try:
+                            notif = Notification(
+                                user_id=callee_id,
+                                appointment_id=appointment_id,
+                                notification_type='missed_video_call',
+                                sender_id=caller_id,
+                                title='Missed Video Call',
+                                body=f'{call_info.get("caller_name", "User")} called you',
+                                call_status='missed'
+                            )
+                            db.session.add(notif)
                             db.session.commit()
-                except Exception:
-                    db.session.rollback()
-                
-                # Notify caller of missed call
-                _emit_to_user(caller_id, 'video_call_unanswered', {
-                    'call_id': current.get('id') if current else call_id,
-                    'appointment_id': current.get('appointment_id') if current else appointment_id,
-                    'message': f'{call_info.get("callee_name", "User")} did not answer',
-                    'status': 'unanswered'
-                })
-                
-                # Create missed call notification for callee
-                try:
-                    notif = Notification(
-                        user_id=callee_id,
-                        appointment_id=appointment_id,
-                        notification_type='missed_video_call',
-                        sender_id=caller_id,
-                        title='Missed Video Call',
-                        body=f'{call_info.get("caller_name", "User")} called you',
-                        call_status='missed'
-                    )
-                    db.session.add(notif)
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-                
-                # Clean up
-                if key:
-                    active_calls.pop(key, None)
+                        except Exception:
+                            db.session.rollback()
+
+                        # Clean up
+                        if key:
+                            active_calls.pop(key, None)
+            except Exception:
+                # don't let background task crash
+                pass
         
         socketio.start_background_task(lambda: (socketio.sleep(60), video_call_timeout()))
     else:
@@ -590,49 +658,54 @@ def handle_initiate_video_call(data):
         # Still allow the call to go through and wait for a response
         # with extended timeout for offline users
         def video_call_offline_timeout():
-            key, current = find_active_call(call_id=call_id, appointment_id=appointment_id)
-            if current and current.get('status') == 'ringing':
-                if key in active_calls:
-                    active_calls[key]['status'] = 'connection_failed'
-                incoming_call_notifications.pop(callee_id, None)
-                
-                # Update appointment to missed
-                try:
-                    if appointment_id:
-                        apt = Appointment.query.get(appointment_id)
-                        if apt:
-                            apt.call_status = 'missed'
+            try:
+                with app.app_context():
+                    key, current = find_active_call(call_id=call_id, appointment_id=appointment_id)
+                    if current and current.get('status') == 'ringing':
+                        if key in active_calls:
+                            active_calls[key]['status'] = 'connection_failed'
+                        incoming_call_notifications.pop(callee_id, None)
+
+                        # Update appointment to missed
+                        try:
+                            if appointment_id:
+                                apt = Appointment.query.get(appointment_id)
+                                if apt:
+                                    apt.call_status = 'missed'
+                                    db.session.commit()
+                        except Exception:
+                            db.session.rollback()
+
+                        # Notify caller of connection failure
+                        _emit_to_user(caller_id, 'video_call_connection_failed', {
+                            'call_id': current.get('id') if current else call_id,
+                            'appointment_id': current.get('appointment_id') if current else appointment_id,
+                            'message': f'Unable to connect to {call_info.get("callee_name", "User")}',
+                            'status': 'connection_failed'
+                        })
+
+                        # Create connection failed notification for caller
+                        try:
+                            notif = Notification(
+                                user_id=caller_id,
+                                appointment_id=appointment_id,
+                                notification_type='video_call_failed',
+                                sender_id=callee_id,
+                                title='Call Connection Failed',
+                                body=f'Unable to reach {call_info.get("callee_name", "User")}',
+                                call_status='connection_failed'
+                            )
+                            db.session.add(notif)
                             db.session.commit()
-                except Exception:
-                    db.session.rollback()
-                
-                # Notify caller of connection failure
-                _emit_to_user(caller_id, 'video_call_connection_failed', {
-                    'call_id': current.get('id') if current else call_id,
-                    'appointment_id': current.get('appointment_id') if current else appointment_id,
-                    'message': f'Unable to connect to {call_info.get("callee_name", "User")}',
-                    'status': 'connection_failed'
-                })
-                
-                # Create connection failed notification for caller
-                try:
-                    notif = Notification(
-                        user_id=caller_id,
-                        appointment_id=appointment_id,
-                        notification_type='video_call_failed',
-                        sender_id=callee_id,
-                        title='Call Connection Failed',
-                        body=f'Unable to reach {call_info.get("callee_name", "User")}',
-                        call_status='connection_failed'
-                    )
-                    db.session.add(notif)
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-                
-                # Clean up
-                if key:
-                    active_calls.pop(key, None)
+                        except Exception:
+                            db.session.rollback()
+
+                        # Clean up
+                        if key:
+                            active_calls.pop(key, None)
+            except Exception:
+                # background safety: ignore
+                pass
         
         # Extended timeout for offline users (90 seconds)
         socketio.start_background_task(lambda: (socketio.sleep(90), video_call_offline_timeout()))
@@ -806,6 +879,30 @@ def handle_end_call(data):
         _emit_to_user(info['caller'], 'call_ended', {'call_id': info.get('id'), 'appointment_id': info.get('appointment_id'), 'ended_by': ended_by})
         _emit_to_user(info['callee'], 'call_ended', {'call_id': info.get('id'), 'appointment_id': info.get('appointment_id'), 'ended_by': ended_by})
 
+        # Enrich payload with doctor/user ids so clients can redirect appropriately
+        doctor_user_id = None
+        patient_user_id = None
+        try:
+            apt = Appointment.query.get(appointment_id)
+            if apt:
+                doc = db.session.get(Doctor, apt.doctor_id)
+                if doc:
+                    doctor_user_id = doc.user_id
+                pat = db.session.get(Patient, apt.patient_id)
+                if pat:
+                    patient_user_id = pat.user_id
+        except Exception:
+            pass
+
+        end_data = {
+            'appointment_id': appointment_id,
+            'ended_by': current_user.id,
+            'reason': data.get('reason', 'ended_by_user'),
+            'message': data.get('message', 'Call ended'),
+            'doctor_user_id': doctor_user_id,
+            'patient_user_id': patient_user_id
+        }
+
 
 
 def _uploads_rel_root():
@@ -882,6 +979,23 @@ def cleanup_old_sessions():
 import threading
 def schedule_cleanup():
     while True:
+        try:
+            # Run the cleanup in an application context so any DB or app resources
+            # referenced by cleanup_old_sessions are available.
+            with app.app_context():
+                app.logger.debug('schedule_cleanup: running cleanup_old_sessions')
+                try:
+                    cleanup_old_sessions()
+                    app.logger.debug('schedule_cleanup: completed cleanup_old_sessions')
+                except Exception as e:
+                    app.logger.exception('schedule_cleanup: cleanup_old_sessions error: %s', e)
+        except Exception as e:
+            # Log outer exceptions but keep the loop alive
+            try:
+                app.logger.exception('schedule_cleanup: unexpected error: %s', e)
+            except Exception:
+                print(f'schedule_cleanup unexpected error: {e}')
+        # Wait 1 hour before next run
         threading.Event().wait(3600)  # Wait 1 hour
 
 
@@ -911,8 +1025,15 @@ def prescription_expiry_worker(interval_seconds=600):
 
 
 def start_background_workers():
-    t = threading.Thread(target=prescription_expiry_worker, kwargs={'interval_seconds':600}, daemon=True)
-    t.start()
+    try:
+        t = threading.Thread(target=prescription_expiry_worker, kwargs={'interval_seconds':600}, daemon=True, name='prescription_expiry_worker')
+        t.start()
+        app.logger.info('Started background thread: prescription_expiry_worker')
+    except Exception as e:
+        try:
+            app.logger.exception('Failed to start prescription_expiry_worker: %s', e)
+        except Exception:
+            print(f'Failed to start prescription_expiry_worker: {e}')
 
 # Start background workers when app initializes (best-effort)
 try:
@@ -4593,18 +4714,88 @@ def submit_testimonial_for_appointment(appointment_id):
     return jsonify({'success': True, 'testimonial_id': testimonial.id, 'doctor_average': avg}), 201
 
 
+@app.route('/appointments/<int:appointment_id>/testimonial', methods=['GET'])
+@login_required
+def show_testimonial_form(appointment_id):
+    """Render a simple testimonial submission page for patients after a call."""
+    if current_user.role != 'patient':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+
+    appointment = Appointment.query.get_or_404(appointment_id)
+    patient = Patient.query.filter_by(user_id=current_user.id).first()
+    if not patient or appointment.patient_id != patient.id:
+        flash('Access denied for this appointment', 'error')
+        return redirect(url_for('patient_dashboard'))
+
+    doctor = db.session.get(Doctor, appointment.doctor_id)
+    return render_template('patient/submit_testimonial.html', appointment=appointment, doctor=doctor)
+
+
+# Dedicated testimonials listing (system-wide and per-doctor)
+@app.route('/testimonials')
+def testimonials_page():
+    # Prepare doctors list for client-side filter (public subset)
+    doctors = []
+    try:
+        docs = db.session.query(Doctor, User).join(User, Doctor.user_id == User.id).all()
+        for d, u in docs:
+            doctors.append({'id': d.id, 'name': u.get_display_name()})
+    except Exception:
+        doctors = []
+
+    selected = request.args.get('doctor_id')
+    return render_template('testimonials.html', doctors=doctors, selected_doctor=selected)
+
+
+@app.route('/doctors/<int:doctor_id>/testimonials')
+def doctor_testimonials_page(doctor_id):
+    # Reuse the testimonials page but pre-select the doctor
+    doctors = []
+    try:
+        docs = db.session.query(Doctor, User).join(User, Doctor.user_id == User.id).all()
+        for d, u in docs:
+            doctors.append({'id': d.id, 'name': u.get_display_name()})
+    except Exception:
+        doctors = []
+
+    return render_template('testimonials.html', doctors=doctors, selected_doctor=str(doctor_id))
+
+
 @app.route('/api/testimonials')
 def get_testimonials():
     """Return recent public testimonials for display."""
+    # Pagination and sorting
     try:
-        limit = int(request.args.get('limit', 10))
+        page = int(request.args.get('page', 1))
     except Exception:
-        limit = 10
+        page = 1
+    try:
+        per_page = int(request.args.get('per_page', 10))
+    except Exception:
+        per_page = 10
 
-    testimonials = Testimonial.query.filter_by(is_public=True).order_by(Testimonial.created_at.desc()).limit(limit).all()
+    sort_by = request.args.get('sort_by', 'created_at')  # or 'rating'
+    doctor_filter = request.args.get('doctor_id')
+
+    q = Testimonial.query.filter_by(is_public=True)
+    if doctor_filter:
+        try:
+            q = q.filter(Testimonial.doctor_id == int(doctor_filter))
+        except Exception:
+            pass
+
+    # Sorting
+    if sort_by == 'rating':
+        q = q.order_by(Testimonial.rating.desc(), Testimonial.created_at.desc())
+    else:
+        q = q.order_by(Testimonial.created_at.desc())
+
+    total = q.count()
+    items = q.offset((page - 1) * per_page).limit(per_page).all()
+
     out = []
-    for t in testimonials:
-        # resolve patient and doctor display names safely
+    for t in items:
         try:
             patient_name = t.patient.user.get_display_name() if t.patient and t.patient.user else None
         except Exception:
@@ -4612,10 +4803,8 @@ def get_testimonials():
         try:
             doctor_user = t.doctor.user if t.doctor and getattr(t.doctor, 'user', None) else None
             doctor_name = doctor_user.get_display_name() if doctor_user else None
-            doctor_avg = t.doctor.average_rating if t.doctor else None
         except Exception:
             doctor_name = None
-            doctor_avg = None
 
         out.append({
             'id': t.id,
@@ -4624,11 +4813,66 @@ def get_testimonials():
             'doctor_id': t.doctor_id,
             'rating': t.rating,
             'content': t.content,
-            'created_at': t.created_at.isoformat(),
-            'doctor_average': doctor_avg
+            'created_at': t.created_at.isoformat()
         })
 
-    return jsonify({'testimonials': out})
+    # Compute doctor average if filtered
+    doctor_avg = None
+    if doctor_filter:
+        try:
+            doctor_avg = db.session.query(func.avg(Testimonial.rating)).filter(Testimonial.doctor_id == int(doctor_filter), Testimonial.is_public == True).scalar()
+            if doctor_avg is not None:
+                doctor_avg = round(float(doctor_avg), 2)
+        except Exception:
+            doctor_avg = None
+
+    return jsonify({
+        'testimonials': out,
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'doctor_average': doctor_avg
+    })
+
+
+@app.route('/api/call_logs')
+@login_required
+def get_call_logs():
+    """Return call history for current user. Admins receive all logs."""
+    try:
+        filter_by = request.args.get('filter', 'all')
+        page = int(request.args.get('page', 1)) if request.args.get('page') else 1
+        per_page = int(request.args.get('per_page', 25)) if request.args.get('per_page') else 25
+    except Exception:
+        page, per_page = 1, 25
+
+    q = CallHistory.query
+
+    # Non-admins see only calls they participated in
+    if current_user.role != 'admin':
+        q = q.filter((CallHistory.caller_id == current_user.id) | (CallHistory.callee_id == current_user.id))
+
+    # Apply simple filter
+    if filter_by == 'incoming':
+        q = q.filter(CallHistory.callee_id == current_user.id)
+    elif filter_by == 'outgoing':
+        q = q.filter(CallHistory.caller_id == current_user.id)
+    elif filter_by == 'missed':
+        q = q.filter((CallHistory.end_reason == 'missed') | (CallHistory.end_reason == 'unanswered'))
+    elif filter_by == 'declined':
+        q = q.filter(CallHistory.end_reason == 'callee_declined')
+
+    total = q.count()
+    items = q.order_by(CallHistory.initiated_at.desc()).offset((page-1)*per_page).limit(per_page).all()
+
+    out = [c.to_dict() for c in items]
+
+    return jsonify({
+        'call_logs': out,
+        'total': total,
+        'page': page,
+        'per_page': per_page
+    })
 
 # API to get messages for an appointment
 @app.route('/api/messages/<int:appointment_id>')
@@ -4822,7 +5066,60 @@ def send_message():
     
     db.session.add(communication)
     db.session.commit()
-    
+    # Create a notification for the recipient
+    try:
+        recipient_id = None
+        if current_user.role == 'patient':
+            doctor = db.session.get(Doctor, appointment.doctor_id)
+            recipient_id = doctor.user_id if doctor else None
+        else:
+            patient = db.session.get(Patient, appointment.patient_id)
+            recipient_id = patient.user_id if patient else None
+
+        if recipient_id:
+            notif = Notification(
+                user_id=recipient_id,
+                appointment_id=appointment_id,
+                notification_type='message',
+                sender_id=current_user.id,
+                title='New message',
+                body=(message[:240] if message else 'You have a new message'),
+                is_read=False
+            )
+            db.session.add(notif)
+            db.session.commit()
+
+        # Broadcast via Socket.IO for real-time delivery
+        if SOCKETIO_AVAILABLE:
+            appointment_room = f'appointment_{appointment_id}'
+            message_data = {
+                'id': communication.id,
+                'appointment_id': appointment_id,
+                'sender_id': current_user.id,
+                'sender_name': safe_display_name(current_user),
+                'message_type': message_type,
+                'content': message,
+                'file_path': file_path,
+                'timestamp': communication.timestamp.isoformat(),
+                'message_status': 'sent',
+                'is_sent': True,
+                'is_read': False
+            }
+            socketio.emit('message_received', message_data, room=appointment_room)
+
+            # If recipient is online, mark delivered and emit status update
+            if recipient_id and recipient_id in user_sockets:
+                communication.message_status = 'delivered'
+                db.session.commit()
+                socketio.emit('message_status_updated', {
+                    'message_id': communication.id,
+                    'status': 'delivered',
+                    'appointment_id': appointment_id
+                }, room=appointment_room)
+
+    except Exception as e:
+        app.logger.exception('Failed to create notification or emit message: %s', e)
+
     return jsonify({'success': True, 'message_id': communication.id})
 
 
@@ -7206,50 +7503,56 @@ def handle_initiate_video_call(data):
         # Set call timeout (1 minute)
         def call_timeout():
             try:
-                if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
-                    # Call timed out - no answer
-                    active_calls[appointment_id]['status'] = 'timeout'
+                # Run DB queries and emits within an application context so background
+                # tasks don't error with "Working outside of request context"
+                with app.app_context():
+                    if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
+                        # Call timed out - no answer
+                        active_calls[appointment_id]['status'] = 'timeout'
 
-                    # Notify caller that call was not answered
-                    if caller_id in user_sockets and user_sockets[caller_id]:
-                        emit('call_ended', {
-                            'appointment_id': appointment_id,
-                            'reason': 'timeout',
-                            'message': 'Call timed out - no answer',
-                            'call_type': 'video'
-                        }, room=f'user_{caller_id}')
+                        # Notify caller that call was not answered (use socketio.emit here)
+                        if caller_id in user_sockets and user_sockets[caller_id]:
+                            socketio.emit('call_ended', {
+                                'appointment_id': appointment_id,
+                                'reason': 'timeout',
+                                'message': 'Call timed out - no answer',
+                                'call_type': 'video'
+                            }, room=f'user_{caller_id}')
 
-                    # Create missed call notification for callee (whether online or offline)
-                    try:
-                        callee_user = User.query.get(callee_user_id)
-                        from models import CallNotification
-                        missed_notification = CallNotification(
-                            user_id=callee_user_id,
-                            caller_id=caller_id,
-                            call_type='video',
-                            status='missed',
-                            appointment_id=appointment_id,
-                            created_at=datetime.now(timezone.utc)
-                        )
-                        db.session.add(missed_notification)
-                        db.session.commit()
-                    except Exception as e:
-                        print(f'Error creating missed call notification: {e}')
-                        db.session.rollback()
+                        # Create missed call notification for callee (whether online or offline)
+                        try:
+                            callee_user = User.query.get(callee_user_id)
+                            from models import CallNotification
+                            missed_notification = CallNotification(
+                                user_id=callee_user_id,
+                                caller_id=caller_id,
+                                call_type='video',
+                                status='missed',
+                                appointment_id=appointment_id,
+                                created_at=datetime.now(timezone.utc)
+                            )
+                            db.session.add(missed_notification)
+                            db.session.commit()
+                        except Exception as e:
+                            print(f'Error creating missed call notification: {e}')
+                            try:
+                                db.session.rollback()
+                            except Exception:
+                                pass
 
-                    # Also send Socket.IO missed_call event if callee is online
-                    if callee_user_id in user_sockets and user_sockets[callee_user_id]:
-                        emit('missed_call', {
-                            'appointment_id': appointment_id,
-                            'caller_name': caller_name,
-                            'caller_role': caller_role,
-                            'call_type': 'video',
-                            'timestamp': datetime.now(timezone.utc).isoformat()
-                        }, room=f'user_{callee_user_id}')
+                        # Also send Socket.IO missed_call event if callee is online
+                        if callee_user_id in user_sockets and user_sockets[callee_user_id]:
+                            socketio.emit('missed_call', {
+                                'appointment_id': appointment_id,
+                                'caller_name': caller_name,
+                                'caller_role': caller_role,
+                                'call_type': 'video',
+                                'timestamp': datetime.now(timezone.utc).isoformat()
+                            }, room=f'user_{callee_user_id}')
 
-                    # Clean up
-                    if appointment_id in active_calls:
-                        del active_calls[appointment_id]
+                        # Clean up
+                        if appointment_id in active_calls:
+                            del active_calls[appointment_id]
             except Exception as e:
                 # Log but don't let background task crash
                 print(f'Error in call_timeout for appointment {appointment_id}: {e}')
@@ -7352,22 +7655,58 @@ def handle_end_video_call(data):
         call_info = active_calls[appointment_id]
         
         # Notify both parties that call ended
-        caller_socket_id = user_sockets.get(call_info['caller_id'])
-        callee_id = call_info['callee_id']
-        callee_socket_id = user_sockets.get(callee_id)
-        
+        # Support multiple possible key names in call_info (legacy variations)
+        caller_id = call_info.get('caller') or call_info.get('caller_id') or call_info.get('caller_user_id')
+        callee_id = call_info.get('callee') or call_info.get('callee_id') or call_info.get('callee_user_id')
+
+        caller_sockets = user_sockets.get(caller_id)
+        callee_sockets = user_sockets.get(callee_id)
+
+        # Include appointment doctor and patient user ids to help client-side redirects
+        doctor_user_id = None
+        patient_user_id = None
+        try:
+            apt = Appointment.query.get(appointment_id)
+            if apt:
+                try:
+                    doc = db.session.get(Doctor, apt.doctor_id)
+                    if doc:
+                        doctor_user_id = getattr(doc, 'user_id', None)
+                except Exception:
+                    doctor_user_id = None
+                try:
+                    pat = db.session.get(Patient, apt.patient_id)
+                    if pat:
+                        patient_user_id = getattr(pat, 'user_id', None)
+                except Exception:
+                    patient_user_id = None
+        except Exception:
+            pass
+
         end_data = {
             'appointment_id': appointment_id,
             'ended_by': current_user.id,
             'reason': data.get('reason', 'ended_by_user'),
-            'message': data.get('message', 'Call ended')
+            'message': data.get('message', 'Call ended'),
+            'doctor_user_id': doctor_user_id,
+            'patient_user_id': patient_user_id
         }
-        
-        if caller_socket_id:
-            emit('video_call_ended', end_data, room=caller_socket_id)
-        
-        if callee_socket_id:
-            emit('video_call_ended', end_data, room=callee_socket_id)
+
+        # Emit to all socket ids if stored as list, or single sid
+        def emit_to_sockets(sockets, payload):
+            try:
+                if not sockets:
+                    return
+                if isinstance(sockets, list):
+                    for sid in sockets:
+                        emit('video_call_ended', payload, room=sid)
+                else:
+                    emit('video_call_ended', payload, room=sockets)
+            except Exception:
+                pass
+
+        emit_to_sockets(caller_sockets, end_data)
+        emit_to_sockets(callee_sockets, end_data)
         
         # Clean up
         if appointment_id in active_calls:
@@ -7723,6 +8062,35 @@ def handle_call_end_enhanced(data):
             'reason': reason,
             'duration': duration
         }, broadcast=True)
+
+        # Create notifications for missed/declined/busy events
+        try:
+            if reason in ('missed', 'unanswered', 'callee_declined', 'busy', 'connection_failed'):
+                # Notify both participants about the end reason
+                recipients = set()
+                if call_history.caller_id:
+                    recipients.add(call_history.caller_id)
+                if call_history.callee_id:
+                    recipients.add(call_history.callee_id)
+
+                for uid in recipients:
+                    try:
+                        n = Notification(
+                            user_id=uid,
+                            appointment_id=call_history.appointment_id,
+                            notification_type=f'missed_{call_history.call_type}' if reason == 'missed' else call_history.call_type,
+                            sender_id=current_user.id,
+                            title='Call update',
+                            body=f'Call {call_history.call_type} ended: {reason}',
+                            is_read=False,
+                            call_status=reason
+                        )
+                        db.session.add(n)
+                    except Exception:
+                        db.session.rollback()
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
         
     except Exception as e:
         db.session.rollback()
@@ -8016,35 +8384,42 @@ def handle_initiate_voice_call(data):
             
             # Set call timeout (60 seconds)
             def voice_call_timeout():
-                if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
-                    active_calls[appointment_id]['status'] = 'unanswered'
-                    
-                    # Notify caller of missed call
-                    emit('voice_call_unanswered', {
-                        'appointment_id': appointment_id,
-                        'message': f'{caller_name} did not answer',
-                        'status': 'unanswered'
-                    }, room=f'user_{current_user.id}')
-                    
-                    # Create missed call notification for callee
-                    try:
-                        notif = Notification(
-                            user_id=callee_user_id,
-                            appointment_id=appointment_id,
-                            notification_type='missed_voice_call',
-                            sender_id=current_user.id,
-                            title='Missed Voice Call',
-                            body=f'{caller_name} called you',
-                            call_status='missed'
-                        )
-                        db.session.add(notif)
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
-                    
-                    # Clean up
-                    active_calls.pop(appointment_id, None)
-            
+                try:
+                    with app.app_context():
+                        if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
+                            active_calls[appointment_id]['status'] = 'unanswered'
+
+                            # Notify caller of missed call
+                            socketio.emit('voice_call_unanswered', {
+                                'appointment_id': appointment_id,
+                                'message': f'{caller_name} did not answer',
+                                'status': 'unanswered'
+                            }, room=f'user_{current_user.id}')
+
+                            # Create missed call notification for callee
+                            try:
+                                notif = Notification(
+                                    user_id=callee_user_id,
+                                    appointment_id=appointment_id,
+                                    notification_type='missed_voice_call',
+                                    sender_id=current_user.id,
+                                    title='Missed Voice Call',
+                                    body=f'{caller_name} called you',
+                                    call_status='missed'
+                                )
+                                db.session.add(notif)
+                                db.session.commit()
+                            except Exception:
+                                try:
+                                    db.session.rollback()
+                                except Exception:
+                                    pass
+
+                            # Clean up
+                            active_calls.pop(appointment_id, None)
+                except Exception:
+                    pass
+
             socketio.start_background_task(lambda: (socketio.sleep(60), voice_call_timeout()))
         else:
             # Callee is offline but try to reach via web/browser
@@ -8058,35 +8433,42 @@ def handle_initiate_voice_call(data):
             
             # Extended timeout for offline users (90 seconds)
             def voice_call_offline_timeout():
-                if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
-                    active_calls[appointment_id]['status'] = 'connection_failed'
-                    
-                    # Notify caller of connection failure
-                    emit('voice_call_connection_failed', {
-                        'appointment_id': appointment_id,
-                        'message': f'Unable to connect to {caller_name}',
-                        'status': 'connection_failed'
-                    }, room=f'user_{current_user.id}')
-                    
-                    # Create notification
-                    try:
-                        notif = Notification(
-                            user_id=current_user.id,
-                            appointment_id=appointment_id,
-                            notification_type='voice_call_failed',
-                            sender_id=callee_user_id,
-                            title='Call Connection Failed',
-                            body=f'Unable to reach {caller_name}',
-                            call_status='connection_failed'
-                        )
-                        db.session.add(notif)
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
-                    
-                    # Clean up
-                    active_calls.pop(appointment_id, None)
-            
+                try:
+                    with app.app_context():
+                        if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
+                            active_calls[appointment_id]['status'] = 'connection_failed'
+
+                            # Notify caller of connection failure
+                            socketio.emit('voice_call_connection_failed', {
+                                'appointment_id': appointment_id,
+                                'message': f'Unable to connect to {caller_name}',
+                                'status': 'connection_failed'
+                            }, room=f'user_{current_user.id}')
+
+                            # Create notification
+                            try:
+                                notif = Notification(
+                                    user_id=current_user.id,
+                                    appointment_id=appointment_id,
+                                    notification_type='voice_call_failed',
+                                    sender_id=callee_user_id,
+                                    title='Call Connection Failed',
+                                    body=f'Unable to reach {caller_name}',
+                                    call_status='connection_failed'
+                                )
+                                db.session.add(notif)
+                                db.session.commit()
+                            except Exception:
+                                try:
+                                    db.session.rollback()
+                                except Exception:
+                                    pass
+
+                            # Clean up
+                            active_calls.pop(appointment_id, None)
+                except Exception:
+                    pass
+
             socketio.start_background_task(lambda: (socketio.sleep(90), voice_call_offline_timeout()))
         
         return {'success': True, 'message': 'Call initiated'}
@@ -8387,16 +8769,23 @@ def handle_join_admin_chat(data):
 def get_notifications():
     """Get user's notifications"""
     try:
-        limit = int(request.args.get('limit', 50))
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
         include_read = request.args.get('include_read', 'false').lower() == 'true'
-        
+        # sanitize paging
+        if per_page <= 0:
+            per_page = 20
+        if page <= 0:
+            page = 1
+
         query = Notification.query.filter_by(user_id=current_user.id)
-        
         if not include_read:
             query = query.filter_by(is_read=False)
-        
-        notifications = query.order_by(Notification.created_at.desc()).limit(limit).all()
-        
+
+        total = query.count()
+        pages = max(1, math.ceil(total / per_page))
+        notifications = query.order_by(Notification.created_at.desc()).offset((page-1)*per_page).limit(per_page).all()
+
         data = [{
             'id': n.id,
             'type': n.notification_type,
@@ -8408,11 +8797,14 @@ def get_notifications():
             'is_read': n.is_read,
             'created_at': n.created_at.isoformat()
         } for n in notifications]
-        
-        return jsonify({'success': True, 'notifications': data})
+
+        return jsonify({'success': True, 'notifications': data, 'total': total, 'page': page, 'pages': pages})
     
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        app.logger.error('Error in get_notifications: %s', e)
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
 @login_required
@@ -8426,6 +8818,12 @@ def mark_notification_read(notification_id):
         
         notification.is_read = True
         db.session.commit()
+        # emit updated unread count to user's room so other sessions update their badge
+        try:
+            unread = Notification.query.filter_by(user_id=current_user.id, is_read=False).count()
+            socketio.emit('unread_count', {'unread_count': unread}, room=f'user_{current_user.id}')
+        except Exception:
+            pass
         
         return jsonify({'success': True})
     
@@ -8439,11 +8837,24 @@ def mark_all_notifications_read():
     try:
         Notification.query.filter_by(user_id=current_user.id, is_read=False).update({'is_read': True})
         db.session.commit()
-        
+        try:
+            socketio.emit('unread_count', {'unread_count': 0}, room=f'user_{current_user.id}')
+        except Exception:
+            pass
         return jsonify({'success': True})
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/notifications')
+@login_required
+def notifications_page():
+    """Render a full notifications page. Page fetches data from /api/notifications."""
+    try:
+        return render_template('notifications.html')
+    except Exception:
+        return render_template('notifications.html')
 
 
 @app.route('/api/appointments/<int:appointment_id>/testimonial', methods=['POST'])
@@ -8694,20 +9105,38 @@ if __name__ == '__main__':
     
     port = int(os.environ.get('PORT', 5000))
     
-    print(f"🚀 Starting application on port {port} with Gevent")
-    
-    # For development vs production
-    debug_mode = os.environ.get('ENVIRONMENT') == 'development'
-    
-    if SOCKETIO_AVAILABLE:
-        socketio.run(
-            app, 
-            host='0.0.0.0', 
-            port=port, 
-            debug=debug_mode,
-            log_output=debug_mode,
-            allow_unsafe_werkzeug=debug_mode
-        )
+    # Use the detected async backend name in the startup message
+    async_backend = getattr(socketio.server, 'async_mode', None) or 'async'
+    print(f"🚀 Starting application on port {port} with async backend={async_backend}")
+
+    try:
+        use_reloader = False
+        if SOCKETIO_AVAILABLE:
+            socketio.run(
+                app,
+                host='0.0.0.0',
+                port=port,
+                debug=debug_mode,
+                log_output=debug_mode,
+                allow_unsafe_werkzeug=debug_mode,
+                use_reloader=use_reloader
+            )
+        else:
+            from gevent.pywsgi import WSGIServer
+            http_server = WSGIServer(('0.0.0.0', port), app)
+            print(f"Server starting on port {port}")
+            http_server.serve_forever()
+    except TypeError:
+
+        if SOCKETIO_AVAILABLE:
+            socketio.run(
+                app,
+                host='0.0.0.0',
+                port=port,
+                debug=debug_mode,
+                log_output=debug_mode,
+                allow_unsafe_werkzeug=debug_mode
+            )
     else:
         from gevent.pywsgi import WSGIServer
         http_server = WSGIServer(('0.0.0.0', port), app)

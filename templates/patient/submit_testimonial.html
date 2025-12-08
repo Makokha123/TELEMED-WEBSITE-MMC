@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Submit Testimonial</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background:#f4f6f8; }
+    .card { max-width:720px; margin:40px auto; }
+    .rating input { display:none; }
+    .rating label { font-size:28px; color:#ddd; cursor:pointer; }
+    .rating input:checked ~ label, .rating label:hover, .rating label:hover ~ label { color:#ffc107; }
+  </style>
+</head>
+<body>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h4 class="card-title">Tell us about your consultation</h4>
+      <p class="text-muted">Please rate your experience with Dr. {{ doctor.get_display_name() if doctor else 'the doctor' }} and leave a short review.</p>
+
+      <form id="testimonialForm">
+        <input type="hidden" id="appointmentId" value="{{ appointment.id }}">
+
+        <div class="mb-3">
+          <label class="form-label">Rating</label>
+          <div class="rating d-flex flex-row-reverse justify-content-end">
+            <input type="radio" id="star5" name="rating" value="5"><label for="star5">★</label>
+            <input type="radio" id="star4" name="rating" value="4"><label for="star4">★</label>
+            <input type="radio" id="star3" name="rating" value="3"><label for="star3">★</label>
+            <input type="radio" id="star2" name="rating" value="2"><label for="star2">★</label>
+            <input type="radio" id="star1" name="rating" value="1"><label for="star1">★</label>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label for="content" class="form-label">Your review</label>
+          <textarea id="content" class="form-control" rows="5" placeholder="Write a short message about your experience"></textarea>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button id="submitBtn" class="btn btn-primary">Submit Testimonial</button>
+          <a href="/" class="btn btn-secondary">Skip</a>
+        </div>
+
+        <div id="alertPlaceholder" class="mt-3"></div>
+      </form>
+
+        <div id="testimonialsPreview" class="mt-4" style="display:none;">
+          <h5>Recent reviews for this doctor</h5>
+          <div id="previewList"></div>
+        </div>
+
+    </div>
+  </div>
+
+  <script>
+    const csrf_token = "{{ csrf_token() }}";
+    const form = document.getElementById('testimonialForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const appointmentId = document.getElementById('appointmentId').value;
+
+    function showAlert(message, type='success'){
+      const el = document.getElementById('alertPlaceholder');
+      el.innerHTML = `<div class="alert alert-${type}" role="alert">${message}</div>`;
+    }
+
+    form.addEventListener('submit', async (e) =>{
+      e.preventDefault();
+      submitBtn.disabled = true;
+
+      const rating = document.querySelector('input[name="rating"]:checked')?.value;
+      const content = document.getElementById('content').value.trim();
+
+      if(!rating){
+        showAlert('Please select a rating before submitting.', 'warning');
+        submitBtn.disabled = false;
+        return;
+      }
+
+      try{
+        const resp = await fetch(`/api/appointments/${appointmentId}/testimonial`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+          body: JSON.stringify({ rating: rating, content: content })
+        });
+
+        const data = await resp.json();
+        if(resp.ok && data.success){
+          showAlert('Thank you! Your testimonial has been submitted.', 'success');
+          // Instead of redirecting, fetch recent testimonials for this doctor and show inline
+          const doctorId = ("{{ doctor.id if doctor else 'null' }}");
+          const testimonialId = data.testimonial_id || null;
+          if (doctorId) {
+            await fetchAndRenderDoctorTestimonials(doctorId, testimonialId);
+          }
+          // disable submit button to prevent duplicates
+          submitBtn.disabled = true;
+        } else {
+          showAlert(data.error || 'Failed to submit testimonial', 'danger');
+          submitBtn.disabled = false;
+        }
+      } catch (err){
+        console.error(err);
+        showAlert('An error occurred while submitting your testimonial.', 'danger');
+        submitBtn.disabled = false;
+      }
+    });
+
+    // Fetch and render testimonials inline for this doctor
+    async function fetchAndRenderDoctorTestimonials(doctorId, highlightId){
+      try{
+        const resp = await fetch(`/api/testimonials?doctor_id=${doctorId}&per_page=10`);
+        const data = await resp.json();
+        const arr = data.testimonials || [];
+        const container = document.getElementById('previewList');
+        const wrapper = document.getElementById('testimonialsPreview');
+        wrapper.style.display = 'block';
+        if(!arr.length){
+          container.innerHTML = '<div class="text-muted">No reviews yet.</div>';
+          return;
+        }
+        container.innerHTML = '';
+        arr.forEach(t => {
+          const el = document.createElement('div'); el.id = `testimonial-${t.id}`;
+          el.className = 'card p-3 mb-2';
+          el.innerHTML = `<div class="d-flex justify-content-between"><div><strong>${t.patient_name||'Anonymous'}</strong> <small class="text-muted">· ${new Date(t.created_at).toLocaleString()}</small></div><div><span class="badge bg-warning text-dark">${t.rating}★</span></div></div><div class="mt-2">${t.content||''}</div>`;
+          container.appendChild(el);
+        });
+        if (highlightId) {
+          const h = document.getElementById(`testimonial-${highlightId}`);
+          if (h) {
+            h.style.boxShadow = '0 8px 30px rgba(102,126,234,0.28)';
+            setTimeout(()=> h.style.boxShadow = '', 4000);
+            h.scrollIntoView({behavior:'smooth', block:'center'});
+          }
+        }
+        // show updated average if provided
+        if (data.doctor_average) {
+          const avgEl = document.createElement('div'); avgEl.className='mt-2 text-muted'; avgEl.innerHTML = `<strong>Doctor average rating:</strong> ${data.doctor_average}`;
+          wrapper.insertBefore(avgEl, container);
+        }
+      }catch(e){
+        console.error('Failed to fetch testimonials preview', e);
+      }
+    }
+  </script>
+</body>
+</html>

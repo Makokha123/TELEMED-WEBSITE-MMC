@@ -318,7 +318,10 @@
     let isRecording = true;
     let localStream = null;
     let peerConnection = null;
-    let socket = io();
+    if (!window.socket) {
+        try { window.socket = io(); } catch (e) { console.error('Socket init failed', e); window.socket = null; }
+    }
+    var socket = window.socket;
 
     // Get appointment ID from URL
     const appointmentId = window.location.pathname.split('/').pop();
@@ -332,9 +335,6 @@
 
         // Initialize call controls
         initCallControls();
-
-        // Simulate call connection
-        simulateCallConnection();
     });
 
     async function initializeAudioCall() {
@@ -398,6 +398,22 @@
 
             peerConnection = new RTCPeerConnection(rtcConfig);
 
+            // Monitor connection state to update UI on failures
+            peerConnection.onconnectionstatechange = function() {
+                try {
+                    const state = peerConnection.connectionState;
+                    if (state === 'failed' || state === 'disconnected') {
+                        $('#callStatus').text('Connection failed');
+                        // stop timer and cleanup
+                        if (callTimer) clearInterval(callTimer);
+                    } else if (state === 'connected' || state === 'completed') {
+                        $('#callStatus').text('Connected');
+                    }
+                } catch (e) {
+                    console.warn('Error reading connection state', e);
+                }
+            };
+
             // Add local audio track
             localStream.getTracks().forEach(track => {
                 if (track.kind === 'audio') {
@@ -449,6 +465,11 @@
 
             // Update status
             $('#callStatus').text('Connected');
+
+            // Start connection monitor only when peerConnection exists
+            if (peerConnection) {
+                simulateCallConnection();
+            }
 
         } catch (error) {
             console.error('Error initializing audio call:', error);

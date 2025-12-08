@@ -661,7 +661,7 @@
 
         fetch('/api/health-tips', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
             body: JSON.stringify(data)
         })
         .then(response => response.json())
@@ -703,7 +703,7 @@
 
         fetch(`/api/health-tips/${tipId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
             body: JSON.stringify(data)
         })
         .then(response => response.json())
@@ -724,6 +724,7 @@
 
         fetch(`/api/health-tips/${tipId}`, {
             method: 'DELETE'
+        , headers: { 'X-CSRFToken': csrf_token }
         })
         .then(response => response.json())
         .then(result => {

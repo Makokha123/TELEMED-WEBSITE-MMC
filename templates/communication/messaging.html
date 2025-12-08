@@ -445,6 +445,9 @@
                     <button class="chat-action-btn video" id="videoCallBtn" title="Video call">
                         <i class="fas fa-video"></i>
                     </button>
+                    <button class="chat-action-btn" id="openCallLogsHeaderBtn" title="Call logs" data-bs-toggle="modal" data-bs-target="#callLogsModal" style="margin-right:6px; background: linear-gradient(135deg,#198754 0%,#157347 100%); color: #fff; border: none;">
+                        <i class="fas fa-list"></i>
+                    </button>
                     <button class="chat-action-btn voice" id="voiceCallBtn" title="Voice call">
                         <i class="fas fa-phone"></i>
                     </button>
@@ -1228,6 +1231,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Real-time Socket.IO setup for FAST messaging
 function setupSocketIO() {
+    // Ensure socket binding exists (reuse global instance or create)
+    if (!window.socket) { try { window.socket = (typeof io !== 'undefined' ? io() : null); } catch(e) { console.error('Socket init failed', e); window.socket = null; } }
+    var socket = window.socket;
     // Join room when appointment is selected
     socket.on('connect', function() {
         console.log('Socket connected for messaging');

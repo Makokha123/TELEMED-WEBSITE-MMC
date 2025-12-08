@@ -874,6 +874,11 @@
         </div>
     </div>
 
+        <!-- Insert Call Logs Partial -->
+        <div style="position: absolute; top: 20px; right: 20px; width: 360px; z-index: 30;">
+            {% include 'communication/_call_logs_partial.html' %}
+        </div>
+
     <!-- Right Chat Area -->
     <div class="chat-area" id="chatArea">
         <!-- Chat Header -->
@@ -891,6 +896,9 @@
                 </div>
             </div>
             <div class="chat-header-actions">
+                <button class="chat-action-btn" id="openCallLogsHeaderBtn" title="Call logs" data-bs-toggle="modal" data-bs-target="#callLogsModal" style="margin-right:6px; background: linear-gradient(135deg,#198754 0%,#157347 100%); color: #fff; border: none;">
+                    <i class="fas fa-list"></i>
+                </button>
                 <button class="chat-action-btn" id="voiceCallBtn" title="Voice call">
                     <i class="fas fa-phone"></i>
                 </button>
@@ -2430,6 +2438,7 @@ function initializeSocket() {
             timeout: 10000,
             transports: ['polling', 'websocket']
         });
+        var socket = window.socket;
         
         socket.on('connect', function() {
             console.log('Connected to Socket.IO server');

@@ -942,6 +942,9 @@
                 </div>
             </div>
             <div class="chat-header-actions">
+                <button class="chat-action-btn" id="openCallLogsHeaderBtn" title="Call logs" data-bs-toggle="modal" data-bs-target="#callLogsModal" style="margin-right:6px; background: linear-gradient(135deg,#198754 0%,#157347 100%); color: #fff; border: none;">
+                    <i class="fas fa-list"></i>
+                </button>
                 <button class="chat-action-btn" id="voiceCallBtn" title="Voice call">
                     <i class="fas fa-phone"></i>
                 </button>
@@ -1052,6 +1055,11 @@
         </div>
     </div>
 </div>
+
+        <!-- Call logs panel -->
+        <div style="position: absolute; top: 24px; right: 24px; width: 360px; z-index: 40;">
+            {% include 'communication/_call_logs_partial.html' %}
+        </div>
 
 <!-- Outgoing Video Call Modal -->
 <div class="modal fade" id="outgoingVideoCallModal" tabindex="-1" aria-labelledby="outgoingVideoCallLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
@@ -2522,7 +2530,10 @@ function updateSidebarPreview(messageData) {
 }
 
 // Setup Socket.IO with patient-specific handlers
-window.socket = null; // Initialize as null, will be set up in setupSocketIO
+window.socket = window.socket || null; // Initialize as null, will be set up in setupSocketIO
+// Ensure `socket` binding exists for handlers
+if (!window.socket) { try { window.socket = (typeof io !== 'undefined' ? io() : null); } catch(e) { console.error('Socket init failed', e); window.socket = null; } }
+var socket = window.socket;
 
 function setupSocketIO() {
     // Make sure socket.io library is loaded

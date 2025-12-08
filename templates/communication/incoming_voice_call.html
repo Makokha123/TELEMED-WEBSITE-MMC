@@ -437,8 +437,9 @@
         const callerName = callData.caller_name || 'Unknown';
         const callerRole = callData.caller_role || 'Doctor';
 
-        // Initialize Socket.IO
-        const socket = io();
+        // Initialize Socket.IO (reuse global instance if present)
+        if (!window.socket) { try { window.socket = io(); } catch(e) { console.error('Socket init failed', e); window.socket = null; } }
+        var socket = window.socket;
 
         // DOM Elements
         const callerAvatarEl = document.getElementById('callerAvatar');

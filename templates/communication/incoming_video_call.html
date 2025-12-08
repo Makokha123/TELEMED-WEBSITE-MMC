@@ -454,8 +454,9 @@
         const callerRole = callData.caller_role || 'Doctor';
         const callerProfilePic = callData.caller_profile_pic || null;
 
-        // Initialize Socket.IO
-        const socket = io();
+        // Initialize Socket.IO (reuse global instance if present)
+        if (!window.socket) { try { window.socket = io(); } catch(e) { console.error('Socket init failed', e); window.socket = null; } }
+        var socket = window.socket;
 
         // Socket event listeners
         socket.on('connect', () => {

@@ -40,7 +40,8 @@
 
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
-    const socket = io();
+    if (!window.socket) { try { window.socket = io(); } catch(e){ console.error('Socket init failed', e); window.socket = null; } }
+    var socket = window.socket;
     const params = new URLSearchParams(window.location.search);
     const appointmentId = params.get('appointment_id') || document.getElementById('appointmentId').value;
     const callerName = params.get('caller_name') || '';
