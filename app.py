@@ -98,7 +98,8 @@ from models import (
     CallSession, Communication, PatientVital, Payment, Prescription, Report,
     PrescriptionAudit, Notification, HealthTip,
     SocialAccount, db, User, Patient, Doctor, Appointment, AuditLog, 
-    Testimonial, MedicalRecord, _hash_value, encrypt_file_bytes, decrypt_file_bytes
+    Testimonial, MedicalRecord, _hash_value, encrypt_file_bytes, decrypt_file_bytes,
+    CallHistory, Conversation, Message, Attachment, CallQualityMetrics, UserPresence
 )
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
@@ -692,8 +693,15 @@ def handle_reject_video_call(data):
 @socketio.on('end_call')
 def handle_end_call(data):
     call_id = data.get('call_id')
+    appointment_id = data.get('appointment_id')
     ended_by = data.get('ended_by')
-    info = active_calls.pop(call_id, None)
+
+    # Support both call_id and appointment_id keys (clients may send either)
+    info = None
+    if appointment_id and appointment_id in active_calls:
+        info = active_calls.pop(appointment_id, None)
+    elif call_id and call_id in active_calls:
+        info = active_calls.pop(call_id, None)
     if info:
         incoming_call_notifications.pop(info.get('callee'), None)
         
@@ -804,6 +812,10 @@ twitter_bp = None
 # Register available OAuth blueprints
 app.register_blueprint(google_bp, url_prefix="/login")
 app.register_blueprint(facebook_bp, url_prefix="/login")
+
+# Register communication blueprint
+from api.communication import communication_bp
+app.register_blueprint(communication_bp, url_prefix="/api")
 
 def cleanup_old_sessions():
     """Clean up old user sessions"""
@@ -4315,7 +4327,8 @@ def admin_communication():
                              'video_calls': video_calls,
                              'voice_calls': voice_calls,
                              'documents_shared': documents_shared
-                         })
+                         },
+                         iceServers=app.config.get('ICE_SERVERS', []))
 
 from models import Report
 
@@ -4378,7 +4391,8 @@ def doctor_communication():
     
     return render_template('doctor/communication.html',
                          appointments=appointments,
-                         doctor=doctor)
+                         doctor=doctor,
+                         iceServers=app.config.get('ICE_SERVERS', []))
 
 # Patient Communication Dashboard
 @app.route('/patient/communication')
@@ -4403,7 +4417,8 @@ def patient_communication():
     
     return render_template('patient/communication.html',
                          appointments=appointments,
-                         patient=patient)
+                         patient=patient,
+                         iceServers=app.config.get('ICE_SERVERS', []))
 
 # Universal communication handler for specific appointment
 @app.route('/communication/appointment/<int:appointment_id>')
@@ -7146,53 +7161,59 @@ def handle_initiate_video_call(data):
                 'notification_type': 'incoming_call'
             }, room=f'user_{callee_user_id}')
         
+        # Capture caller id for use inside background tasks (no request context there)
+        caller_id = current_user.id
+
         # Set call timeout (1 minute)
         def call_timeout():
-            if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
-                # Call timed out - no answer
-                active_calls[appointment_id]['status'] = 'timeout'
-                
-                # Notify caller that call was not answered
-                if current_user.id in user_sockets and user_sockets[current_user.id]:
-                    emit('call_ended', {
-                        'appointment_id': appointment_id,
-                        'reason': 'timeout',
-                        'message': 'Call timed out - no answer',
-                        'call_type': 'video'
-                    }, room=f'user_{current_user.id}')
-                
-                # Create missed call notification for callee (whether online or offline)
-                # This will appear in their notification center
-                try:
-                    callee_user = User.query.get(callee_user_id)
-                    from models import CallNotification
-                    missed_notification = CallNotification(
-                        user_id=callee_user_id,
-                        caller_id=current_user.id,
-                        call_type='video',
-                        status='missed',
-                        appointment_id=appointment_id,
-                        created_at=datetime.now(timezone.utc)
-                    )
-                    db.session.add(missed_notification)
-                    db.session.commit()
-                except Exception as e:
-                    print(f'Error creating missed call notification: {e}')
-                    db.session.rollback()
-                
-                # Also send Socket.IO missed_call event if callee is online
-                if callee_user_id in user_sockets and user_sockets[callee_user_id]:
-                    emit('missed_call', {
-                        'appointment_id': appointment_id,
-                        'caller_name': caller_name,
-                        'caller_role': caller_role,
-                        'call_type': 'video',
-                        'timestamp': datetime.now(timezone.utc).isoformat()
-                    }, room=f'user_{callee_user_id}')
-                
-                # Clean up
-                if appointment_id in active_calls:
-                    del active_calls[appointment_id]
+            try:
+                if appointment_id in active_calls and active_calls[appointment_id]['status'] == 'ringing':
+                    # Call timed out - no answer
+                    active_calls[appointment_id]['status'] = 'timeout'
+
+                    # Notify caller that call was not answered
+                    if caller_id in user_sockets and user_sockets[caller_id]:
+                        emit('call_ended', {
+                            'appointment_id': appointment_id,
+                            'reason': 'timeout',
+                            'message': 'Call timed out - no answer',
+                            'call_type': 'video'
+                        }, room=f'user_{caller_id}')
+
+                    # Create missed call notification for callee (whether online or offline)
+                    try:
+                        callee_user = User.query.get(callee_user_id)
+                        from models import CallNotification
+                        missed_notification = CallNotification(
+                            user_id=callee_user_id,
+                            caller_id=caller_id,
+                            call_type='video',
+                            status='missed',
+                            appointment_id=appointment_id,
+                            created_at=datetime.now(timezone.utc)
+                        )
+                        db.session.add(missed_notification)
+                        db.session.commit()
+                    except Exception as e:
+                        print(f'Error creating missed call notification: {e}')
+                        db.session.rollback()
+
+                    # Also send Socket.IO missed_call event if callee is online
+                    if callee_user_id in user_sockets and user_sockets[callee_user_id]:
+                        emit('missed_call', {
+                            'appointment_id': appointment_id,
+                            'caller_name': caller_name,
+                            'caller_role': caller_role,
+                            'call_type': 'video',
+                            'timestamp': datetime.now(timezone.utc).isoformat()
+                        }, room=f'user_{callee_user_id}')
+
+                    # Clean up
+                    if appointment_id in active_calls:
+                        del active_calls[appointment_id]
+            except Exception as e:
+                # Log but don't let background task crash
+                print(f'Error in call_timeout for appointment {appointment_id}: {e}')
         
         # Schedule timeout
         socketio.start_background_task(lambda: socketio.sleep(60) or call_timeout())
@@ -7395,6 +7416,358 @@ def handle_webrtc_ice_candidate(data):
         'candidate': data.get('candidate'),
         'sender_id': current_user.id
     }, room=room_name, skip_sid=request.sid)
+
+# ============================================================================
+# ENHANCED SOCKET.IO HANDLERS FOR NEW COMMUNICATION MODELS
+# ============================================================================
+
+@socketio.on('presence:update')
+def handle_presence_update(data):
+    """Handle presence updates and persist to UserPresence model"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        status = data.get('status', 'online')  # online, away, idle, busy, offline, do_not_disturb
+        current_call_id = data.get('current_call_id')
+        current_appointment_id = data.get('current_appointment_id')
+        
+        # Upsert UserPresence record
+        presence = UserPresence.query.filter_by(user_id=current_user.id).first()
+        if not presence:
+            presence = UserPresence(user_id=current_user.id)
+        
+        presence.status = status
+        presence.current_call_id = current_call_id
+        presence.current_appointment_id = current_appointment_id
+        presence.last_heartbeat = datetime.now(timezone.utc)
+        presence.last_seen = datetime.now(timezone.utc)
+        
+        db.session.add(presence)
+        db.session.commit()
+        
+        # Broadcast presence update to all connected clients
+        emit('presence:updated', {
+            'user_id': current_user.id,
+            'status': status,
+            'last_seen': presence.last_seen.isoformat(),
+            'current_call_id': current_call_id,
+            'current_appointment_id': current_appointment_id
+        }, broadcast=True)
+        
+    except Exception as e:
+        db.session.rollback()
+        emit('error', {'message': f'Presence update failed: {str(e)}'})
+
+
+@socketio.on('chat:message')
+def handle_chat_message(data):
+    """Handle chat messages and persist to Message/Conversation models"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        conversation_id = data.get('conversation_id')
+        body = data.get('body', '').strip()
+        message_type = data.get('message_type', 'text')  # text, image, file, voice_note
+        call_id = data.get('call_id')  # optional - for in-call messages
+        
+        if not body and message_type == 'text':
+            emit('error', {'message': 'Message body cannot be empty'})
+            return
+        
+        # Get or create conversation
+        conversation = Conversation.query.filter_by(conversation_id=conversation_id).first()
+        if not conversation:
+            # Create new conversation
+            conversation = Conversation(
+                conversation_id=str(uuid4()),
+                participant_ids=json.dumps([current_user.id]),
+                conversation_type='direct',
+                is_active=True
+            )
+            db.session.add(conversation)
+            db.session.flush()
+        
+        # Create message record
+        message = Message(
+            message_id=str(uuid4()),
+            conversation_id=conversation.id,
+            sender_id=current_user.id,
+            encrypted_body=body,  # In production, this should be encrypted
+            message_type=message_type,
+            in_call=bool(call_id),
+            call_id=call_id,
+            status='sent'
+        )
+        
+        db.session.add(message)
+        
+        # Update conversation's last_message_at
+        conversation.last_message_at = datetime.now(timezone.utc)
+        
+        db.session.commit()
+        
+        # Broadcast message to conversation participants via Socket.IO
+        socketio.emit('chat:message', {
+            'message_id': message.message_id,
+            'conversation_id': conversation.conversation_id,
+            'sender_id': current_user.id,
+            'sender_name': safe_display_name(current_user) if hasattr(current_user, '__dict__') else str(current_user.id),
+            'body': body,
+            'message_type': message_type,
+            'status': 'sent',
+            'created_at': message.created_at.isoformat() if message.created_at else datetime.now(timezone.utc).isoformat(),
+            'in_call': bool(call_id)
+        }, room=f'conversation_{conversation_id}')
+        
+    except Exception as e:
+        db.session.rollback()
+        emit('error', {'message': f'Message send failed: {str(e)}'})
+
+
+@socketio.on('chat:delivered')
+def handle_message_delivered(data):
+    """Mark message as delivered"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        message_id = data.get('message_id')
+        message = Message.query.filter_by(message_id=message_id).first()
+        
+        if message:
+            message.status = 'delivered'
+            message.delivered_at = datetime.now(timezone.utc)
+            db.session.commit()
+            
+            socketio.emit('chat:delivered', {
+                'message_id': message_id,
+                'status': 'delivered',
+                'delivered_at': message.delivered_at.isoformat()
+            }, broadcast=True)
+    except Exception as e:
+        db.session.rollback()
+
+
+@socketio.on('chat:read')
+def handle_message_read(data):
+    """Mark message as read"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        message_id = data.get('message_id')
+        message = Message.query.filter_by(message_id=message_id).first()
+        
+        if message:
+            message.status = 'read'
+            message.read_at = datetime.now(timezone.utc)
+            db.session.commit()
+            
+            socketio.emit('chat:read', {
+                'message_id': message_id,
+                'status': 'read',
+                'read_at': message.read_at.isoformat()
+            }, broadcast=True)
+    except Exception as e:
+        db.session.rollback()
+
+
+@socketio.on('call:initiate')
+def handle_call_initiate_enhanced(data):
+    """Enhanced call initiation that persists to CallHistory"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        caller_id = current_user.id
+        callee_id = data.get('callee_id')
+        appointment_id = data.get('appointment_id')
+        call_type = data.get('call_type', 'video')  # video or voice
+        
+        if not callee_id:
+            emit('error', {'message': 'Callee ID is required'})
+            return
+        
+        # Create CallHistory record
+        call_history = CallHistory(
+            call_id=str(uuid4()),
+            appointment_id=appointment_id,
+            caller_id=caller_id,
+            callee_id=callee_id,
+            call_type=call_type,
+            initiated_at=datetime.now(timezone.utc),
+            status='initiated'
+        )
+        
+        db.session.add(call_history)
+        db.session.commit()
+        
+        # Emit to existing handlers for backward compatibility
+        emit('call_initiated', {
+            'call_id': call_history.call_id,
+            'caller_id': caller_id,
+            'callee_id': callee_id,
+            'appointment_id': appointment_id,
+            'call_type': call_type,
+            'initiated_at': call_history.initiated_at.isoformat(),
+            'status': 'initiated'
+        }, room=f'user_{callee_id}')
+        
+    except Exception as e:
+        db.session.rollback()
+        emit('error', {'message': f'Call initiation failed: {str(e)}'})
+
+
+@socketio.on('call:accept')
+def handle_call_accept_enhanced(data):
+    """Enhanced call acceptance that updates CallHistory"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        call_id = data.get('call_id')
+        
+        call_history = CallHistory.query.filter_by(call_id=call_id).first()
+        if not call_history:
+            emit('error', {'message': 'Call not found'})
+            return
+        
+        # Update call status
+        call_history.accepted_at = datetime.now(timezone.utc)
+        call_history.status = 'accepted'
+        call_history.room_id = f'call_{call_id}'
+        
+        db.session.commit()
+        
+        emit('call_accepted', {
+            'call_id': call_id,
+            'accepted_at': call_history.accepted_at.isoformat(),
+            'status': 'accepted',
+            'room_id': call_history.room_id
+        }, broadcast=True)
+        
+    except Exception as e:
+        db.session.rollback()
+        emit('error', {'message': f'Call acceptance failed: {str(e)}'})
+
+
+@socketio.on('call:end')
+def handle_call_end_enhanced(data):
+    """Enhanced call end that finalizes CallHistory record"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        call_id = data.get('call_id')
+        reason = data.get('reason', 'user_hangup')  # user_hangup, callee_declined, missed, busy, network_error
+        duration = data.get('duration', 0)  # seconds
+        
+        call_history = CallHistory.query.filter_by(call_id=call_id).first()
+        if not call_history:
+            emit('error', {'message': 'Call not found'})
+            return
+        
+        # Update call record
+        call_history.ended_at = datetime.now(timezone.utc)
+        call_history.status = 'ended'
+        call_history.end_reason = reason
+        call_history.duration = duration
+        
+        db.session.commit()
+        
+        emit('call_ended', {
+            'call_id': call_id,
+            'ended_at': call_history.ended_at.isoformat(),
+            'status': 'ended',
+            'reason': reason,
+            'duration': duration
+        }, broadcast=True)
+        
+    except Exception as e:
+        db.session.rollback()
+        emit('error', {'message': f'Call end failed: {str(e)}'})
+
+
+@socketio.on('quality:metrics')
+def handle_quality_metrics(data):
+    """Handle call quality metrics submission"""
+    try:
+        if not current_user or not current_user.is_authenticated:
+            return
+        
+        call_id = data.get('call_id')
+        rtt = data.get('rtt')
+        packet_loss = data.get('packet_loss')
+        jitter = data.get('jitter')
+        audio_bitrate = data.get('audio_bitrate')
+        video_bitrate = data.get('video_bitrate')
+        video_resolution = data.get('video_resolution')
+        video_framerate = data.get('video_framerate')
+        cpu_usage = data.get('cpu_usage')
+        memory_usage = data.get('memory_usage')
+        audio_quality = data.get('audio_quality', 'good')
+        video_quality = data.get('video_quality', 'good')
+        
+        # Get call history for reference
+        call_history = CallHistory.query.filter_by(call_id=call_id).first()
+        if not call_history:
+            emit('error', {'message': 'Call not found'})
+            return
+        
+        # Create quality metrics record
+        metrics = CallQualityMetrics(
+            call_id=call_id,
+            user_id=current_user.id,
+            rtt=rtt,
+            packet_loss=packet_loss,
+            jitter=jitter,
+            audio_bitrate=audio_bitrate,
+            video_bitrate=video_bitrate,
+            video_resolution=video_resolution,
+            video_framerate=video_framerate,
+            cpu_usage=cpu_usage,
+            memory_usage=memory_usage,
+            audio_quality=audio_quality,
+            video_quality=video_quality,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        db.session.add(metrics)
+        
+        # Update call_history quality_metrics JSON field
+        try:
+            existing_metrics = json.loads(call_history.quality_metrics or '{}')
+        except:
+            existing_metrics = {}
+        
+        existing_metrics[str(current_user.id)] = {
+            'rtt': rtt,
+            'packet_loss': packet_loss,
+            'jitter': jitter,
+            'audio_bitrate': audio_bitrate,
+            'video_bitrate': video_bitrate,
+            'audio_quality': audio_quality,
+            'video_quality': video_quality
+        }
+        
+        call_history.quality_metrics = json.dumps(existing_metrics)
+        
+        db.session.commit()
+        
+        emit('quality:recorded', {
+            'call_id': call_id,
+            'user_id': current_user.id,
+            'audio_quality': audio_quality,
+            'video_quality': video_quality,
+            'rtt': rtt,
+            'packet_loss': packet_loss
+        }, broadcast=True)
+        
+    except Exception as e:
+        db.session.rollback()
+        emit('error', {'message': f'Quality metrics recording failed: {str(e)}'})
 
 # Add this route for checking call status
 @app.route('/api/call/status/<int:appointment_id>')

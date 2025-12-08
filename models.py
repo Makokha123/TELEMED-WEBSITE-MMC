@@ -783,3 +783,303 @@ class HealthTip(db.Model):
     def description(self, value):
         """Encrypt description when set"""
         self.encrypted_description = _encrypt_text(value) if value is not None else None
+
+
+# ============================================
+# REAL-TIME COMMUNICATION MODELS
+# ============================================
+
+class CallHistory(db.Model):
+    """Stores call history with full metadata for audit, analytics, and user replay"""
+    __tablename__ = 'call_history'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    call_id = db.Column(db.String(64), unique=True, nullable=False, index=True)  # UUID from signaling
+    appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=True)
+    caller_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    callee_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    call_type = db.Column(db.String(10), nullable=False)  # 'video' or 'voice'
+    
+    # Call lifecycle timestamps
+    initiated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    ringing_at = db.Column(db.DateTime)  # When callee was notified
+    accepted_at = db.Column(db.DateTime)  # When callee accepted
+    connected_at = db.Column(db.DateTime)  # When media established
+    ended_at = db.Column(db.DateTime)
+    
+    # Call status: initiated, ringing, accepted, connecting, connected, ended, failed
+    status = db.Column(db.String(20), nullable=False, default='initiated')
+    # End reason: user_hangup, callee_declined, missed, busy, network_error, timeout, connection_failed
+    end_reason = db.Column(db.String(30))
+    
+    # Duration in seconds (only set when ended)
+    duration = db.Column(db.Integer)
+    
+    # SFU/Signaling room assignment
+    room_id = db.Column(db.String(64))
+    sfu_server = db.Column(db.String(255))  # Which SFU instance handled the call
+    
+    # Quality metrics (JSON: packet_loss, jitter, rtt, bitrate, cpu_usage, etc.)
+    quality_metrics = db.Column(db.JSON)
+    
+    # Recording URL and metadata
+    recording_url = db.Column(db.String(512))  # S3 or CDN URL
+    recording_size = db.Column(db.BigInteger)  # In bytes
+    recording_duration = db.Column(db.Integer)  # In seconds
+    recording_consent = db.Column(db.Boolean, default=False)  # Was recording consented?
+    
+    # Participants metadata (for group calls or call details)
+    participants_count = db.Column(db.Integer, default=2)
+    
+    # Audit trail
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    caller = db.relationship('User', foreign_keys=[caller_id], backref=db.backref('calls_as_caller', lazy=True))
+    callee = db.relationship('User', foreign_keys=[callee_id], backref=db.backref('calls_as_callee', lazy=True))
+    appointment = db.relationship('Appointment', backref=db.backref('call_history', lazy=True))
+    
+    def to_dict(self):
+        """Serialize call history for API/UI consumption"""
+        return {
+            'id': self.id,
+            'call_id': self.call_id,
+            'appointment_id': self.appointment_id,
+            'caller_id': self.caller_id,
+            'callee_id': self.callee_id,
+            'call_type': self.call_type,
+            'initiated_at': self.initiated_at.isoformat() if self.initiated_at else None,
+            'connected_at': self.connected_at.isoformat() if self.connected_at else None,
+            'ended_at': self.ended_at.isoformat() if self.ended_at else None,
+            'status': self.status,
+            'end_reason': self.end_reason,
+            'duration': self.duration,
+            'recording_url': self.recording_url,
+            'quality_metrics': self.quality_metrics
+        }
+
+
+class Conversation(db.Model):
+    """Persistent conversations between users (1:1 or group)"""
+    __tablename__ = 'conversations'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.String(64), unique=True, nullable=False, index=True)  # UUID
+    # Store participants as JSON array of user IDs for flexibility (can extend to group chats)
+    participant_ids = db.Column(db.JSON, nullable=False)  # [user_id1, user_id2, ...]
+    conversation_type = db.Column(db.String(20), default='direct')  # 'direct' or 'group'
+    
+    # For group conversations (optional)
+    group_name = db.Column(db.String(255))
+    group_avatar = db.Column(db.String(512))
+    
+    # Track conversation state
+    last_message_at = db.Column(db.DateTime)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    messages = db.relationship('Message', backref='conversation', lazy=True, cascade='all, delete-orphan')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'conversation_id': self.conversation_id,
+            'participant_ids': self.participant_ids,
+            'conversation_type': self.conversation_type,
+            'last_message_at': self.last_message_at.isoformat() if self.last_message_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class Message(db.Model):
+    """Individual messages in a conversation (encrypted at rest for privacy)"""
+    __tablename__ = 'messages'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.String(64), unique=True, nullable=False, index=True)  # UUID
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    
+    # Message content (encrypted for HIPAA/GDPR compliance)
+    encrypted_body = db.Column(db.LargeBinary)
+    
+    # Message type: text, image, file, voice_note, prescription, report
+    message_type = db.Column(db.String(20), default='text')
+    
+    # In-call context (was this message sent during an active call?)
+    in_call = db.Column(db.Boolean, default=False)
+    call_id = db.Column(db.String(64))  # Reference to CallHistory.call_id
+    
+    # Message status: sent, delivered, read
+    status = db.Column(db.String(20), default='sent')
+    delivered_at = db.Column(db.DateTime)
+    read_at = db.Column(db.DateTime)
+    
+    # Attachments and metadata
+    attachment_ids = db.Column(db.JSON)  # Array of Attachment IDs
+    
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    sender = db.relationship('User', backref=db.backref('sent_messages', lazy=True))
+    
+    @property
+    def body(self):
+        """Decrypt message body when accessed"""
+        return _decrypt_text(self.encrypted_body) if self.encrypted_body else None
+    
+    @body.setter
+    def body(self, value):
+        """Encrypt message body when set"""
+        self.encrypted_body = _encrypt_text(value) if value is not None else None
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'message_id': self.message_id,
+            'sender_id': self.sender_id,
+            'body': self.body,
+            'message_type': self.message_type,
+            'status': self.status,
+            'attachment_ids': self.attachment_ids,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class Attachment(db.Model):
+    """Files uploaded during calls or in-call chat (stored in S3)"""
+    __tablename__ = 'attachments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    attachment_id = db.Column(db.String(64), unique=True, nullable=False, index=True)  # UUID
+    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    
+    # File metadata
+    file_name = db.Column(db.String(512), nullable=False)
+    file_type = db.Column(db.String(50))  # MIME type: image/png, application/pdf, etc.
+    file_size = db.Column(db.BigInteger)  # In bytes
+    
+    # Storage location
+    s3_key = db.Column(db.String(512), nullable=False, unique=True)  # S3 object key
+    s3_bucket = db.Column(db.String(255))  # S3 bucket name
+    file_url = db.Column(db.String(512))  # CDN or signed URL for retrieval
+    
+    # Sharing context
+    shared_in_call_id = db.Column(db.String(64))  # Reference to CallHistory.call_id
+    shared_in_message_id = db.Column(db.Integer, db.ForeignKey('messages.id'))
+    
+    # Encrypted metadata (for sensitive files like medical records)
+    encrypted_metadata = db.Column(db.LargeBinary)
+    
+    # Encryption for the file itself (at rest in S3)
+    is_encrypted = db.Column(db.Boolean, default=True)
+    
+    # Access control
+    access_control = db.Column(db.String(20), default='private')  # 'private', 'shared_call', 'shared_conversation'
+    
+    uploaded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime)  # Optional: auto-delete after X days
+    
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    owner = db.relationship('User', backref=db.backref('uploaded_attachments', lazy=True))
+    message = db.relationship('Message', backref=db.backref('attachments_rel', lazy=True))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'attachment_id': self.attachment_id,
+            'file_name': self.file_name,
+            'file_type': self.file_type,
+            'file_size': self.file_size,
+            'file_url': self.file_url,
+            'uploaded_at': self.uploaded_at.isoformat() if self.uploaded_at else None
+        }
+
+
+class CallQualityMetrics(db.Model):
+    """Detailed per-call quality metrics for monitoring and analytics"""
+    __tablename__ = 'call_quality_metrics'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    call_id = db.Column(db.String(64), db.ForeignKey('call_history.call_id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    
+    # Network metrics (sampled periodically during call)
+    rtt = db.Column(db.Float)  # Round-trip time in ms
+    packet_loss = db.Column(db.Float)  # % packet loss
+    jitter = db.Column(db.Float)  # ms
+    available_bandwidth = db.Column(db.Integer)  # kbps
+    
+    # Media metrics
+    audio_bitrate = db.Column(db.Integer)  # kbps
+    video_bitrate = db.Column(db.Integer)  # kbps
+    video_resolution = db.Column(db.String(20))  # e.g., "1280x720"
+    video_framerate = db.Column(db.Float)  # fps
+    
+    # System metrics
+    cpu_usage = db.Column(db.Float)  # %
+    memory_usage = db.Column(db.Float)  # %
+    
+    # Audio/video quality assessment
+    audio_quality = db.Column(db.String(20))  # excellent, good, fair, poor
+    video_quality = db.Column(db.String(20))
+    
+    # Timestamp (this metric point)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    
+    # Relationships
+    call = db.relationship('CallHistory', backref=db.backref('quality_metrics_detailed', lazy=True))
+    user = db.relationship('User', backref=db.backref('call_quality_metrics', lazy=True))
+    
+    def to_dict(self):
+        return {
+            'rtt': self.rtt,
+            'packet_loss': self.packet_loss,
+            'jitter': self.jitter,
+            'audio_bitrate': self.audio_bitrate,
+            'video_bitrate': self.video_bitrate,
+            'cpu_usage': self.cpu_usage,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+        }
+
+
+class UserPresence(db.Model):
+    """Track user online/offline status and current activity (soft real-time)"""
+    __tablename__ = 'user_presence'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False, index=True)
+    
+    # Status: online, away, idle, busy, offline, do_not_disturb
+    status = db.Column(db.String(20), default='offline')
+    
+    # Current activity context
+    current_call_id = db.Column(db.String(64))  # UUID of active call if in one
+    current_appointment_id = db.Column(db.Integer)  # Appointment ID if in appointment
+    
+    # Last activity timestamp (heartbeat)
+    last_heartbeat = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    last_seen = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Device info for mobile-aware presence
+    device_type = db.Column(db.String(20))  # 'web', 'mobile', 'desktop'
+    
+    updated_at = db.Column(db.DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    user = db.relationship('User', backref=db.backref('presence', uselist=False))
+    
+    def to_dict(self):
+        return {
+            'user_id': self.user_id,
+            'status': self.status,
+            'current_call_id': self.current_call_id,
+            'last_seen': self.last_seen.isoformat() if self.last_seen else None
+        }

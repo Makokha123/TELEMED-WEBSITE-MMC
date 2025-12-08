@@ -1112,6 +1112,9 @@
 <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+<!-- Server-provided ICE servers as JSON to avoid injecting Jinja braces directly into JS -->
+<script type="application/json" id="iceServersData">{{ iceServers | tojson | safe }}</script>
+
 <!-- User menu (small) -->
 <div class="dropdown" id="userMenuDropdown" style="position: absolute; z-index: 1050; display:none;">
     <div class="card p-2">
@@ -1129,6 +1132,12 @@
 <script type="module">
   import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@latest/dist/index.js';
 </script>
+
+<!-- Real-time Communication Libraries -->
+<script src="{{ url_for('static', filename='js/webrtc-client.js') }}"></script>
+<script src="{{ url_for('static', filename='js/signaling-client.js') }}"></script>
+<script src="{{ url_for('static', filename='js/call-manager.js') }}"></script>
+
 <script>
 const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 const currentUserId = parseInt(document.getElementById('currentUserId').value);
@@ -1182,7 +1191,90 @@ document.addEventListener('DOMContentLoaded', function() {
     setupAdminContact();
     setupSocketIO();
     setupEmojiPicker();
+    initializeCallManager();
 });
+
+// Initialize CallManager for real-time communication
+function initializeCallManager() {
+    // Wait for socket to be ready
+    if (!window.socket || !window.socket.connected) {
+        setTimeout(initializeCallManager, 500);
+        return;
+    }
+    
+    // Initialize CallManager with WebRTC and signaling clients
+    if (typeof CallManager !== 'undefined') {
+        // Read ICE servers JSON injected in DOM to avoid JS parser errors in editors
+        const iceServersEl = document.getElementById('iceServersData');
+        const iceServersConfig = (iceServersEl && iceServersEl.textContent) ? JSON.parse(iceServersEl.textContent) : [];
+        window.callManager = new CallManager(
+            new SignalingClient(window.socket),
+            {
+                iceServers: iceServersConfig,
+                audioConstraints: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                },
+                videoConstraints: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                }
+            }
+        );
+        
+        // Attach event handlers for CallManager
+        window.callManager.onStateChange = function(state) {
+            console.log('Call state changed:', state);
+            updateCallUI(state);
+        };
+        
+        window.callManager.onQualityUpdate = function(metrics) {
+            console.log('Quality metrics:', metrics);
+            updateQualityIndicator(metrics);
+            // Send metrics to server
+            if (window.socket) {
+                const metricsData = Object.assign({ call_id: window.callManager.currentCallId }, metrics);
+                window.socket.emit('quality:metrics', metricsData);
+            }
+        };
+        
+        window.callManager.onError = function(error) {
+            console.error('Call error:', error);
+            showNotification('Call Error: ' + error, 'error');
+        };
+        
+        console.log('CallManager initialized successfully');
+    }
+}
+
+// Update call UI based on call manager state
+function updateCallUI(state) {
+    // This will be called as call state changes
+    // state: idle, initiated, ringing, connecting, connected, ended, failed
+    console.log('Call UI updated for state:', state);
+    
+    // Update UI elements based on state
+    const statusEl = document.getElementById('callStatus');
+    if (statusEl) {
+        statusEl.textContent = state.toUpperCase();
+    }
+}
+
+// Update quality indicator
+function updateQualityIndicator(metrics) {
+    const qualityEl = document.getElementById('qualityIndicator');
+    if (qualityEl && metrics.audio_quality) {
+        let qualityColor = 'green';
+        if (metrics.audio_quality === 'poor') qualityColor = 'red';
+        else if (metrics.audio_quality === 'fair') qualityColor = 'orange';
+        else if (metrics.audio_quality === 'good') qualityColor = 'yellow';
+        
+        qualityEl.style.backgroundColor = qualityColor;
+        qualityEl.title = `Quality: ${metrics.audio_quality}, RTT: ${metrics.rtt}ms`;
+    }
+}
 
 // Setup admin contact functionality
 function setupAdminContact() {
@@ -1663,7 +1755,16 @@ function loadMessages(appointmentId) {
     messagesArea.innerHTML = '<div class="loading-messages"><div class="loading-spinner"></div></div>';
     
     fetch(`/api/appointment/${appointmentId}/messages`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => { throw new Error('HTTP ' + response.status + ': ' + text); });
+            }
+            const ct = response.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                return response.text().then(text => { throw new Error('Unexpected response (not JSON): ' + text); });
+            }
+            return response.json();
+        })
         .then(data => {
             messagesArea.innerHTML = '';
             
@@ -1710,7 +1811,7 @@ function loadMessages(appointmentId) {
                 <div class="empty-state">
                     <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
                     <div class="empty-state-text">Error loading messages</div>
-                    <div class="empty-state-subtext">${error.message}</div>
+                    <div class="empty-state-subtext">${escapeHtml(error.message || 'Unable to load messages')}</div>
                 </div>
             `;
         });
@@ -3061,7 +3162,7 @@ function showOutgoingVideoOverlay(callInfo) {
     // handlers
     document.getElementById('endOutgoingCallBtn').addEventListener('click', () => {
         stopRingtone();
-        if (socket && socket.connected) socket.emit('end_call', { call_id: callInfo.id, ended_by: callInfo.caller });
+        if (socket && socket.connected) socket.emit('end_call', { appointment_id: callInfo.appointment_id, ended_by: currentUserId });
         showNoAnswerOverlay(callInfo);
         closeVideoOverlays();
     });
@@ -3073,7 +3174,7 @@ function showOutgoingVideoOverlay(callInfo) {
     overlay._ringTimeout = setTimeout(() => {
         stopRingtone();
         // end call due to no answer
-        if (socket && socket.connected) socket.emit('reject_video_call', { call_id: callInfo.id, reason: 'no_answer' });
+        if (socket && socket.connected) socket.emit('reject_video_call', { appointment_id: callInfo.appointment_id, reason: 'no_answer' });
         closeVideoOverlays();
         showNoAnswerOverlay(callInfo);
     }, 60000);
@@ -3133,14 +3234,14 @@ function showIncomingVideoOverlay(callInfo) {
 
     document.getElementById('acceptIncomingVideoBtn').addEventListener('click', () => {
         stopRingtone();
-        if (socket && socket.connected) socket.emit('accept_video_call', { call_id: callInfo.id, user_id: currentUserId });
+        if (socket && socket.connected) socket.emit('accept_video_call', { appointment_id: callInfo.appointment_id });
         // close overlay and navigate to call page when connected
         closeVideoOverlays();
     });
 
     document.getElementById('hangupIncomingVideoBtn').addEventListener('click', () => {
         stopRingtone();
-        if (socket && socket.connected) socket.emit('reject_video_call', { call_id: callInfo.id, reason: 'hung_up' });
+        if (socket && socket.connected) socket.emit('reject_video_call', { appointment_id: callInfo.appointment_id, reason: 'hung_up' });
         closeVideoOverlays();
         // notify user and return to communication dashboard
         setTimeout(() => { window.location.href = '/patient/dashboard'; }, 400);
@@ -3149,7 +3250,7 @@ function showIncomingVideoOverlay(callInfo) {
     // auto-timeout - after 60s treat as missed
     overlay._ringTimeout = setTimeout(() => {
         stopRingtone();
-        if (socket && socket.connected) socket.emit('reject_video_call', { call_id: callInfo.id, reason: 'no_answer' });
+        if (socket && socket.connected) socket.emit('reject_video_call', { appointment_id: callInfo.appointment_id, reason: 'no_answer' });
         closeVideoOverlays();
     }, 60000);
 }
