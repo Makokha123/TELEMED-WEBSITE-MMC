@@ -611,13 +611,19 @@
             async function updatePushBtn(){
                 try{
                     if (!pushBtn) return;
+                    console.log('updatePushBtn: checking support...');
                     if (!window.PushManagerHelper || !window.PushManagerHelper.isSupported()){
+                        console.log('updatePushBtn: not supported');
                         pushBtn.textContent = 'Push N/A'; pushBtn.disabled = true; return;
                     }
                     // Check current subscription
                     const reg = await navigator.serviceWorker.ready.catch(()=>null);
-                    if (!reg) { pushBtn.textContent = 'Enable Push'; pushBtn.disabled = false; pushBtn.dataset.subscribed = '0'; return; }
+                    if (!reg) { 
+                        console.log('updatePushBtn: no SW registration');
+                        pushBtn.textContent = 'Enable Push'; pushBtn.disabled = false; pushBtn.dataset.subscribed = '0'; return; 
+                    }
                     const sub = await reg.pushManager.getSubscription();
+                    console.log('updatePushBtn: subscription=', sub ? 'active' : 'none');
                     if (sub) {
                         pushBtn.textContent = 'Push Enabled';
                         pushBtn.classList.remove('btn-outline-light');
@@ -635,12 +641,15 @@
             if (pushBtn){
                 pushBtn.addEventListener('click', async function(e){
                     e.preventDefault();
+                    console.log('pushBtn clicked, subscribed=' + pushBtn.dataset.subscribed);
                     try{
                         pushBtn.disabled = true;
                         const subscribed = pushBtn.dataset.subscribed === '1';
                         if (subscribed){
                             // Currently subscribed, so unsubscribe
+                            console.log('Unsubscribing...');
                             const r = await window.PushManagerHelper.unsubscribeForPush(window.currentUserId);
+                            console.log('Unsubscribe result:', r);
                             if (r && r.success !== false) {
                                 window.InpageToasts && window.InpageToasts.show('Push', 'Notifications disabled');
                                 pushBtn.textContent = 'Enable Push';
@@ -652,7 +661,9 @@
                             }
                         } else {
                             // Currently unsubscribed, so subscribe
+                            console.log('Subscribing...');
                             const r = await window.PushManagerHelper.subscribeForPush(window.currentUserId);
+                            console.log('Subscribe result:', r);
                             if (r && r.success) {
                                 window.InpageToasts && window.InpageToasts.show('Push', 'Push Enabled');
                                 pushBtn.textContent = 'Push Enabled';
@@ -660,7 +671,7 @@
                                 pushBtn.classList.add('btn-success');
                                 pushBtn.dataset.subscribed = '1';
                             } else {
-                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscription failed. Try again.');
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscription failed: ' + (r?.error || 'Unknown'));
                             }
                         }
                     }catch(e){

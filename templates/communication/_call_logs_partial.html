@@ -1,8 +1,3 @@
-<!-- Call Log trigger button -->
-<div class="d-flex justify-content-end mb-2">
-  <button id="openCallLogsBtn" class="btn btn-sm btn-outline-primary">Call Log</button>
-</div>
-
 <!-- Modal for Call Logs -->
 <div class="modal fade" id="callLogsModal" tabindex="-1" aria-labelledby="callLogsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -148,7 +143,6 @@
     const refreshBtn = document.getElementById('callLogsRefresh');
     const summaryEl = document.getElementById('callLogsSummary');
     const modalEl = document.getElementById('callLogsModal');
-    const openBtn = document.getElementById('openCallLogsBtn');
     let activeFilter = 'all';
     let cached = [];
 
@@ -290,9 +284,6 @@
     // Bootstrap modal wiring: open modal and fetch when shown
     try{
       const bsModal = modalEl ? new bootstrap.Modal(modalEl) : null;
-      if (openBtn && bsModal){
-        openBtn.addEventListener('click', (e)=> { e.preventDefault(); bsModal.show(); });
-      }
       if (modalEl){
         modalEl.addEventListener('shown.bs.modal', function(){ fetchCallLogs(); });
         // Allow Escape key to close (Bootstrap handles this, but explicit handler for clarity)
