@@ -6,53 +6,140 @@
 <!-- Modal for Call Logs -->
 <div class="modal fade" id="callLogsModal" tabindex="-1" aria-labelledby="callLogsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="callLogsModalLabel">Call Logs</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal-content" style="max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="border-bottom: 2px solid #e9ecef; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+        <div>
+          <h5 class="modal-title" id="callLogsModalLabel" style="font-weight: 600; color: #333;">📞 Call Logs</h5>
+          <small style="color: #666;">View all your calls — missed, incoming, and outgoing</small>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" title="Close (Esc)"></button>
       </div>
-      <div class="modal-body p-3">
-        <div id="callLogsComponent" class="p-0">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-      <h5 class="m-0">Call Logs</h5>
-      <small class="text-muted">Recent calls and history — organized for quick review</small>
-    </div>
-    <div class="d-flex align-items-center gap-2">
-      <input id="callSearch" class="form-control form-control-sm" placeholder="Search by name or note" style="min-width:220px;" />
-      <div class="btn-group">
-        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Filter</button>
-        <ul class="dropdown-menu dropdown-menu-end p-2">
-          <label class="d-block small mb-1">Type</label>
-          <div class="d-flex gap-2 flex-wrap">
-            <button class="btn btn-sm btn-outline-primary call-filter" data-filter="all">All</button>
-            <button class="btn btn-sm btn-outline-primary call-filter" data-filter="incoming">Incoming</button>
-            <button class="btn btn-sm btn-outline-primary call-filter" data-filter="outgoing">Outgoing</button>
-            <button class="btn btn-sm btn-outline-danger call-filter" data-filter="missed">Missed</button>
-            <button class="btn btn-sm btn-outline-warning call-filter" data-filter="declined">Declined</button>
+      <div class="modal-body p-0" style="overflow-y: auto; flex: 1;">
+        <div id="callLogsComponent" class="p-3">
+          <div class="d-flex justify-content-between align-items-center mb-3" style="gap: 12px;">
+            <div>
+              <h6 class="m-0" style="font-weight: 600; color: #333;">Call History</h6>
+              <small class="text-muted">Recent calls organized by date</small>
+            </div>
+            <div class="d-flex align-items-center gap-2" style="flex-wrap: wrap;">
+              <input id="callSearch" class="form-control form-control-sm" placeholder="Search by name..." style="min-width:180px; border-radius: 6px; border: 1px solid #ddd;" />
+              <div class="btn-group">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" style="border-radius: 6px;">Filter</button>
+                <ul class="dropdown-menu dropdown-menu-end p-2" style="border-radius: 8px;">
+                  <li><small class="d-block fw-semibold px-2 mb-2">Call Type</small></li>
+                  <div class="d-flex gap-2 flex-wrap px-2">
+                    <button class="btn btn-sm btn-outline-primary call-filter" data-filter="all" style="border-radius: 4px;">All</button>
+                    <button class="btn btn-sm btn-outline-info call-filter" data-filter="incoming" style="border-radius: 4px;">Incoming</button>
+                    <button class="btn btn-sm btn-outline-primary call-filter" data-filter="outgoing" style="border-radius: 4px;">Outgoing</button>
+                    <button class="btn btn-sm btn-outline-danger call-filter" data-filter="missed" style="border-radius: 4px;">Missed</button>
+                    <button class="btn btn-sm btn-outline-warning call-filter" data-filter="declined" style="border-radius: 4px;">Declined</button>
+                  </div>
+                </ul>
+              </div>
+            </div>
           </div>
-        </ul>
-      </div>
-    </div>
-  </div>
 
-  <div id="callLogsList" class="call-logs-list">
-    <div class="text-muted">Loading call logs...</div>
-  </div>
+          <div id="callLogsList" class="call-logs-list">
+            <div class="text-center py-5">
+              <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 30px; height: 30px;"><span class="visually-hidden">Loading...</span></div>
+              <div class="small text-muted mt-3">Loading your call logs...</div>
+            </div>
+          </div>
 
-  <div class="mt-3 d-flex justify-content-between align-items-center">
-    <div class="small text-muted" id="callLogsSummary">&nbsp;</div>
-    <div>
-      <button id="callLogsRefresh" class="btn btn-sm btn-outline-secondary">Refresh</button>
-    </div>
-  </div>
+          <div class="mt-3 d-flex justify-content-between align-items-center" style="border-top: 1px solid #e9ecef; padding-top: 12px;">
+            <div class="small text-muted" id="callLogsSummary" style="font-weight: 500;">Ready</div>
+            <div>
+              <button id="callLogsRefresh" class="btn btn-sm btn-outline-secondary" style="border-radius: 6px;">⟲ Refresh</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-</div>
+<style>
+  #callLogsModal .call-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+
+  #callLogsModal .call-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  #callLogsModal .call-avatar-initials {
+    color: white;
+    font-weight: 600;
+    font-size: 18px;
+  }
+
+  #callLogsModal .call-log-item {
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    background: #fff;
+    transition: all 0.2s ease;
+    padding: 12px !important;
+  }
+
+  #callLogsModal .call-log-item:hover {
+    border-color: #0d6efd;
+    background: #f8f9fa;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.15);
+    transform: translateY(-1px);
+  }
+
+  #callLogsModal .call-group {
+    margin-bottom: 24px;
+  }
+
+  #callLogsModal .call-group > div:first-child {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+    padding: 8px 0;
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 12px;
+  }
+
+  #callLogsModal .call-logs-list {
+    min-height: 200px;
+  }
+
+  #callLogsModal .badge {
+    font-size: 11px;
+    padding: 4px 8px;
+    font-weight: 600;
+  }
+
+  #callLogsModal .btn-view,
+  #callLogsModal .btn-redial {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+  }
+
+  #callLogsModal .btn-redial {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    color: white;
+    border: none;
+  }
+
+  #callLogsModal .btn-redial:hover {
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a58ca 100%);
+    color: white;
+  }
+</style>
 
 <script>
   (function(){
@@ -68,16 +155,16 @@
     function timeAgo(iso){
       try{
         const s = Math.floor((Date.now() - new Date(iso))/1000);
-        if (s < 60) return s + 's';
-        if (s < 3600) return Math.floor(s/60) + 'm';
-        if (s < 86400) return Math.floor(s/3600) + 'h';
+        if (s < 60) return s + 's ago';
+        if (s < 3600) return Math.floor(s/60) + 'm ago';
+        if (s < 86400) return Math.floor(s/3600) + 'h ago';
         if (s < 172800) return 'Yesterday';
-        return Math.floor(s/86400) + 'd';
-      }catch(e){ return ''; }
+        return Math.floor(s/86400) + 'd ago';
+      }catch(e){ return 'unknown'; }
     }
 
     function formatDuration(sec){
-      if (!sec) return '-';
+      if (!sec) return '—';
       const s = Math.max(0, Math.floor(sec));
       const m = Math.floor(s/60);
       const r = s % 60;
@@ -86,26 +173,27 @@
 
     function avatarHtml(item){
       if (item.remote_user_avatar){
-        return `<div class="call-avatar"><img src="${item.remote_user_avatar}" alt="avatar"/></div>`;
+        return `<div class="call-avatar"><img src="${item.remote_user_avatar}" alt="avatar" onerror="this.parentElement.innerHTML='<div class=\\'call-avatar-initials\\'>${(item.remote_user_name||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>'"/></div>`;
       }
       const initials = (item.remote_user_name||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
       return `<div class="call-avatar call-avatar-initials">${initials}</div>`;
     }
 
-    function statusBadge(status){
+    function statusBadge(status, endReason){
       const s = (status||'').toLowerCase();
-      if (s === 'missed') return `<span class="badge bg-danger">Missed</span>`;
-      if (s === 'declined' || s === 'rejected') return `<span class="badge bg-warning text-dark">${status}</span>`;
-      if (s === 'completed' || s === 'ended' || s === 'connected') return `<span class="badge bg-success">${status}</span>`;
+      if (s === 'missed' || endReason === 'missed' || endReason === 'unanswered') return `<span class="badge bg-danger">Missed</span>`;
+      if (s === 'declined' || s === 'rejected' || endReason === 'callee_declined') return `<span class="badge bg-warning text-dark">Declined</span>`;
+      if (s === 'connected') return `<span class="badge bg-success">Connected</span>`;
+      if (s === 'initiated' || s === 'ringing') return `<span class="badge bg-info">Ringing</span>`;
       return `<span class="badge bg-secondary">${status||'Unknown'}</span>`;
     }
 
     function renderGroup(title, items){
       const container = document.createElement('div');
-      container.className = 'call-group mb-3';
+      container.className = 'call-group';
       const header = document.createElement('div');
-      header.className = 'd-flex justify-content-between align-items-center mb-2';
-      header.innerHTML = `<div class="fw-semibold">${title}</div><div class="small text-muted">${items.length} item${items.length>1?'s':''}</div>`;
+      header.className = 'd-flex justify-content-between align-items-center';
+      header.innerHTML = `<span>${title}</span><span class="small text-muted">${items.length} call${items.length>1?'s':''}</span>`;
       container.appendChild(header);
       items.forEach(i => container.appendChild(renderItem(i)));
       return container;
@@ -113,32 +201,32 @@
 
     function renderItem(c){
       const el = document.createElement('div');
-      el.className = 'call-log-item d-flex align-items-center p-2 mb-2';
+      el.className = 'call-log-item d-flex align-items-center';
+      const callTypeIcon = c.direction === 'outgoing' ? 'fa-arrow-up-right-from-square text-primary' : 'fa-arrow-down-left fa-flip-horizontal text-info';
       el.innerHTML = `
         ${avatarHtml(c)}
         <div class="flex-grow-1 ms-3">
           <div class="d-flex justify-content-between align-items-start">
             <div>
-              <div class="fw-bold">${c.remote_user_name || 'Unknown'}</div>
-              <div class="small text-muted">${c.call_note||c.type||'Call'}</div>
+              <div class="fw-bold" style="color: #333;">${c.remote_user_name || 'Unknown'}</div>
+              <div class="small text-muted">${c.call_type === 'video' ? '📹 Video' : '🎤 Voice'} • ${timeAgo(c.created_at)}</div>
             </div>
             <div class="text-end small">
-              <div class="text-muted">${timeAgo(c.created_at)}</div>
-              <div class="mt-1">${statusBadge(c.status)}</div>
+              ${statusBadge(c.status, c.end_reason)}
             </div>
           </div>
-          <div class="d-flex justify-content-between align-items-center mt-2 small text-muted">
-            <div><i class="fas ${c.direction === 'outgoing' ? 'fa-arrow-up-right-from-square text-primary' : 'fa-arrow-down-left fa-flip-horizontal text-info'}"></i> ${c.call_type || ''} • ${formatDuration(c.duration)}</div>
-            <div>
-              <button class="btn btn-sm btn-outline-secondary btn-view" data-id="${c.id}">Details</button>
-              <button class="btn btn-sm btn-outline-primary ms-1 btn-redial" data-id="${c.id}">Call</button>
+          <div class="d-flex justify-content-between align-items-center mt-2 small">
+            <span class="text-muted"><i class="fas ${callTypeIcon}"></i> ${formatDuration(c.duration)}</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-sm btn-outline-secondary btn-view" data-id="${c.id}" style="font-size: 11px; padding: 3px 8px;">Details</button>
+              <button class="btn btn-sm btn-redial" data-id="${c.id}" style="font-size: 11px; padding: 3px 8px;">Call</button>
             </div>
           </div>
         </div>`;
 
       // wire buttons
-      el.querySelectorAll('.btn-view').forEach(b=> b.addEventListener('click', ()=> { alert('Show details for call id: '+b.dataset.id); }));
-      el.querySelectorAll('.btn-redial').forEach(b=> b.addEventListener('click', ()=> { alert('Start a new call based on log id: '+b.dataset.id); }));
+      el.querySelectorAll('.btn-view').forEach(b=> b.addEventListener('click', ()=> { console.log('Call ID:', b.dataset.id); alert('Call details for ID: '+b.dataset.id); }));
+      el.querySelectorAll('.btn-redial').forEach(b=> b.addEventListener('click', ()=> { console.log('Redial ID:', b.dataset.id); alert('Start new call based on log ID: '+b.dataset.id); }));
       return el;
     }
 
@@ -156,17 +244,19 @@
     }
 
     async function fetchCallLogs(){
-      listEl.innerHTML = '<div class="text-center py-4"><div class="loading-spinner"></div><div class="small text-muted mt-2">Loading call logs...</div></div>';
+      listEl.innerHTML = '<div class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 30px; height: 30px;"><span class="visually-hidden">Loading...</span></div><div class="small text-muted mt-3">Loading call logs...</div></div>';
       try{
         const url = '/api/call_logs';
         const resp = await fetch(url);
         if(!resp.ok) throw new Error('Failed to fetch');
         const data = await resp.json();
-        cached = data.call_logs || [];
+        cached = (data.call_logs || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         applyFilters();
-        summaryEl.textContent = `${cached.length} total calls`;
+        summaryEl.textContent = cached.length > 0 ? `📊 ${cached.length} total call${cached.length>1?'s':''}` : '📊 No calls yet';
       }catch(e){
-        listEl.innerHTML = `<div class="text-danger p-3">Failed to load call logs: ${e.message}</div>`;
+        console.error('Call logs fetch error:', e);
+        listEl.innerHTML = `<div class="alert alert-danger" role="alert"><strong>Error:</strong> Failed to load call logs. ${e.message}</div>`;
+        summaryEl.textContent = '⚠️ Error loading';
       }
     }
 
@@ -174,17 +264,17 @@
       const q = (searchEl.value||'').toLowerCase().trim();
       const filtered = cached.filter(i => {
         if (activeFilter && activeFilter !== 'all'){
-          if ((activeFilter === 'missed') && i.status !== 'missed') return false;
+          if ((activeFilter === 'missed') && (i.status !== 'missed' && i.end_reason !== 'missed' && i.end_reason !== 'unanswered')) return false;
           if ((activeFilter === 'incoming') && i.direction !== 'incoming') return false;
           if ((activeFilter === 'outgoing') && i.direction !== 'outgoing') return false;
-          if ((activeFilter === 'declined') && (i.status !== 'declined' && i.status !== 'rejected')) return false;
+          if ((activeFilter === 'declined') && (i.status !== 'declined' && i.status !== 'rejected' && i.end_reason !== 'callee_declined')) return false;
         }
         if (!q) return true;
-        return (i.remote_user_name||'').toLowerCase().includes(q) || (i.call_note||'').toLowerCase().includes(q);
+        return (i.remote_user_name||'').toLowerCase().includes(q) || (i.call_note||'').toLowerCase().includes(q) || (i.call_type||'').toLowerCase().includes(q);
       });
 
       // empty state
-      if (!filtered.length){ listEl.innerHTML = '<div class="text-center text-muted p-4">No calls match your filters.</div>'; return; }
+      if (!filtered.length){ listEl.innerHTML = '<div class="text-center text-muted p-5" style="font-style: italic;">No calls match your filters.</div>'; return; }
 
       // group by date
       const groups = groupByDate(filtered);
@@ -201,14 +291,16 @@
     try{
       const bsModal = modalEl ? new bootstrap.Modal(modalEl) : null;
       if (openBtn && bsModal){
-        openBtn.addEventListener('click', ()=> bsModal.show());
+        openBtn.addEventListener('click', (e)=> { e.preventDefault(); bsModal.show(); });
       }
       if (modalEl){
         modalEl.addEventListener('shown.bs.modal', function(){ fetchCallLogs(); });
+        // Allow Escape key to close (Bootstrap handles this, but explicit handler for clarity)
+        modalEl.addEventListener('keydown', function(e){ if (e.key === 'Escape' && bsModal) bsModal.hide(); });
       }
-    }catch(e){ /* ignore if bootstrap not available */ }
+    }catch(e){ console.warn('Bootstrap modal setup failed', e); }
 
     // initial load (preload cache) — optional
-    fetchCallLogs();
+    setTimeout(fetchCallLogs, 100);
   })();
 </script>

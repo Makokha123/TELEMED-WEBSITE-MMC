@@ -893,6 +893,18 @@ class CallHistory(db.Model):
     
     def to_dict(self):
         """Serialize call history for API/UI consumption"""
+        # Determine direction relative to current_user (if passed)
+        from flask import current_user as cu
+        direction = None
+        remote_user = None
+        if cu and cu.is_authenticated:
+            if self.caller_id == cu.id:
+                direction = 'outgoing'
+                remote_user = self.callee
+            elif self.callee_id == cu.id:
+                direction = 'incoming'
+                remote_user = self.caller
+        
         return {
             'id': self.id,
             'call_id': self.call_id,
@@ -903,9 +915,15 @@ class CallHistory(db.Model):
             'initiated_at': self.initiated_at.isoformat() if self.initiated_at else None,
             'connected_at': self.connected_at.isoformat() if self.connected_at else None,
             'ended_at': self.ended_at.isoformat() if self.ended_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else self.initiated_at.isoformat() if self.initiated_at else None,
             'status': self.status,
             'end_reason': self.end_reason,
             'duration': self.duration,
+            'direction': direction,
+            'remote_user_name': remote_user.get_display_name() if remote_user else 'Unknown',
+            'remote_user_avatar': remote_user.profile_picture if remote_user and hasattr(remote_user, 'profile_picture') else None,
+            'call_note': f"{self.status}" if self.end_reason else self.status,
+            'type': self.call_type,
             'recording_url': self.recording_url,
             'quality_metrics': self.quality_metrics
         }
