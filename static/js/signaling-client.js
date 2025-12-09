@@ -555,7 +555,9 @@ if (!window.SignalingClient) {
   isSocketConnected() {
     return this.isConnected && this.socket && this.socket.connected;
   }
-  }
+} // <-- Add this closing brace for the class
+
+} // <-- This is the missing closing brace for the 'if (!window.SignalingClient)' block
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {

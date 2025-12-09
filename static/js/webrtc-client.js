@@ -479,7 +479,7 @@ if (!window.WebRTCClient) {
   isConnected() {
     return this.callState === 'connected';
   }
-  }
+}
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
@@ -488,3 +488,4 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // Attach to window for global access
 window.WebRTCClient = WebRTCClient;
+}

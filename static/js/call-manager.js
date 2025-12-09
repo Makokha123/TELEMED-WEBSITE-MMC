@@ -715,7 +715,7 @@ if (!window.CallManager) {
       isScreenSharing: this.isScreenSharing
     };
   }
-  }
+}
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
@@ -723,4 +723,6 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 // Attach to window for global access
+}
+
 window.CallManager = CallManager;
