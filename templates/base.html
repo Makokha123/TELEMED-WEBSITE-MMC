@@ -205,7 +205,6 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/local-time.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/call-logs.js') }}"></script>
     <script src="{{ url_for('static', filename='js/signaling-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/webrtc-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/call-manager.js') }}"></script>
@@ -617,33 +616,58 @@
                     }
                     // Check current subscription
                     const reg = await navigator.serviceWorker.ready.catch(()=>null);
-                    if (!reg) { pushBtn.textContent = 'Subscribe'; pushBtn.disabled = false; return; }
+                    if (!reg) { pushBtn.textContent = 'Enable Push'; pushBtn.disabled = false; pushBtn.dataset.subscribed = '0'; return; }
                     const sub = await reg.pushManager.getSubscription();
-                    if (sub) { pushBtn.textContent = 'Disable Push'; pushBtn.dataset.subscribed = '1'; }
-                    else { pushBtn.textContent = 'Enable Push'; pushBtn.dataset.subscribed = '0'; }
+                    if (sub) {
+                        pushBtn.textContent = 'Push Enabled';
+                        pushBtn.classList.remove('btn-outline-light');
+                        pushBtn.classList.add('btn-success');
+                        pushBtn.dataset.subscribed = '1';
+                    } else {
+                        pushBtn.textContent = 'Enable Push';
+                        pushBtn.classList.remove('btn-success');
+                        pushBtn.classList.add('btn-outline-light');
+                        pushBtn.dataset.subscribed = '0';
+                    }
                     pushBtn.disabled = false;
                 }catch(e){ console.warn('updatePushBtn failed', e); }
             }
             if (pushBtn){
-                pushBtn.addEventListener('click', async function(){
+                pushBtn.addEventListener('click', async function(e){
+                    e.preventDefault();
                     try{
                         pushBtn.disabled = true;
                         const subscribed = pushBtn.dataset.subscribed === '1';
                         if (subscribed){
+                            // Currently subscribed, so unsubscribe
                             const r = await window.PushManagerHelper.unsubscribeForPush(window.currentUserId);
                             if (r && r.success !== false) {
-                                window.InpageToasts && window.InpageToasts.show('Push', 'Unsubscribed from notifications');
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Notifications disabled');
+                                pushBtn.textContent = 'Enable Push';
+                                pushBtn.classList.remove('btn-success');
+                                pushBtn.classList.add('btn-outline-light');
+                                pushBtn.dataset.subscribed = '0';
+                            } else {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Failed to disable');
                             }
                         } else {
+                            // Currently unsubscribed, so subscribe
                             const r = await window.PushManagerHelper.subscribeForPush(window.currentUserId);
                             if (r && r.success) {
-                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscribed to notifications');
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Push Enabled');
+                                pushBtn.textContent = 'Push Enabled';
+                                pushBtn.classList.remove('btn-outline-light');
+                                pushBtn.classList.add('btn-success');
+                                pushBtn.dataset.subscribed = '1';
                             } else {
-                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscription failed');
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscription failed. Try again.');
                             }
                         }
-                    }catch(e){ console.warn('push toggle failed', e); }
-                    finally{ setTimeout(updatePushBtn, 500); }
+                    }catch(e){
+                        console.warn('push toggle failed', e);
+                        window.InpageToasts && window.InpageToasts.show('Push', 'Error: ' + (e.message || 'Unknown error'));
+                    }
+                    finally{ pushBtn.disabled = false; }
                 });
                 // initial state
                 setTimeout(updatePushBtn, 800);

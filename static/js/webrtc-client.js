@@ -4,8 +4,9 @@
  * Supports audio/video constraints, quality adaptation, and reconnection logic
  */
 
-class WebRTCClient {
-  constructor(config = {}) {
+if (!window.WebRTCClient) {
+  class WebRTCClient {
+    constructor(config = {}) {
     this.config = {
       iceServers: config.iceServers || [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -478,9 +479,12 @@ class WebRTCClient {
   isConnected() {
     return this.callState === 'connected';
   }
-}
+  }
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = WebRTCClient;
 }
+
+// Attach to window for global access
+window.WebRTCClient = WebRTCClient;

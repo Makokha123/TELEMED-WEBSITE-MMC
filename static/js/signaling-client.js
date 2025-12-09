@@ -4,8 +4,9 @@
  * Implements auto-reconnection, message queuing, and event routing
  */
 
-class SignalingClient {
-  constructor(config = {}) {
+if (!window.SignalingClient) {
+  class SignalingClient {
+    constructor(config = {}) {
     // Allow passing an existing Socket.IO socket instance as the config
     const isSocketInstance = config && typeof config.on === 'function' && typeof config.emit === 'function';
 
@@ -554,9 +555,12 @@ class SignalingClient {
   isSocketConnected() {
     return this.isConnected && this.socket && this.socket.connected;
   }
-}
+  }
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = SignalingClient;
 }
+
+// Attach to window for global access
+window.SignalingClient = SignalingClient;

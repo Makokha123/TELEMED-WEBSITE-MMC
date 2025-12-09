@@ -328,6 +328,37 @@
 
         .end-call-btn:hover {
             background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+            transform: scale(1.08);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4) !important;
+        }
+
+        /* Enhanced mark complete button */
+        .mark-complete-btn {
+            position: relative;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .mark-complete-btn:hover {
+            transform: scale(1.12);
+            box-shadow: 0 8px 25px rgba(6, 182, 212, 0.5) !important;
+            filter: brightness(1.1);
+        }
+
+        .mark-complete-btn:active {
+            transform: scale(0.95);
+        }
+
+        .mark-complete-btn.disabled {
+            background: rgba(100, 116, 139, 0.6) !important;
+            box-shadow: none !important;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .mark-complete-btn.disabled:hover {
+            transform: scale(1);
+        }
         }
 
         /* Responsive - mobile view */
@@ -507,7 +538,7 @@
                 <i class="fas fa-share-square"></i>
             </button>
             {% if appointment and appointment.doctor and appointment.doctor.user_id == current_user.id %}
-            <button class="control-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background:#06b6d4;">
+            <button class="control-btn mark-complete-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); box-shadow: 0 4px 8px rgba(6, 182, 212, 0.3);">
                 <i class="fas fa-check"></i>
             </button>
             {% endif %}
@@ -943,11 +974,14 @@
             modal.style.justifyContent = 'center';
             modal.style.background = 'rgba(0,0,0,0.6)';
             modal.innerHTML = `
-                <div style="background:#fff; color:#111; padding:20px; border-radius:10px; width:520px; max-width:95%;">
-                    <h5>Mark Consultation Complete</h5>
-                    <p class="text-muted">Add brief notes for the appointment (optional). Notes autosave while typing.</p>
-                    <div style="margin-bottom:8px;"><textarea id="completeNotesVideo" class="form-control" rows="5" placeholder="Summary notes..."></textarea></div>
-                    <div style="display:flex; gap:8px; justify-content:flex-end;"><button id="cancelMarkCompleteVideo" class="btn btn-secondary">Cancel</button><button id="saveMarkCompleteVideo" class="btn btn-primary">Mark Complete</button></div>
+                <div style="background:#fff; color:#111; padding:20px; border-radius:12px; width:520px; max-width:95%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <h5 style="font-weight: 600; margin-bottom: 12px;">Mark Consultation Complete</h5>
+                    <p class="text-muted" style="font-size: 14px; margin-bottom: 16px;">Add brief notes for the appointment (optional). Notes autosave while typing.</p>
+                    <div style="margin-bottom:16px;"><textarea id="completeNotesVideo" class="form-control" rows="5" placeholder="Summary notes..." style="border: 1px solid #ddd; border-radius: 6px;"></textarea></div>
+                    <div style="display:flex; gap:12px; justify-content:flex-end;">
+                        <button id="cancelMarkCompleteVideo" class="btn btn-secondary" style="padding: 8px 20px; border-radius: 6px; font-weight: 500;">Cancel</button>
+                        <button id="saveMarkCompleteVideo" class="btn btn-primary" style="padding: 8px 20px; border-radius: 6px; font-weight: 500; background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); border: none; box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);">Mark Complete</button>
+                    </div>
                 </div>`;
             document.body.appendChild(modal);
 
@@ -971,10 +1005,18 @@
             async function saveMarkCompleteVideo(isAutosave=false) {
                 const notes = document.getElementById('completeNotesVideo').value;
                 try {
+                            // Ensure csrf_token is available (from base.html)
+                            const token = typeof csrf_token !== 'undefined' ? csrf_token : (document.querySelector('input[name="csrf_token"]')?.value || '');
+                            if (!token) {
+                                console.error('CSRF token not found');
+                                if (!isAutosave) alert('Security token missing. Please refresh and try again.');
+                                return;
+                            }
+
                             const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
                                 method: 'POST',
                                 credentials: 'same-origin',
-                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
                                 body: JSON.stringify({ notes })
                             });
                     if (resp.ok) {
@@ -1242,6 +1284,13 @@
         // Request media, geolocation and timezone, then POST to server
         async function grantCallPermissions() {
             try {
+                // Ensure csrf_token is available (defined in base.html)
+                if (typeof csrf_token === 'undefined') {
+                    console.error('csrf_token is not defined; cannot proceed with permission request');
+                    alert('Security token missing. Please refresh the page.');
+                    return;
+                }
+
                 // Request camera and microphone
                 const constraints = { video: true, audio: true };
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);

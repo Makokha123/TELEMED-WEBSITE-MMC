@@ -4,8 +4,9 @@
  * Manages call state machine, timers, UI updates, quality monitoring
  */
 
-class CallManager {
-  constructor(signalingClient, webrtcConfig = {}) {
+if (!window.CallManager) {
+  class CallManager {
+    constructor(signalingClient, webrtcConfig = {}) {
     this.signaling = signalingClient;
     this.webrtc = null;
     this.webrtcConfig = webrtcConfig;
@@ -714,9 +715,12 @@ class CallManager {
       isScreenSharing: this.isScreenSharing
     };
   }
-}
+  }
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = CallManager;
 }
+
+// Attach to window for global access
+window.CallManager = CallManager;

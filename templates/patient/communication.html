@@ -1138,7 +1138,13 @@
 
 {% block extra_js %}
 <script type="module">
-  import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@latest/dist/index.js';
+  // Gracefully load emoji-picker; fail silently if CDN unavailable
+  try {
+    await import('https://cdn.jsdelivr.net/npm/emoji-picker-element@latest/dist/index.js');
+  } catch (e) {
+    console.warn('Emoji picker CDN unavailable; emoji functionality disabled', e);
+    // Emoji picker is optional; continue without it
+  }
 </script>
 
 <!-- Real-time Communication Libraries -->
