@@ -103,10 +103,15 @@ from models import (
     SocialAccount, db, User, Patient, Doctor, Appointment, AuditLog, 
     Testimonial, MedicalRecord, _hash_value, encrypt_file_bytes, decrypt_file_bytes,
     CallHistory, Conversation, Message, Attachment, CallQualityMetrics, UserPresence
+    , PushSubscription
 )
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from config import Config
+from pywebpush import webpush, WebPushException
+import json as _json
+import base64 as _base64
+from pathlib import Path
 
 # Initialize serializer for password reset tokens
 s = URLSafeTimedSerializer(os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production-12345'))
@@ -117,6 +122,9 @@ user_last_seen = {}
 active_calls = {}
 call_rooms = {}  # Track call rooms: {call_id: {'caller': user_id, 'callee': user_id, 'appointment_id': apt_id}}
 incoming_call_notifications = {}  # Track incoming calls waiting for answer: {user_id: call_info}
+# Push subscriptions (in-memory). Persisted to `push_subscriptions.json` file in app root (best-effort)
+push_subscriptions = {}
+_PUSH_SUB_FILE = Path(app.root_path) / 'push_subscriptions.json'
 # Simple in-memory rate limiter for messages: {user_id: [timestamp,...]}
 message_rate = {}
 
@@ -230,9 +238,6 @@ def set_security_headers(response):
         # HSTS - enforce HTTPS for 1 week (adjust in production)
         response.headers.setdefault('Strict-Transport-Security', 'max-age=604800; includeSubDomains')
 
-        # Basic Permissions-Policy: deny by default but allow camera/microphone
-        # for call-related pages (same-origin). You can override via
-        # the PERMISSIONS_POLICY env var if needed.
         env_policy = os.getenv('PERMISSIONS_POLICY')
         if env_policy:
             response.headers.setdefault('Permissions-Policy', env_policy)
@@ -246,18 +251,14 @@ def set_security_headers(response):
                 if ('communication' in path) or path.startswith('/video') or '/call' in path:
                     allow_camera_mic = True
                 if allow_camera_mic:
-                    # Allow only same-origin (self)
-                    response.headers.setdefault('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()')
-                    # Legacy header for older browsers (Feature-Policy)
-                    response.headers.setdefault('Feature-Policy', "microphone 'self'; camera 'self'")
+                    # Allow camera, microphone and geolocation for call/communication pages (same-origin)
+                    response.headers.setdefault('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)')
                 else:
                     # Deny by default
                     response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-                    response.headers.setdefault('Feature-Policy', "microphone 'none'; camera 'none'")
             except Exception:
                 # On any error, be conservative and deny media access
                 response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-                response.headers.setdefault('Feature-Policy', "microphone 'none'; camera 'none'")
     except Exception:
         pass
     return response
@@ -514,6 +515,234 @@ try:
 except Exception:
     # If Notification isn't available yet or registration fails, ignore gracefully
     pass
+
+
+# -------------------------
+# Web Push helpers and endpoints
+# -------------------------
+def _load_push_subscriptions():
+    try:
+        if _PUSH_SUB_FILE.exists():
+            with _PUSH_SUB_FILE.open('r', encoding='utf-8') as fh:
+                data = _json.load(fh)
+                if isinstance(data, dict):
+                    push_subscriptions.clear()
+                    for k, v in data.items():
+                        push_subscriptions[int(k)] = v
+    except Exception:
+        pass
+
+def _save_push_subscriptions():
+    try:
+        # persist mapping of user_id -> [subscription,...]
+        dump = {str(k): v for k, v in push_subscriptions.items()}
+        with _PUSH_SUB_FILE.open('w', encoding='utf-8') as fh:
+            _json.dump(dump, fh)
+    except Exception:
+        pass
+
+# Load existing subscriptions at startup (best-effort)
+try:
+    _load_push_subscriptions()
+except Exception:
+    pass
+
+
+@app.route('/api/push/vapid_public_key', methods=['GET'])
+def vapid_public_key():
+    """Return VAPID public key (base64url) for client subscription.
+    The server must be configured with VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY environment variables.
+    """
+    pub = os.getenv('VAPID_PUBLIC_KEY')
+    if not pub:
+        return jsonify({'success': False, 'error': 'VAPID keys not configured on server'}), 500
+    return jsonify({'success': True, 'vapid_public_key': pub})
+
+
+@app.route('/api/push/subscribe', methods=['POST'])
+def push_subscribe():
+    try:
+        payload = request.get_json(force=True)
+    except Exception:
+        payload = None
+    if not payload:
+        return jsonify({'success': False, 'error': 'invalid_payload'}), 400
+    subscription = payload.get('subscription') or payload.get('sub')
+    # prefer logged in user if available
+    uid = None
+    try:
+        if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+            uid = int(getattr(current_user, 'id'))
+    except Exception:
+        uid = None
+    if not uid:
+        # fallback to supplied user_id
+        try:
+            uid = int(payload.get('user_id'))
+        except Exception:
+            return jsonify({'success': False, 'error': 'missing_user_id'}), 400
+    if not subscription or not isinstance(subscription, dict):
+        return jsonify({'success': False, 'error': 'invalid_subscription'}), 400
+
+    # Persist to DB when available
+    try:
+        if 'db' in globals():
+            # Upsert by endpoint
+            ep = subscription.get('endpoint')
+            existing = None
+            try:
+                existing = PushSubscription.query.filter_by(endpoint=ep).first() if ep else None
+            except Exception:
+                existing = None
+            if existing:
+                existing.keys = subscription.get('keys') or subscription.get('keys', {})
+                existing.raw = subscription
+                existing.is_active = True
+                try:
+                    existing.user_agent = request.headers.get('User-Agent')
+                except Exception:
+                    pass
+                db.session.add(existing)
+                db.session.commit()
+            else:
+                try:
+                    ps = PushSubscription(user_id=uid, endpoint=ep or '', keys=subscription.get('keys') or {}, raw=subscription, user_agent=request.headers.get('User-Agent'))
+                    db.session.add(ps)
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+    except Exception:
+        pass
+
+    # Keep file-backed store as best-effort cache as well
+    lst = push_subscriptions.get(uid) or []
+    endpoint = subscription.get('endpoint')
+    if not any(s.get('endpoint') == endpoint for s in lst):
+        lst.append(subscription)
+    push_subscriptions[uid] = lst
+    _save_push_subscriptions()
+    return jsonify({'success': True})
+
+
+@app.route('/api/push/unsubscribe', methods=['POST'])
+def push_unsubscribe():
+    try:
+        payload = request.get_json(force=True)
+    except Exception:
+        payload = None
+    if not payload:
+        return jsonify({'success': False, 'error': 'invalid_payload'}), 400
+    subscription = payload.get('subscription') or payload.get('sub')
+    uid = None
+    try:
+        if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+            uid = int(getattr(current_user, 'id'))
+    except Exception:
+        uid = None
+    if not uid:
+        try:
+            uid = int(payload.get('user_id'))
+        except Exception:
+            return jsonify({'success': False, 'error': 'missing_user_id'}), 400
+    if not subscription:
+        return jsonify({'success': False, 'error': 'invalid_subscription'}), 400
+    # Remove from DB when available
+    try:
+        if 'db' in globals():
+            ep = subscription.get('endpoint')
+            try:
+                PushSubscription.query.filter_by(endpoint=ep).delete()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+    except Exception:
+        pass
+
+    # Remove from file-backed store as well
+    lst = push_subscriptions.get(uid) or []
+    endpoint = subscription.get('endpoint')
+    lst = [s for s in lst if s.get('endpoint') != endpoint]
+    if lst:
+        push_subscriptions[uid] = lst
+    else:
+        push_subscriptions.pop(uid, None)
+    _save_push_subscriptions()
+    return jsonify({'success': True})
+
+
+def _send_push_to_subscription(subscription, payload):
+    """Send a push message using pywebpush. Returns True on success, False otherwise."""
+    vapid_private = os.getenv('VAPID_PRIVATE_KEY')
+    vapid_email = os.getenv('VAPID_CLAIMS_SUB', 'mailto:admin@makokhamedical.com')
+    if not vapid_private:
+        raise RuntimeError('VAPID_PRIVATE_KEY not set')
+    try:
+        webpush(
+            subscription_info=subscription,
+            data=_json.dumps(payload),
+            vapid_private_key=vapid_private,
+            vapid_claims={"sub": vapid_email}
+        )
+        return True
+    except WebPushException as ex:
+        # If subscription is no longer valid, caller should remove it
+        app.logger.warning('WebPush failed: %s', str(ex))
+        return False
+    except Exception as e:
+        app.logger.exception('Unexpected error sending webpush: %s', e)
+        return False
+
+
+@app.route('/api/push/send', methods=['POST'])
+def push_send():
+    """Send a push notification to a user or test payload.
+    JSON body: { user_id: <int>, payload: { title, body, url, ... } }
+    If user_id omitted and current user is provided or request contains 'to_all': send accordingly.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        data = {}
+    target_user = data.get('user_id')
+    payload = data.get('payload') or {'title': data.get('title', 'Notification'), 'body': data.get('body', ''), 'url': data.get('url', '/')}
+    if not target_user:
+        # allow sending to current user for testing
+        try:
+            if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+                target_user = int(getattr(current_user, 'id'))
+        except Exception:
+            target_user = None
+    if not target_user:
+        return jsonify({'success': False, 'error': 'missing_user_id'}), 400
+
+    # Prefer DB-backed subscriptions if model exists
+    subs = []
+    try:
+        if 'PushSubscription' in globals():
+            subs_q = PushSubscription.query.filter_by(user_id=int(target_user), is_active=True).all()
+            subs = [s.raw for s in subs_q if getattr(s, 'raw', None)]
+    except Exception:
+        subs = push_subscriptions.get(int(target_user)) or []
+    successes = 0
+    to_remove = []
+    for s in list(subs):
+        ok = _send_push_to_subscription(s, payload)
+        if ok:
+            successes += 1
+        else:
+            # schedule to remove invalid subscription
+            if s.get('endpoint'):
+                to_remove.append(s.get('endpoint'))
+    if to_remove:
+        subs = [x for x in subs if x.get('endpoint') not in to_remove]
+        if subs:
+            push_subscriptions[int(target_user)] = subs
+        else:
+            push_subscriptions.pop(int(target_user), None)
+        _save_push_subscriptions()
+
+    return jsonify({'success': True, 'sent': successes})
+
 
 
 @socketio.on('initiate_video_call')

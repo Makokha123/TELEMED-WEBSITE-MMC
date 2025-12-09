@@ -379,6 +379,13 @@ class CallManager {
       const screenTrack = this.screenStream.getVideoTracks()[0];
 
       // Replace video track in peer connection
+      if (!this.webrtc || !this.webrtc.peerConnection) {
+        console.warn('No active peer connection for screen sharing');
+        this.screenStream.getTracks().forEach(t => t.stop());
+        this.screenStream = null;
+        return false;
+      }
+
       const sender = this.webrtc.peerConnection
         .getSenders()
         .find(s => s.track && s.track.kind === 'video');
@@ -431,12 +438,16 @@ class CallManager {
       const cameraTrack = cameraStream.getVideoTracks()[0];
 
       // Replace video track
-      const sender = this.webrtc.peerConnection
-        .getSenders()
-        .find(s => s.track && s.track.kind === 'video');
+      if (!this.webrtc || !this.webrtc.peerConnection) {
+        console.warn('No active peer connection to restore camera track');
+      } else {
+        const sender = this.webrtc.peerConnection
+          .getSenders()
+          .find(s => s.track && s.track.kind === 'video');
 
-      if (sender) {
-        await sender.replaceTrack(cameraTrack);
+        if (sender) {
+          await sender.replaceTrack(cameraTrack);
+        }
       }
 
       this.isScreenSharing = false;

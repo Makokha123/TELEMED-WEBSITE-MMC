@@ -437,8 +437,10 @@
                 async function saveIncoming(isAutosave=false) {
                     const notes = document.getElementById('completeNotesIncoming').value;
                     try {
+                        // Try to use global csrf token or fall back to hidden input
+                        const _csrf = (typeof window !== 'undefined' && window.csrf_token) ? window.csrf_token : (document.querySelector('input[name="csrf_token"]') ? document.querySelector('input[name="csrf_token"]').value : '');
                         const resp = await fetch('/api/appointments/{{ appointment.id if appointment else "null" }}/complete', {
-                            method: 'POST', credentials: 'same-origin', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ notes })
+                            method: 'POST', credentials: 'same-origin', headers: {'Content-Type':'application/json', 'X-CSRFToken': _csrf}, body: JSON.stringify({ notes })
                         });
                         if (resp.ok) {
                             document.getElementById('saveMarkCompleteIncoming').disabled = true; document.getElementById('saveMarkCompleteIncoming').textContent = 'Marked Complete';

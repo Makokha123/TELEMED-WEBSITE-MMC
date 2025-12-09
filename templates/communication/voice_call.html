@@ -426,7 +426,7 @@
             const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
                 body: JSON.stringify({ notes })
             });
             if (resp.ok) {
@@ -463,12 +463,13 @@
             }
             // Doctor ends for everyone
             if (socket && socket.connected) socket.emit('end_voice_call', { appointment_id: appointmentId });
-            // close UI
-            window.location.href = '/doctor/dashboard';
+            // close UI and allow server-driven event to handle redirects; fallback to doctor communication
+            setTimeout(() => { window.location.href = '/doctor/communication'; }, 400);
         } else {
             // Non-doctor leaves locally
             if (socket && socket.connected) socket.emit('leave_appointment', { appointment_id: appointmentId });
-            window.location.href = `/communication/${appointmentId}`;
+            // redirect patient to testimonial page for this appointment
+            setTimeout(() => { window.location.href = `/appointments/${appointmentId}/testimonial`; }, 300);
         }
     });
 

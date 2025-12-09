@@ -878,6 +878,10 @@
         // Screen share
         screenshareBtn.addEventListener('click', async () => {
             try {
+                if (!peerConnection) {
+                    alert('Not connected to the call');
+                    return;
+                }
                 if (!isScreenSharing) {
                     const screenStream = await navigator.mediaDevices.getDisplayMedia({
                         video: { cursor: 'always' },
@@ -967,12 +971,12 @@
             async function saveMarkCompleteVideo(isAutosave=false) {
                 const notes = document.getElementById('completeNotesVideo').value;
                 try {
-                    const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes })
-                    });
+                            const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+                                body: JSON.stringify({ notes })
+                            });
                     if (resp.ok) {
                         consultationMarkedComplete = true;
                         markCompleteBtn.classList.add('disabled');
@@ -1007,27 +1011,38 @@
                 }
 
                 socket.emit('end_video_call', { appointment_id: appointmentId });
-                closeCall();
+                // Perform cleanup but let the server-driven `video_call_ended` event perform redirects
+                closeCall(true, false);
                 return;
             }
 
             // Non-doctor: leave locally
             socket.emit('leave_video_room', { appointment_id: appointmentId });
-            closeCall();
+            // Clean up locally but skip emitting leave again; then redirect patient to testimonial
+            closeCall(true, false);
+            setTimeout(() => {
+                window.location.href = `/appointments/${appointmentId}/testimonial`;
+            }, 400);
         });
 
         // Close call
-        function closeCall() {
+        function closeCall(skipRedirect = false, emitLeave = true) {
             if (peerConnection) {
-                peerConnection.close();
+                try { peerConnection.close(); } catch(e) {}
+                peerConnection = null;
             }
 
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                try { localStream.getTracks().forEach(track => track.stop()); } catch(e) {}
+                localStream = null;
             }
 
-            socket.emit('leave_video_room', { appointment_id: appointmentId });
-            
+            if (emitLeave) {
+                try { socket.emit('leave_video_room', { appointment_id: appointmentId }); } catch(e) {}
+            }
+
+            if (skipRedirect) return;
+
             setTimeout(() => {
                 window.location.href = `/communication/${appointmentId}`;
             }, 500);
@@ -1093,18 +1108,17 @@
 
         socket.on('video_call_ended', (data) => {
             try {
-                // perform local cleanup
-                closeCall();
+                // perform local cleanup but skip emitting leave (server already ended)
+                closeCall(true, false);
 
-                // role-aware redirect: doctor -> dashboard, patient -> testimonial page
+                // role-aware redirect: doctor -> communication page, patient -> testimonial page
                 const role = document.getElementById('currentUserRole')?.value || '';
                 const appointment_id = data?.appointment_id || appointmentId;
-                const doctor_user_id = data?.doctor_user_id || null;
 
                 // small delay to ensure socket leave and cleanup finished
                 setTimeout(() => {
                     if (role === 'doctor') {
-                        window.location.href = '/doctor/dashboard';
+                        window.location.href = '/doctor/communication';
                     } else if (role === 'patient') {
                         // Redirect patient to testimonial submission page for this appointment
                         window.location.href = `/appointments/${appointment_id}/testimonial`;
@@ -1253,7 +1267,7 @@
 
                 const resp = await fetch('/api/user/permissions', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
                     credentials: 'same-origin',
                     body: JSON.stringify(payload)
                 });

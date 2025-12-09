@@ -108,6 +108,9 @@
                                 <input type="hidden" id="notifDropdownPage" value="1">
                             </ul>
                         </li>
+                        <li class="nav-item me-2 d-flex align-items-center">
+                            <button id="pushToggleBtn" class="btn btn-sm btn-outline-light" title="Enable push notifications">Enable Push</button>
+                        </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-user-circle"></i> {{ current_user.get_display_name() }}
@@ -203,6 +206,12 @@
     <script src="{{ url_for('static', filename='js/local-time.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script src="{{ url_for('static', filename='js/call-logs.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/signaling-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/webrtc-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/call-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/push-subscription.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/toasts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/incoming-call-modal.js') }}"></script>
 
     <!-- Expose ICE servers configured on server to client JS (read from meta to avoid Jinja in JS) -->
     <script>
@@ -225,22 +234,127 @@
         // Initialize Socket.IO connection (attach to window to avoid duplicate declarations)
         if (!window.socket) {
             try {
-                window.socket = io();
+                // Use robust reconnection settings
+                window.socket = io({
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    timeout: 20000
+                });
             } catch (e) {
                 console.error('Socket.IO initialization failed', e);
                 window.socket = null;
             }
         }
 
-        if (window.socket) {
-            window.socket.on('connect', function() {
-                console.log('Connected to server');
+        // Create a persistent SignalingClient + CallManager available on every page
+        (function(){
+            if (!window.socket) return;
+
+            // Expose signaling and call manager singletons
+            try {
+                window.signalingClient = window.signalingClient || new SignalingClient(window.socket);
+            } catch (e) {
+                console.error('Failed to create SignalingClient', e);
+            }
+
+            // Safely read current user id from server-rendered template when available
+            const __currentUserId = '{{ current_user.id if current_user else "" }}';
+            // expose as global for static scripts
+            try{ window.currentUserId = __currentUserId || ''; }catch(e){}
+
+            function ensureCallManager() {
+                try {
+                    if (!window.callManager) {
+                        window.callManager = new CallManager(window.signalingClient, { iceServers: window.ICE_SERVERS || [{ urls: 'stun:stun.l.google.com:19302' }] });
+                        // attach a lightweight presence updater
+                        try { window.callManager.localUserId = __currentUserId || null; } catch(e){}
+                        console.log('CallManager initialized');
+                    }
+                } catch (e) {
+                    console.error('CallManager init failed', e);
+                }
+            }
+
+            // Connect signaling client with current user id when socket connects
+            window.socket.on('connect', () => {
+                console.log('Socket connected (global) id=', window.socket.id);
+                ensureCallManager();
+                try {
+                    if (typeof window.signalingClient.connect === 'function' && __currentUserId) {
+                        window.signalingClient.connect(__currentUserId);
+                    }
+                } catch(e){ console.warn('signaling connect failed', e); }
             });
 
-            window.socket.on('disconnect', function() {
-                console.log('Disconnected from server');
+            window.socket.on('disconnect', (reason) => {
+                console.warn('Socket disconnected (global):', reason);
             });
-        }
+
+            // Reconnect when the browser regains network
+            window.addEventListener('online', () => {
+                console.log('Network online - attempting socket reconnect');
+                try { if (window.socket && !window.socket.connected) window.socket.connect(); } catch(e){}
+            });
+            window.addEventListener('offline', () => { console.warn('Network offline'); });
+
+            // Notification helper (uses Service Worker if available)
+            async function showLocalNotification(title, body, url) {
+                try {
+                    if (window.Notification && Notification.permission === 'granted') {
+                        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                            const reg = await navigator.serviceWorker.ready;
+                            reg.showNotification(title, { body: body, data: { url: url }, icon: '/static/img/favicon.ico' });
+                        } else {
+                            new Notification(title, { body: body });
+                        }
+                    } else if (window.Notification && Notification.permission !== 'denied') {
+                        Notification.requestPermission().then(p => { if (p === 'granted') showLocalNotification(title, body, url); });
+                    } else {
+                        // fallback in-page toast
+                        try {
+                            const el = document.createElement('div');
+                            el.style.position = 'fixed'; el.style.right = '16px'; el.style.bottom = '16px'; el.style.zIndex = '9999'; el.style.background = '#111'; el.style.color='#fff'; el.style.padding='12px 16px'; el.style.borderRadius='8px'; el.textContent = title + ' — ' + body;
+                            el.addEventListener('click', ()=>{ if (url) window.location.href = url; });
+                            document.body.appendChild(el);
+                            setTimeout(()=>el.remove(), 8000);
+                        } catch(e){ }
+                    }
+                } catch (e) { console.warn('showLocalNotification failed', e); }
+            }
+
+            // Incoming call and message handlers (global)
+            try {
+                window.socket.on('call:ringing', (data) => {
+                    console.log('Global incoming call', data);
+                    const apt = data && data.appointment_id ? data.appointment_id : null;
+                    const callerName = data && (data.caller_name || data.initiator_name || 'Caller');
+                    const url = apt ? `/communication/${apt}` : '/communication';
+                    showLocalNotification('Incoming call', `${callerName} is calling`, url);
+                });
+
+                window.socket.on('chat:message', (data) => {
+                    try {
+                        // data should include appointment_id and body
+                        const apt = data && data.appointment_id ? data.appointment_id : null;
+                        const body = data && (data.body || data.message || '') ;
+                        const title = data && data.sender_name ? data.sender_name : 'New message';
+                        const url = apt ? `/communication/${apt}` : '/communication';
+                        showLocalNotification(title, body, url);
+                    } catch (e) { console.warn('chat message handler failed', e); }
+                });
+            } catch (e) { console.warn('Global handlers attach failed', e); }
+
+            // Attempt to register a Service Worker to support notifications and future push
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('{{ url_for('static', filename='js/sw.js') }}').then(reg => {
+                    console.log('Service worker registered', reg.scope);
+                }).catch(err => {
+                    console.warn('Service worker register failed', err);
+                });
+            }
+        })();
 
         // Auto-attach CSRF headers for fetch() and XMLHttpRequest if not present
         (function(){
@@ -492,6 +606,47 @@
                     await loadMoreNotifications();
                     loadMoreBtn.disabled = false;
                 });
+            }
+            // Push toggle button wiring
+            const pushBtn = document.getElementById('pushToggleBtn');
+            async function updatePushBtn(){
+                try{
+                    if (!pushBtn) return;
+                    if (!window.PushManagerHelper || !window.PushManagerHelper.isSupported()){
+                        pushBtn.textContent = 'Push N/A'; pushBtn.disabled = true; return;
+                    }
+                    // Check current subscription
+                    const reg = await navigator.serviceWorker.ready.catch(()=>null);
+                    if (!reg) { pushBtn.textContent = 'Subscribe'; pushBtn.disabled = false; return; }
+                    const sub = await reg.pushManager.getSubscription();
+                    if (sub) { pushBtn.textContent = 'Disable Push'; pushBtn.dataset.subscribed = '1'; }
+                    else { pushBtn.textContent = 'Enable Push'; pushBtn.dataset.subscribed = '0'; }
+                    pushBtn.disabled = false;
+                }catch(e){ console.warn('updatePushBtn failed', e); }
+            }
+            if (pushBtn){
+                pushBtn.addEventListener('click', async function(){
+                    try{
+                        pushBtn.disabled = true;
+                        const subscribed = pushBtn.dataset.subscribed === '1';
+                        if (subscribed){
+                            const r = await window.PushManagerHelper.unsubscribeForPush(window.currentUserId);
+                            if (r && r.success !== false) {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Unsubscribed from notifications');
+                            }
+                        } else {
+                            const r = await window.PushManagerHelper.subscribeForPush(window.currentUserId);
+                            if (r && r.success) {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscribed to notifications');
+                            } else {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscription failed');
+                            }
+                        }
+                    }catch(e){ console.warn('push toggle failed', e); }
+                    finally{ setTimeout(updatePushBtn, 500); }
+                });
+                // initial state
+                setTimeout(updatePushBtn, 800);
             }
         });
     </script>

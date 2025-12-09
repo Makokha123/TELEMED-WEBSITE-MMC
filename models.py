@@ -763,6 +763,36 @@ class Notification(db.Model):
     appointment = db.relationship('Appointment', backref=db.backref('notifications', lazy=True))
 
 
+class PushSubscription(db.Model):
+    """Stores Web Push subscriptions for users so server can send push messages reliably."""
+    __tablename__ = 'push_subscriptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    endpoint = db.Column(db.String(1024), nullable=False, unique=True)
+    keys = db.Column(db.JSON)  # { p256dh: '', auth: '' }
+    raw = db.Column(db.JSON)   # full subscription object for convenience
+    user_agent = db.Column(db.String(512))
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('push_subscriptions', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'endpoint': self.endpoint,
+            'keys': self.keys,
+            'raw': self.raw,
+            'user_agent': self.user_agent,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class CallSession(db.Model):
     __tablename__ = 'call_sessions'
     
