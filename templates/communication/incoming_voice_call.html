@@ -371,12 +371,18 @@
             <button class="control-btn" id="holdBtn" title="Hold Call">
                 <i class="fas fa-pause"></i>
             </button>
+            {% if appointment and appointment.doctor and appointment.doctor.user_id == current_user.id %}
+            <button class="control-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background:#06b6d4; color:#fff;">
+                <i class="fas fa-check"></i>
+            </button>
+            {% endif %}
         </div>
 
         <div class="caller-info">
             <div class="caller-avatar" id="callerAvatar">
-                <span id="callerInitials">DR</span>
-            </div>
+                    <span id="callerInitials">DR</span>
+                    <img id="callerPic" src="" alt="Caller" style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0;" />
+                </div>
             <div class="caller-name" id="callerName">Dr. John Doe</div>
             <div class="caller-role" id="callerRole">Doctor</div>
             <div class="call-status">
@@ -399,6 +405,52 @@
         <audio id="ringtoneAudio" loop>
             <source src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==" type="audio/wav">
         </audio>
+        <input type="hidden" id="currentUserId" value="{{ current_user.id if current_user else '' }}">
+        <input type="hidden" id="appointmentDoctorUserId" value="{{ appointment.doctor.user_id if appointment and appointment.doctor else '' }}">
+        <script>
+            // Simple mark-complete modal wiring for incoming voice call (doctor-only)
+            const appointmentDoctorUserId = document.getElementById('appointmentDoctorUserId')?.value || '';
+            const currentUserId = document.getElementById('currentUserId')?.value || '';
+            if (String(appointmentDoctorUserId) === String(currentUserId)) {
+                // append modal
+                const modalHtml = `<div id="markCompleteModalIncoming" style="display:none; position:fixed; inset:0; z-index:2000; align-items:center; justify-content:center; background:rgba(0,0,0,0.6)">`+
+                    `<div style="background:#fff; color:#111; padding:20px; border-radius:10px; width:480px; max-width:95%;">`+
+                    `<h5>Mark Consultation Complete</h5>`+
+                    `<p class="text-muted">Add brief notes for the appointment (optional). Notes autosave while typing.</p>`+
+                    `<div class="mb-2"><textarea id="completeNotesIncoming" class="form-control" rows="4" placeholder="Summary notes..."></textarea></div>`+
+                    `<div class="d-flex justify-content-end gap-2"><button id="cancelMarkCompleteIncoming" class="btn btn-secondary">Cancel</button><button id="saveMarkCompleteIncoming" class="btn btn-primary">Mark Complete</button></div>`+
+                    `</div></div>`;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+                document.getElementById('markConsultationCompleteBtn')?.addEventListener('click', (e) => {
+                    e.preventDefault(); document.getElementById('markCompleteModalIncoming').style.display = 'flex';
+                });
+
+                let autosaveTimerInc = null;
+                document.body.addEventListener('input', (ev) => {
+                    if (ev.target && ev.target.id === 'completeNotesIncoming') {
+                        if (autosaveTimerInc) clearTimeout(autosaveTimerInc);
+                        autosaveTimerInc = setTimeout(() => saveIncoming(true), 1500);
+                    }
+                });
+
+                async function saveIncoming(isAutosave=false) {
+                    const notes = document.getElementById('completeNotesIncoming').value;
+                    try {
+                        const resp = await fetch('/api/appointments/{{ appointment.id if appointment else "null" }}/complete', {
+                            method: 'POST', credentials: 'same-origin', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ notes })
+                        });
+                        if (resp.ok) {
+                            document.getElementById('saveMarkCompleteIncoming').disabled = true; document.getElementById('saveMarkCompleteIncoming').textContent = 'Marked Complete';
+                            if (!isAutosave) { alert('Marked complete'); document.getElementById('markCompleteModalIncoming').style.display='none'; }
+                        } else { if (!isAutosave) alert('Failed to mark complete'); }
+                    } catch (err) { console.error(err); if (!isAutosave) alert('Error marking complete'); }
+                }
+
+                document.getElementById('cancelMarkCompleteIncoming')?.addEventListener('click', (e)=>{ e.preventDefault(); document.getElementById('markCompleteModalIncoming').style.display='none'; });
+                document.getElementById('saveMarkCompleteIncoming')?.addEventListener('click', (e)=>{ e.preventDefault(); saveIncoming(false); });
+                    }
+                </script>
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
@@ -436,6 +488,7 @@
         const callerId = callData.caller_id;
         const callerName = callData.caller_name || 'Unknown';
         const callerRole = callData.caller_role || 'Doctor';
+        const callerProfilePic = callData.caller_profile_pic || new URLSearchParams(window.location.search).get('caller_profile_pic') || '';
 
         // Initialize Socket.IO (reuse global instance if present)
         if (!window.socket) { try { window.socket = io(); } catch(e) { console.error('Socket init failed', e); window.socket = null; } }
@@ -513,10 +566,21 @@
         callerNameEl.textContent = callerName;
         callerRoleEl.textContent = callerRole;
 
-        // Generate initials from name
-        const names = callerName.split(' ');
-        const initials = names.map(n => n.charAt(0)).join('').substring(0, 2).toUpperCase();
-        callerInitials.textContent = initials;
+        // Display profile picture if available, otherwise show initials (with graceful fallback)
+        if (callerProfilePic) {
+            const picEl = document.getElementById('callerPic');
+            picEl.src = callerProfilePic;
+            picEl.style.display = 'block';
+            callerInitials.style.display = 'none';
+            picEl.onerror = function() {
+                this.style.display = 'none';
+                callerInitials.style.display = 'flex';
+            };
+        } else {
+            const names = callerName.split(' ');
+            const initials = names.map(n => n.charAt(0)).join('').substring(0, 2).toUpperCase();
+            callerInitials.textContent = initials;
+        }
 
         // Play ringtone using female voice and dual-tone pattern
         function playRingtone() {

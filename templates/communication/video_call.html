@@ -494,6 +494,9 @@
 
         <!-- Call controls -->
         <div class="call-controls">
+            <button class="control-btn" id="callSettingsBtn" title="Call Settings">
+                <i class="fas fa-cog"></i>
+            </button>
             <button class="control-btn" id="toggleMicBtn" title="Toggle Microphone">
                 <i class="fas fa-microphone"></i>
             </button>
@@ -503,6 +506,11 @@
             <button class="control-btn" id="screenshareBtn" title="Share Screen">
                 <i class="fas fa-share-square"></i>
             </button>
+            {% if appointment and appointment.doctor and appointment.doctor.user_id == current_user.id %}
+            <button class="control-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background:#06b6d4;">
+                <i class="fas fa-check"></i>
+            </button>
+            {% endif %}
             <button class="control-btn end-call-btn" id="endCallBtn" title="End Call">
                 <i class="fas fa-phone"></i>
             </button>
@@ -515,6 +523,8 @@
     <input type="hidden" id="currentUserLastName" value="{{ current_user.last_name }}">
     <input type="hidden" id="currentUserProfilePic" value="{{ current_user.profile_picture_url or '' }}">
     <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
+    <input type="hidden" id="appointmentDoctorUserId" value="{{ appointment.doctor.user_id if appointment and appointment.doctor else '' }}">
+    <input type="hidden" id="consultationMarkedCompleteFlag" value="{{ '1' if appointment and appointment.status == 'completed' else '0' }}">
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
@@ -912,9 +922,97 @@
             }
         });
 
-        // End call
+        // Consultation complete state (initialize from server-side appointment status)
+        let consultationMarkedComplete = document.getElementById('consultationMarkedCompleteFlag')?.value === '1';
+
+        // Doctor-only: mark consultation complete (modal with notes + autosave)
+        const markCompleteBtn = document.getElementById('markConsultationCompleteBtn');
+        if (markCompleteBtn) {
+            // Create modal
+            const modal = document.createElement('div');
+            modal.id = 'markCompleteModalVideo';
+            modal.style.display = 'none';
+            modal.style.position = 'fixed';
+            modal.style.inset = '0';
+            modal.style.zIndex = '2000';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            modal.style.background = 'rgba(0,0,0,0.6)';
+            modal.innerHTML = `
+                <div style="background:#fff; color:#111; padding:20px; border-radius:10px; width:520px; max-width:95%;">
+                    <h5>Mark Consultation Complete</h5>
+                    <p class="text-muted">Add brief notes for the appointment (optional). Notes autosave while typing.</p>
+                    <div style="margin-bottom:8px;"><textarea id="completeNotesVideo" class="form-control" rows="5" placeholder="Summary notes..."></textarea></div>
+                    <div style="display:flex; gap:8px; justify-content:flex-end;"><button id="cancelMarkCompleteVideo" class="btn btn-secondary">Cancel</button><button id="saveMarkCompleteVideo" class="btn btn-primary">Mark Complete</button></div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            // Reflect already-completed state
+            if (consultationMarkedComplete) {
+                markCompleteBtn.classList.add('disabled');
+                markCompleteBtn.textContent = 'Marked Complete';
+            }
+
+            function openModalVideo() { modal.style.display = 'flex'; if (consultationMarkedComplete) document.getElementById('saveMarkCompleteVideo').disabled = true; }
+            function closeModalVideo() { modal.style.display = 'none'; }
+
+            // Autosave debounce
+            let autosaveTimerVideo = null;
+            const notesEl = document.getElementById('completeNotesVideo');
+            notesEl.addEventListener('input', () => {
+                if (autosaveTimerVideo) clearTimeout(autosaveTimerVideo);
+                autosaveTimerVideo = setTimeout(() => saveMarkCompleteVideo(true), 1500);
+            });
+
+            async function saveMarkCompleteVideo(isAutosave=false) {
+                const notes = document.getElementById('completeNotesVideo').value;
+                try {
+                    const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ notes })
+                    });
+                    if (resp.ok) {
+                        consultationMarkedComplete = true;
+                        markCompleteBtn.classList.add('disabled');
+                        markCompleteBtn.textContent = 'Marked Complete';
+                        if (!isAutosave) { alert('Consultation marked complete. You may now hang up.'); closeModalVideo(); }
+                    } else {
+                        if (!isAutosave) alert('Failed to mark consultation complete.');
+                    }
+                } catch (err) {
+                    console.error('Error marking consultation complete', err);
+                    if (!isAutosave) alert('Error marking consultation complete.');
+                }
+            }
+
+            document.getElementById('cancelMarkCompleteVideo').addEventListener('click', (e) => { e.preventDefault(); closeModalVideo(); });
+            document.getElementById('saveMarkCompleteVideo').addEventListener('click', (e) => { e.preventDefault(); saveMarkCompleteVideo(false); });
+
+            markCompleteBtn.addEventListener('click', (e) => { e.preventDefault(); openModalVideo(); });
+        }
+
+        // End call (doctor may end for both after marking complete; patients only leave locally)
         endCallBtn.addEventListener('click', () => {
-            socket.emit('end_video_call', { appointment_id: appointmentId });
+            const currentUserId = document.getElementById('currentUserId')?.value || '';
+            const doctorUserId = document.getElementById('appointmentDoctorUserId')?.value || '';
+
+            // If current user is the doctor
+            if (String(currentUserId) === String(doctorUserId)) {
+                // If not marked complete, confirm that doctor wants to hangup and record incomplete
+                if (!consultationMarkedComplete) {
+                    const ok = confirm('Consultation has not been marked complete. Hanging up will record the appointment as incomplete. Continue?');
+                    if (!ok) return;
+                }
+
+                socket.emit('end_video_call', { appointment_id: appointmentId });
+                closeCall();
+                return;
+            }
+
+            // Non-doctor: leave locally
+            socket.emit('leave_video_room', { appointment_id: appointmentId });
             closeCall();
         });
 
@@ -1106,14 +1204,118 @@
             isDragging = false;
         });
 
-        // Initialize call on load
-        window.addEventListener('load', initializeCall);
+        // Ensure permissions before initializing call
+        async function ensureCallPermissions() {
+            try {
+                const resp = await fetch('/api/user/permissions', { credentials: 'same-origin' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.call_permissions_granted) {
+                        // Permissions already granted previously
+                        initializeCall();
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not fetch user permissions:', err);
+            }
+
+            // Show modal prompting for permissions (one-time)
+            const modal = document.getElementById('permissionsModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        // Request media, geolocation and timezone, then POST to server
+        async function grantCallPermissions() {
+            try {
+                // Request camera and microphone
+                const constraints = { video: true, audio: true };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                // Immediately stop tracks (we'll re-acquire in initializeCall)
+                stream.getTracks().forEach(t => t.stop());
+
+                // Request geolocation (wrap in promise)
+                const pos = await new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) return resolve(null);
+                    const ok = (p) => resolve(p);
+                    const err = (e) => resolve(null);
+                    navigator.geolocation.getCurrentPosition(ok, err, { maximumAge: 60000, timeout: 8000 });
+                });
+
+                const tz = (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : null;
+
+                const payload = {
+                    call_permissions_granted: true,
+                    last_known_lat: pos ? pos.coords.latitude : null,
+                    last_known_lng: pos ? pos.coords.longitude : null,
+                    last_known_timezone: tz || null
+                };
+
+                const resp = await fetch('/api/user/permissions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    console.error('Failed to save permissions', err);
+                    alert('Failed to save permissions. Please try again.');
+                    return;
+                }
+
+                // Hide modal and initialize call
+                const modalEl = document.getElementById('permissionsModal');
+                if (modalEl) modalEl.style.display = 'none';
+
+                initializeCall();
+            } catch (error) {
+                console.error('Permission request failed:', error);
+                alert('Unable to get permissions. Please allow camera/microphone and location access.');
+            }
+        }
+
+        // Wire settings button to allow users to update permissions while in call
+        document.getElementById('callSettingsBtn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = document.getElementById('permissionsModal');
+            if (modal) modal.style.display = 'flex';
+        });
+
+        // Initialize permission modal buttons
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('grantPermissionsBtn')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                grantCallPermissions();
+            });
+            document.getElementById('permissionsModalClose')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                const modal = document.getElementById('permissionsModal');
+                if (modal) modal.style.display = 'none';
+            });
+        });
+
+        // Start by ensuring permissions
+        window.addEventListener('load', ensureCallPermissions);
     </script>
     <!-- Tap-to-enable prompt markup -->
     <div id="enableMediaPrompt" class="enable-media-prompt" style="display:none;">
         <div class="enable-media-card">
             <p>Tap to enable audio/video for this call.</p>
             <button class="enable-media-btn" id="enableMediaBtn">Enable</button>
+        </div>
+    </div>
+    
+    <!-- Permissions modal (one-time before first call) -->
+    <div id="permissionsModal" style="display:none; position:fixed; inset:0; z-index:90; align-items:center; justify-content:center; background:rgba(0,0,0,0.6)">
+        <div style="background:#0b1220; padding:20px; border-radius:12px; width:360px; color:#fff; text-align:center;">
+            <h4 style="margin-bottom:8px">Allow Camera, Microphone & Location</h4>
+            <p style="color:#cbd5e1; font-size:14px; margin-bottom:12px">To join this call we need access to your camera, microphone and your current location/timezone for accurate timestamps. This is a one-time permission which you can change in call settings.</p>
+            <div style="display:flex; gap:8px; justify-content:center; margin-top:12px">
+                <button id="grantPermissionsBtn" class="enable-media-btn" style="background:#10b981;">Grant Permissions</button>
+                <button id="permissionsModalClose" class="enable-media-btn" style="background:#6b7280;">Cancel</button>
+            </div>
         </div>
     </div>
     <script>

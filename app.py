@@ -372,6 +372,28 @@ def initialize_database():
                             print('✗ Failed to add notifications.call_status:', e)
             except Exception as e:
                 print('✗ Failed to inspect notifications table:', e)
+
+            # Ensure users table has call permission columns (hotfix for missing migrations)
+            try:
+                if 'users' in insp.get_table_names():
+                    user_cols = [c['name'] for c in insp.get_columns('users')]
+                    needed = {
+                        'call_permissions_granted': 'BOOLEAN DEFAULT FALSE',
+                        'call_permissions_granted_at': 'TIMESTAMP',
+                        'last_known_lat': 'DOUBLE PRECISION',
+                        'last_known_lng': 'DOUBLE PRECISION',
+                        'last_known_timezone': 'VARCHAR(64)'
+                    }
+                    for col, coltype in needed.items():
+                        if col not in user_cols:
+                            try:
+                                with db.engine.begin() as conn:
+                                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {coltype}"))
+                                print(f'✓ Added missing column users.{col}')
+                            except Exception as e:
+                                print(f'✗ Failed to add users.{col}:', e)
+            except Exception as e:
+                print('✗ Failed to inspect users table:', e)
             
             # Create default users
             create_default_users()
@@ -519,8 +541,8 @@ def handle_initiate_video_call(data):
 
     # Enrich call info with user display names and profile pictures when available
     try:
-        caller_user = User.query.get(caller_id)
-        callee_user = User.query.get(callee_id)
+        caller_user = db.session.get(User, caller_id)
+        callee_user = db.session.get(User, callee_id)
         if caller_user:
             call_info['caller_name'] = safe_display_name(caller_user)
             call_info['caller_profile_picture'] = caller_user.profile_picture if getattr(caller_user, 'profile_picture', None) else None
@@ -578,7 +600,7 @@ def handle_initiate_video_call(data):
     # update appointment status if present
     if appointment_id:
         try:
-            apt = Appointment.query.get(appointment_id)
+            apt = db.session.get(Appointment, appointment_id)
             if apt:
                 apt.call_status = 'ringing'
                 apt.call_initiated_by = caller_id
@@ -605,7 +627,7 @@ def handle_initiate_video_call(data):
                         # Update appointment to missed
                         try:
                             if appointment_id:
-                                apt = Appointment.query.get(appointment_id)
+                                apt = db.session.get(Appointment, appointment_id)
                                 if apt:
                                     apt.call_status = 'missed'
                                     db.session.commit()
@@ -669,7 +691,7 @@ def handle_initiate_video_call(data):
                         # Update appointment to missed
                         try:
                             if appointment_id:
-                                apt = Appointment.query.get(appointment_id)
+                                apt = db.session.get(Appointment, appointment_id)
                                 if apt:
                                     apt.call_status = 'missed'
                                     db.session.commit()
@@ -750,7 +772,7 @@ def handle_accept_video_call(data):
     # Update appointment status
     try:
         if info.get('appointment_id'):
-            apt = Appointment.query.get(info.get('appointment_id'))
+            apt = db.session.get(Appointment, info.get('appointment_id'))
             if apt:
                 apt.call_status = 'ongoing'
                 db.session.commit()
@@ -794,7 +816,7 @@ def handle_reject_video_call(data):
         # update appointment
         try:
             if info.get('appointment_id'):
-                apt = Appointment.query.get(info.get('appointment_id'))
+                apt = db.session.get(Appointment, info.get('appointment_id'))
                 if apt:
                     apt.call_status = 'missed'
                     db.session.commit()
@@ -837,7 +859,7 @@ def handle_end_call(data):
         try:
             cs_id = info.get('call_session_id')
             if cs_id:
-                cs = CallSession.query.get(cs_id)
+                cs = db.session.get(CallSession, cs_id)
                 if cs and not cs.ended_at:
                     cs.ended_at = datetime.now(timezone.utc)
                     if cs.started_at:
@@ -854,7 +876,7 @@ def handle_end_call(data):
         # update appointment status and possibly mark completed if doctor ended
         try:
             if info.get('appointment_id'):
-                apt = Appointment.query.get(info.get('appointment_id'))
+                apt = db.session.get(Appointment, info.get('appointment_id'))
                 if apt:
                     apt.call_status = 'ended'
                     # if the ended_by is the doctor user, mark appointment completed
@@ -883,7 +905,7 @@ def handle_end_call(data):
         doctor_user_id = None
         patient_user_id = None
         try:
-            apt = Appointment.query.get(appointment_id)
+            apt = db.session.get(Appointment, appointment_id)
             if apt:
                 doc = db.session.get(Doctor, apt.doctor_id)
                 if doc:
@@ -7443,7 +7465,7 @@ def handle_initiate_video_call(data):
                 emit('user_busy', {
                     'appointment_id': appointment_id,
                     'message': f'{caller_name} is currently on another call. Please wait or try again later.',
-                    'callee_name': safe_display_name(User.query.get(callee_user_id))
+                    'callee_name': safe_display_name(db.session.get(User, callee_user_id))
                 })
                 return
         
@@ -7521,21 +7543,21 @@ def handle_initiate_video_call(data):
 
                         # Create missed call notification for callee (whether online or offline)
                         try:
-                            callee_user = User.query.get(callee_user_id)
-                            from models import CallNotification
-                            missed_notification = CallNotification(
+                            callee_user = db.session.get(User, callee_user_id)
+                            notif = Notification(
                                 user_id=callee_user_id,
-                                caller_id=caller_id,
-                                call_type='video',
-                                status='missed',
                                 appointment_id=appointment_id,
-                                created_at=datetime.now(timezone.utc)
+                                notification_type='missed_video_call',
+                                sender_id=caller_id,
+                                title='Missed Video Call',
+                                body=f'{safe_display_name(db.session.get(User, caller_id))} called you',
+                                call_status='missed'
                             )
-                            db.session.add(missed_notification)
+                            db.session.add(notif)
                             db.session.commit()
                         except Exception as e:
-                            print(f'Error creating missed call notification: {e}')
                             try:
+                                app.logger.exception('Error creating missed call notification: %s', e)
                                 db.session.rollback()
                             except Exception:
                                 pass
@@ -7666,7 +7688,7 @@ def handle_end_video_call(data):
         doctor_user_id = None
         patient_user_id = None
         try:
-            apt = Appointment.query.get(appointment_id)
+            apt = db.session.get(Appointment, appointment_id)
             if apt:
                 try:
                     doc = db.session.get(Doctor, apt.doctor_id)
@@ -7681,7 +7703,8 @@ def handle_end_video_call(data):
                 except Exception:
                     patient_user_id = None
         except Exception:
-            pass
+            apt = None
+            app.logger.exception('Failed to load appointment for end_video_call')
 
         end_data = {
             'appointment_id': appointment_id,
@@ -7705,17 +7728,51 @@ def handle_end_video_call(data):
             except Exception:
                 pass
 
+        # Only the doctor may end the call for both participants. If the current user
+        # is not the doctor, treat this as a local leave and do not end the call for everyone.
+        try:
+            is_doctor_ender = (doctor_user_id is not None and current_user.id == int(doctor_user_id))
+        except Exception:
+            is_doctor_ender = False
+
+        if not is_doctor_ender:
+            # Patient or other participant left; notify room that user left but don't end call
+            try:
+                emit('user_left_video_room', {'user_id': current_user.id, 'appointment_id': appointment_id}, room=f'video_call_{appointment_id}')
+            except Exception:
+                pass
+            return
+
+        # If the doctor is ending the call, update appointment status to 'incomplete' if it wasn't marked completed
+        try:
+            if apt:
+                if getattr(apt, 'status', None) != 'completed':
+                    apt.status = 'incomplete'
+                    db.session.add(apt)
+                    db.session.commit()
+                    # Audit log: appointment marked incomplete by doctor hangup
+                    try:
+                        audit = AuditLog(user_id=current_user.id, action='appointment_marked_incomplete', description=f'Doctor ended call for appointment {appointment_id} without marking complete', ip_address=request.remote_addr)
+                        db.session.add(audit)
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                    app.logger.info('Appointment %s marked as incomplete because doctor ended call without marking complete', appointment_id)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Failed to mark appointment incomplete on doctor end_video_call')
+
         emit_to_sockets(caller_sockets, end_data)
         emit_to_sockets(callee_sockets, end_data)
-        
+
         # Clean up
         if appointment_id in active_calls:
             del active_calls[appointment_id]
-        
-        print(f'Video call ended for appointment {appointment_id}')
+
+        app.logger.info('Video call ended for appointment %s by user %s', appointment_id, current_user.id)
         
     except Exception as e:
-        print(f'Error ending video call: {str(e)}')
+        app.logger.exception('Error ending video call')
 
 @socketio.on('join_video_room')
 def handle_join_video_room(data):
@@ -7749,6 +7806,66 @@ def handle_leave_video_room(data):
         'user_id': current_user.id,
         'appointment_id': appointment_id
     }, room=room_name, skip_sid=request.sid)
+
+
+# Doctor marks consultation complete
+@app.route('/api/appointments/<int:appointment_id>/complete', methods=['POST'])
+@login_required
+def mark_appointment_complete(appointment_id):
+    try:
+        appointment = db.session.get(Appointment, appointment_id)
+        if not appointment:
+            return jsonify({'error': 'appointment_not_found'}), 404
+
+        # Only the doctor for this appointment may mark it complete
+        try:
+            doc = db.session.get(Doctor, appointment.doctor_id)
+            doctor_user_id = getattr(doc, 'user_id', None) if doc else None
+        except Exception:
+            doctor_user_id = None
+
+        if current_user.id != doctor_user_id:
+            return jsonify({'error': 'forbidden'}), 403
+
+        # Optional notes may be provided by the doctor
+        data = request.get_json(silent=True) or {}
+        notes = data.get('notes') if isinstance(data, dict) else None
+        if notes is not None:
+            try:
+                appointment.notes = notes
+            except Exception:
+                pass
+
+        appointment.status = 'completed'
+        appointment.call_status = 'ended'
+        db.session.add(appointment)
+        db.session.commit()
+
+        # Audit log: appointment completed by doctor
+        try:
+            audit = AuditLog(user_id=current_user.id, action='appointment_completed', description=f'Doctor marked appointment {appointment_id} complete', ip_address=request.remote_addr)
+            db.session.add(audit)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        # Notify patient and doctor sockets if present
+        try:
+            patient = db.session.get(Patient, appointment.patient_id)
+            patient_user_id = getattr(patient, 'user_id', None) if patient else None
+            payload = {'appointment_id': appointment_id, 'status': 'completed'}
+            if doctor_user_id:
+                socketio.emit('appointment_marked_complete', payload, room=f'user_{doctor_user_id}')
+            if patient_user_id:
+                socketio.emit('appointment_marked_complete', payload, room=f'user_{patient_user_id}')
+        except Exception:
+            pass
+
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception('Failed to mark appointment complete')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @socketio.on('webrtc_offer')
 def handle_webrtc_offer(data):
@@ -8555,13 +8672,61 @@ def handle_end_voice_call(data):
             return
         
         call_info = active_calls[appointment_id]
-        
-        # Update call status
+        # Determine appointment and doctor/patient user ids
+        try:
+            apt = db.session.get(Appointment, appointment_id)
+        except Exception:
+            apt = None
+
+        doctor_user_id = None
+        patient_user_id = None
+        try:
+            if apt:
+                doc = db.session.get(Doctor, apt.doctor_id)
+                if doc:
+                    doctor_user_id = getattr(doc, 'user_id', None)
+                pat = db.session.get(Patient, apt.patient_id)
+                if pat:
+                    patient_user_id = getattr(pat, 'user_id', None)
+        except Exception:
+            pass
+
+        # Only the doctor may end the call for all participants
+        try:
+            is_doctor_ender = (doctor_user_id is not None and current_user.id == int(doctor_user_id))
+        except Exception:
+            is_doctor_ender = False
+
+        if not is_doctor_ender:
+            # Non-doctor leaves locally: notify room/user and do not end for others
+            try:
+                emit('user_left_appointment', {'user_id': current_user.id, 'appointment_id': appointment_id}, room=f'appointment_{appointment_id}')
+            except Exception:
+                pass
+            return
+
+        # Doctor is ending the call for everyone: update appointment to 'incomplete' if not completed
+        try:
+            if apt and getattr(apt, 'status', None) != 'completed':
+                apt.status = 'incomplete'
+                db.session.add(apt)
+                db.session.commit()
+                # Audit log for incomplete
+                try:
+                    audit = AuditLog(user_id=current_user.id, action='appointment_marked_incomplete', description=f'Doctor ended voice call for appointment {appointment_id} without marking complete', ip_address=request.remote_addr)
+                    db.session.add(audit)
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Failed to mark appointment incomplete on doctor end_voice_call')
+
+        # Update call info and create notification
         call_info['status'] = 'ended'
         call_info['ended_time'] = datetime.now(timezone.utc).isoformat()
         call_info['ended_by'] = current_user.id
-        
-        # Create call end notification
+
         other_user_id = call_info['caller_id'] if current_user.id != call_info['caller_id'] else call_info.get('callee_id')
         try:
             notif = Notification(
@@ -8577,22 +8742,21 @@ def handle_end_voice_call(data):
             db.session.commit()
         except Exception:
             db.session.rollback()
-        
+
         # Notify both parties
         call_ended_data = {
             'appointment_id': appointment_id,
             'ended_by': current_user.id,
             'call_type': 'voice'
         }
-        
+
         emit('voice_call_ended', call_ended_data, room=f'user_{call_info["caller_id"]}')
         if call_info.get('callee_id'):
             emit('voice_call_ended', call_ended_data, room=f'user_{call_info["callee_id"]}')
-        
+
         # Clean up
         active_calls.pop(appointment_id, None)
-        
-        print(f'Voice call ended for appointment {appointment_id}')
+        app.logger.info('Voice call ended for appointment %s by user %s', appointment_id, current_user.id)
         
     except Exception as e:
         print(f'Error ending voice call: {str(e)}')
@@ -8744,7 +8908,7 @@ def handle_join_admin_chat(data):
     user_role = data.get('user_role')
     
     # Verify admin exists
-    admin = User.query.get(admin_id)
+    admin = db.session.get(User, admin_id)
     if not admin or admin.role != 'admin':
         return {'error': 'Invalid admin'}
     
@@ -8866,7 +9030,7 @@ def submit_testimonial(appointment_id):
         content = data.get('content')
         is_public = data.get('is_public', True)
 
-        apt = Appointment.query.get(appointment_id)
+        apt = db.session.get(Appointment, appointment_id)
         if not apt:
             return jsonify({'error': 'appointment_not_found'}), 404
 
@@ -8889,6 +9053,73 @@ def submit_testimonial(appointment_id):
         db.session.rollback()
         return jsonify({'error': 'server_error', 'message': str(e)}), 500
 
+
+# --------------------
+# User call permissions API
+# --------------------
+@app.route('/api/user/permissions', methods=['GET'])
+@login_required
+def get_user_permissions():
+    try:
+        user = db.session.get(User, current_user.id)
+        if not user:
+            return jsonify({'error': 'user_not_found'}), 404
+
+        return jsonify({
+            'call_permissions_granted': bool(getattr(user, 'call_permissions_granted', False)),
+            'call_permissions_granted_at': user.call_permissions_granted_at.isoformat() if getattr(user, 'call_permissions_granted_at', None) else None,
+            'last_known_lat': getattr(user, 'last_known_lat', None),
+            'last_known_lng': getattr(user, 'last_known_lng', None),
+            'last_known_timezone': getattr(user, 'last_known_timezone', None)
+        })
+    except Exception as e:
+        app.logger.exception('Failed to get user permissions')
+        return jsonify({'error': 'server_error', 'message': str(e)}), 500
+
+
+@app.route('/api/user/permissions', methods=['POST'])
+@login_required
+def update_user_permissions():
+    try:
+        data = request.get_json() or {}
+        user = db.session.get(User, current_user.id)
+        if not user:
+            return jsonify({'error': 'user_not_found'}), 404
+
+        granted = bool(data.get('call_permissions_granted', False))
+        user.call_permissions_granted = granted
+        if granted:
+            user.call_permissions_granted_at = datetime.now(timezone.utc)
+
+        lat = data.get('last_known_lat')
+        lng = data.get('last_known_lng')
+        tz = data.get('last_known_timezone')
+        if lat is not None:
+            try:
+                user.last_known_lat = float(lat)
+            except Exception:
+                pass
+        if lng is not None:
+            try:
+                user.last_known_lng = float(lng)
+            except Exception:
+                pass
+        if tz:
+            user.last_known_timezone = str(tz)
+
+        db.session.add(user)
+        db.session.commit()
+
+        try:
+            socketio.emit('user_permissions_updated', {'user_id': user.id, 'call_permissions_granted': user.call_permissions_granted}, room=f'user_{user.id}')
+        except Exception:
+            pass
+
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception('Failed to update user permissions')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ==================== HEALTH TIPS ENDPOINTS ====================
@@ -8934,7 +9165,6 @@ def get_patient_health_tips(patient_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
     # NOTE: duplicate appointment-specific testimonial route removed (kept canonical /api/appointments/<id>/testimonial earlier)
 
 
@@ -8977,7 +9207,8 @@ def create_health_tip():
         # Emit real-time notification to patient (emit to personal room)
         patient_user = db.session.get(User, patient.user_id)
         if patient_user:
-            emit('new_health_tip', {
+            # Use the Socket.IO server instance to emit from a Flask route (request context has no namespace)
+            socketio.emit('new_health_tip', {
                 'tip_id': health_tip.id,
                 'title': health_tip.title,
                 'doctor_name': current_user.first_name + ' ' + current_user.last_name
@@ -9028,7 +9259,8 @@ def update_health_tip(tip_id):
         patient = db.session.get(Patient, health_tip.patient_id)
         patient_user = db.session.get(User, patient.user_id)
         if patient_user:
-            emit('health_tip_updated', {
+            # Emit from Flask route using socketio server instance
+            socketio.emit('health_tip_updated', {
                 'tip_id': health_tip.id,
                 'title': health_tip.title,
                 'doctor_name': current_user.first_name + ' ' + current_user.last_name
@@ -9066,7 +9298,8 @@ def delete_health_tip(tip_id):
         patient = db.session.get(Patient, patient_id)
         patient_user = db.session.get(User, patient.user_id)
         if patient_user:
-            emit('health_tip_deleted', {
+            # Emit from Flask route using socketio server instance
+            socketio.emit('health_tip_deleted', {
                 'tip_id': tip_id,
                 'doctor_name': current_user.first_name + ' ' + current_user.last_name
             }, room=f'user_{patient_user.id}')

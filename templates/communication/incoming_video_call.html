@@ -525,11 +525,15 @@
         callerNameEl.textContent = callerName;
         callerRoleEl.textContent = callerRole;
 
-        // Display profile picture if available
+        // Display profile picture if available (with graceful fallback)
         if (callerProfilePic) {
             callerProfilePicEl.src = callerProfilePic;
             callerProfilePicEl.style.display = 'block';
             callerInitials.style.display = 'none';
+            callerProfilePicEl.onerror = function() {
+                this.style.display = 'none';
+                callerInitials.style.display = 'flex';
+            };
         } else {
             // Generate initials
             const names = callerName.split(' ');

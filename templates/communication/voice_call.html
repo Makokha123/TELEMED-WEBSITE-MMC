@@ -189,13 +189,14 @@
 
                 <!-- Call Main Area -->
                 <div class="call-main">
-                    <div class="caller-avatar">
-                        <i class="fas fa-user-md"></i>
+                    <div class="caller-avatar" id="remoteAvatar">
+                        <img id="remoteProfilePic" src="" alt="Remote" style="display:none;width:100%;height:100%;object-fit:cover;position:relative;" />
+                        <span id="remoteInitials" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;">SJ</span>
                     </div>
                     <div class="call-status" id="callStatus">Connected</div>
                     <div class="call-timer" id="callTimer">00:00:00</div>
-                    <div class="caller-name">Dr. Sarah Johnson</div>
-                    <div class="caller-specialty">Cardiologist</div>
+                    <div class="caller-name" id="remoteName">Dr. Sarah Johnson</div>
+                    <div class="caller-specialty" id="remoteSpecialty">Cardiologist</div>
                 </div>
 
                 <!-- Call Notes -->
@@ -244,6 +245,11 @@
                     <button class="control-btn hold-call" id="holdBtn" title="Hold Call">
                         <i class="fas fa-pause"></i>
                     </button>
+                    {% if appointment and appointment.doctor and appointment.doctor.user_id == current_user.id %}
+                    <button class="control-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background:#06b6d4; color:#fff;">
+                        <i class="fas fa-check"></i>
+                    </button>
+                    {% endif %}
                     <button class="control-btn end-call" id="endCallBtn" title="End Call">
                         <i class="fas fa-phone-slash"></i>
                     </button>
@@ -305,6 +311,7 @@
         </div>
     </div>
 </div>
+    <input type="hidden" id="consultationMarkedCompleteFlag" value="{{ '1' if appointment and appointment.status == 'completed' else '0' }}">
 {% endblock %}
 
 {% block extra_js %}
@@ -325,6 +332,42 @@
 
     // Get appointment ID from URL
     const appointmentId = window.location.pathname.split('/').pop();
+    // Expose appointment doctor user id
+    const appointmentDoctorUserId = '{{ appointment.doctor.user_id if appointment and appointment.doctor else "" }}';
+
+    // Remote participant info (prefer URL params / safe storage)
+    const params = new URLSearchParams(window.location.search);
+    const remoteNameParam = params.get('remote_name') || '';
+    const remoteProfilePicParam = params.get('remote_profile_pic') || '';
+    const remoteSpecialtyParam = params.get('remote_specialty') || '';
+
+    // Populate remote UI elements if passed in URL
+    const remoteNameEl = document.getElementById('remoteName');
+    const remoteSpecialtyEl = document.getElementById('remoteSpecialty');
+    const remotePicEl = document.getElementById('remoteProfilePic');
+    const remoteInitialsEl = document.getElementById('remoteInitials');
+
+    if (remoteNameParam) {
+        remoteNameEl.textContent = remoteNameParam;
+    }
+    if (remoteSpecialtyParam) {
+        remoteSpecialtyEl.textContent = remoteSpecialtyParam;
+    }
+    if (remoteProfilePicParam) {
+        remotePicEl.src = remoteProfilePicParam;
+        remotePicEl.style.display = 'block';
+        remoteInitialsEl.style.display = 'none';
+        remotePicEl.onerror = function() {
+            // Hide broken image and show initials
+            this.style.display = 'none';
+            remoteInitialsEl.style.display = 'flex';
+        };
+    } else if (remoteNameParam) {
+        // generate initials from provided name
+        const names = remoteNameParam.split(' ');
+        const initials = names.map(n => n.charAt(0)).join('').substring(0,2).toUpperCase();
+        remoteInitialsEl.textContent = initials;
+    }
 
     $(document).ready(function() {
         // Initialize audio connection
@@ -335,6 +378,98 @@
 
         // Initialize call controls
         initCallControls();
+    });
+
+    // Consultation complete state (read from hidden flag set by server-side template)
+    let consultationMarkedComplete = document.getElementById('consultationMarkedCompleteFlag')?.value === '1';
+
+    // Add modal markup for marking consultation complete (doctor-only)
+    const modalHtml = `
+    <div id="markCompleteModal" style="display:none; position:fixed; inset:0; z-index:2000; align-items:center; justify-content:center; background:rgba(0,0,0,0.6)">
+        <div style="background:#fff; color:#111; padding:20px; border-radius:10px; width:480px; max-width:95%;">
+            <h5>Mark Consultation Complete</h5>
+            <p class="text-muted">Leave brief notes and confirm marking this consultation complete. This will allow you to end the call for all participants.</p>
+            <div class="mb-2">
+                <textarea id="completeNotes" class="form-control" rows="4" placeholder="Summary notes for the appointment (optional)"></textarea>
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+                <button id="cancelMarkComplete" class="btn btn-secondary">Cancel</button>
+                <button id="saveMarkComplete" class="btn btn-primary">Mark Complete</button>
+            </div>
+        </div>
+    </div>`;
+
+    $(document.body).append(modalHtml);
+
+    function openMarkCompleteModal() {
+        if (!document.getElementById('markCompleteModal')) return;
+        $('#markCompleteModal').show();
+        if (consultationMarkedComplete) $('#saveMarkComplete').prop('disabled', true).text('Marked Complete');
+    }
+
+    function closeMarkCompleteModal() {
+        $('#markCompleteModal').hide();
+    }
+
+    // Autosave debounce
+    let autosaveTimer = null;
+    $('#markCompleteModal').on('input', '#completeNotes', function() {
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(() => {
+            saveMarkComplete(true);
+        }, 1500);
+    });
+
+    async function saveMarkComplete(isAutosave=false) {
+        const notes = $('#completeNotes').val();
+        try {
+            const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes })
+            });
+            if (resp.ok) {
+                consultationMarkedComplete = true;
+                $('#saveMarkComplete').prop('disabled', true).text('Marked Complete');
+                if (!isAutosave) {
+                    alert('Consultation marked complete. You may now hang up.');
+                    closeMarkCompleteModal();
+                }
+            } else {
+                if (!isAutosave) alert('Failed to mark consultation complete.');
+            }
+        } catch (err) {
+            console.error('Error saving mark complete', err);
+            if (!isAutosave) alert('Error marking consultation complete.');
+        }
+    }
+
+    // Wire modal buttons
+    $(document).on('click', '#cancelMarkComplete', function(e){ e.preventDefault(); closeMarkCompleteModal(); });
+    $(document).on('click', '#saveMarkComplete', function(e){ e.preventDefault(); saveMarkComplete(false); });
+
+    // Open modal when doctor clicks mark button
+    $(document).on('click', '#markConsultationCompleteBtn', function(e){ e.preventDefault(); openMarkCompleteModal(); });
+
+    // Intercept end call to enforce doctor-only hangup
+    $('#endCallBtn').on('click', function(e){
+        e.preventDefault();
+        const currentUserId = '{{ current_user.id }}';
+        if (String(currentUserId) === String(appointmentDoctorUserId)) {
+            if (!consultationMarkedComplete) {
+                const ok = confirm('Consultation has not been marked complete. Hanging up will record the appointment as incomplete. Continue?');
+                if (!ok) return;
+            }
+            // Doctor ends for everyone
+            if (socket && socket.connected) socket.emit('end_voice_call', { appointment_id: appointmentId });
+            // close UI
+            window.location.href = '/doctor/dashboard';
+        } else {
+            // Non-doctor leaves locally
+            if (socket && socket.connected) socket.emit('leave_appointment', { appointment_id: appointmentId });
+            window.location.href = `/communication/${appointmentId}`;
+        }
     });
 
     async function initializeAudioCall() {

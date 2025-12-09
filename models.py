@@ -123,14 +123,17 @@ class User(UserMixin, db.Model):
     profile_picture_name = db.Column(db.String(255))  # Original filename for reference
     date_of_birth = db.Column(db.Date)
     is_active = db.Column(db.Boolean, default=True)
-    # Per-role toggles persisted on the user record
-    # - `allow_user_creation` (admin only): whether this admin may create other users via admin UI
-    # - `show_availability` (doctor only): whether the doctor's availability is shown publicly
-    # - `share_data` (patient only): whether the patient consents to share anonymized data
+
     allow_user_creation = db.Column(db.Boolean, default=False)
     show_availability = db.Column(db.Boolean, default=True)
     share_data = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    call_permissions_granted = db.Column(db.Boolean, default=False, nullable=False)
+    call_permissions_granted_at = db.Column(db.DateTime, nullable=True)
+    last_known_lat = db.Column(db.Float, nullable=True)
+    last_known_lng = db.Column(db.Float, nullable=True)
+    last_known_timezone = db.Column(db.String(64), nullable=True)
 
     # Relationships
     patient_profile = db.relationship('Patient', backref='user', uselist=False, foreign_keys='Patient.user_id')
@@ -462,6 +465,24 @@ class Doctor(db.Model):
 
     appointments = db.relationship('Appointment', backref='doctor', lazy=True)
     testimonials = db.relationship('Testimonial', backref='doctor', lazy='dynamic')
+
+    def get_display_name(self):
+        """Get doctor's display name"""
+        try:
+            # Use the associated user's display name if available
+            if self.user:
+                return self.user.get_display_name()
+            # Fallback if user relationship isn't loaded
+            elif hasattr(self, 'encrypted_first_name') and hasattr(self, 'encrypted_last_name'):
+                # Try to decrypt directly if doctor has name fields (though they should be on user)
+                first = _decrypt_text(self.encrypted_first_name) if self.encrypted_first_name else ""
+                last = _decrypt_text(self.encrypted_last_name) if self.encrypted_last_name else ""
+                name = f"{first} {last}".strip()
+                return name if name else "Doctor"
+            else:
+                return "Doctor"
+        except Exception:
+            return "Doctor"
 
     @property
     def specialization(self):
