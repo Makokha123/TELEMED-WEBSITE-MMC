@@ -124,7 +124,7 @@
             </a>
         </div>
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card quick-action-card border-left-info" onclick="createPrescription()">
+            <div class="card quick-action-card border-left-info" data-bs-toggle="modal" data-bs-target="#prescriptionModal" style="cursor: pointer;">
                 <div class="card-body">
                     <i class="fas fa-file-prescription fa-3x text-info mb-3"></i>
                     <h5 class="card-title">Prescriptions</h5>
@@ -133,7 +133,7 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card quick-action-card border-left-warning" onclick="viewReports()">
+            <div class="card quick-action-card border-left-warning" data-bs-toggle="modal" data-bs-target="#reportsModal" style="cursor: pointer;">
                 <div class="card-body">
                     <i class="fas fa-chart-bar fa-3x text-warning mb-3"></i>
                     <h5 class="card-title">Reports</h5>
@@ -474,6 +474,317 @@
         </div>
     </div>
 </div>
+
+<!-- Prescription Creation Modal -->
+<div class="modal fade" id="prescriptionModal" tabindex="-1" aria-labelledby="prescriptionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #28a745, #20c997); color: white;">
+                <h5 class="modal-title" id="prescriptionModalLabel">
+                    <i class="fas fa-file-prescription me-2"></i>Create Prescription
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="prescriptionForm">
+                    <!-- Patient Selection -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="rxPatient" class="form-label">Patient *</label>
+                            <select class="form-control" id="rxPatient" name="patient_id" required>
+                                <option value="">Select a patient...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="rxDate" class="form-label">Date *</label>
+                            <input type="date" class="form-control" id="rxDate" name="date" required>
+                        </div>
+                    </div>
+
+                    <!-- Medication Details -->
+                    <div class="alert alert-info">
+                        <strong>Add Medications</strong>
+                        <div id="medicationsContainer" class="mt-3">
+                            <!-- Medications will be added here dynamically -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-success mt-3" id="addMedicationBtn">
+                            <i class="fas fa-plus me-1"></i>Add Medication
+                        </button>
+                    </div>
+
+                    <!-- Diagnosis and Notes -->
+                    <div class="mb-3">
+                        <label for="rxDiagnosis" class="form-label">Diagnosis *</label>
+                        <textarea class="form-control" id="rxDiagnosis" name="diagnosis" rows="3" placeholder="Enter patient diagnosis..." required></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="rxNotes" class="form-label">Additional Notes</label>
+                        <textarea class="form-control" id="rxNotes" name="notes" rows="2" placeholder="Any additional instructions or warnings..."></textarea>
+                    </div>
+
+                    <!-- Follow-up -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="rxFollowup" class="form-label">Follow-up Required</label>
+                            <select class="form-control" id="rxFollowup" name="followup_required">
+                                <option value="no">No</option>
+                                <option value="yes">Yes</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="rxFollowupDate" class="form-label">Follow-up Date</label>
+                            <input type="date" class="form-control" id="rxFollowupDate" name="followup_date">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="savePrescriptionBtn">
+                    <i class="fas fa-check me-1"></i>Save Prescription
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reports Modal -->
+<div class="modal fade" id="reportsModal" tabindex="-1" aria-labelledby="reportsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #ffc107, #ff9800); color: white;">
+                <h5 class="modal-title" id="reportsModalLabel">
+                    <i class="fas fa-chart-bar me-2"></i>Practice Reports & Analytics
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Filter Options -->
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Date Range</label>
+                        <div class="input-group input-group-sm">
+                            <input type="date" class="form-control" id="reportStartDate" placeholder="From">
+                            <input type="date" class="form-control" id="reportEndDate" placeholder="To">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Report Type</label>
+                        <select class="form-control form-control-sm" id="reportType">
+                            <option value="all">All Reports</option>
+                            <option value="consultations">Consultations</option>
+                            <option value="revenue">Revenue</option>
+                            <option value="prescriptions">Prescriptions</option>
+                            <option value="patient-demographics">Patient Demographics</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button class="btn btn-primary btn-sm w-100" id="generateReportBtn">
+                            <i class="fas fa-sync me-1"></i>Generate Report
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Report Content Area -->
+                <div id="reportContent" class="row">
+                    <!-- Consultation Stats -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-left-primary">
+                            <div class="card-header bg-primary text-white py-2">
+                                <h6 class="mb-0"><i class="fas fa-stethoscope me-2"></i>Consultations</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #007bff;" id="totalConsultations">0</div>
+                                        <small class="text-muted">Total</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #28a745;" id="avgRating">4.8</div>
+                                        <small class="text-muted">Avg Rating</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Revenue Stats -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-left-success">
+                            <div class="card-header bg-success text-white py-2">
+                                <h6 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Revenue</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #28a745;" id="totalRevenue">Ksh 0</div>
+                                        <small class="text-muted">Total</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #ffc107;" id="avgConsultationFee">Ksh 0</div>
+                                        <small class="text-muted">Avg Fee</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Prescription Stats -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-left-info">
+                            <div class="card-header bg-info text-white py-2">
+                                <h6 class="mb-0"><i class="fas fa-pills me-2"></i>Prescriptions</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #0dcaf0;" id="totalPrescriptions">0</div>
+                                        <small class="text-muted">Total</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #6f42c1;" id="avgMedsPerPrescription">0</div>
+                                        <small class="text-muted">Avg Medications</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Patient Demographics -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-left-warning">
+                            <div class="card-header bg-warning text-dark py-2">
+                                <h6 class="mb-0"><i class="fas fa-users me-2"></i>Patients</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #ff9800;" id="totalUniquePatients">0</div>
+                                        <small class="text-muted">Unique</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <div style="font-size: 24px; font-weight: bold; color: #e74c3c;" id="newPatientsCount">0</div>
+                                        <small class="text-muted">New</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Breakdown -->
+                <div class="mt-4">
+                    <h6>Recent Consultations Summary</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover" id="consultationTable">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th>Patient</th>
+                                    <th>Type</th>
+                                    <th>Date</th>
+                                    <th>Duration</th>
+                                    <th>Fee</th>
+                                </tr>
+                            </thead>
+                            <tbody id="consultationTableBody">
+                                <tr><td colspan="5" class="text-center text-muted py-4">Loading data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" id="exportReportBtn">
+                    <i class="fas fa-download me-1"></i>Export PDF
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Emergency Services Modal -->
+<div class="modal fade" id="emergencyModal" tabindex="-1" aria-labelledby="emergencyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content border-danger">
+            <div class="modal-header" style="background-color: #dc3545; color: white;">
+                <h5 class="modal-title" id="emergencyModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Emergency Services
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger mb-3">
+                    <i class="fas fa-ambulance me-2"></i>
+                    <strong>Emergency Alert</strong><br>
+                    You are about to contact Emergency Medical Services. This action will be logged.
+                </div>
+
+                <!-- Emergency Location Information -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>Patient Location</strong></label>
+                    <input type="text" class="form-control" id="emergencyLocation" placeholder="Enter or select patient location..." required>
+                </div>
+
+                <!-- Emergency Severity -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>Severity Level</strong></label>
+                    <select class="form-control" id="emergencySeverity" required>
+                        <option value="">Select severity...</option>
+                        <option value="critical">Critical - Life Threatening</option>
+                        <option value="high">High - Serious Condition</option>
+                        <option value="medium">Medium - Urgent</option>
+                    </select>
+                </div>
+
+                <!-- Emergency Description -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>Description of Emergency</strong></label>
+                    <textarea class="form-control" id="emergencyDescription" rows="3" placeholder="Describe the emergency situation..." required></textarea>
+                </div>
+
+                <!-- Emergency Contact Options -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>Contact Option</strong></label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="emergencyContact" id="callEmergency" value="call" checked>
+                        <label class="btn btn-outline-danger" for="callEmergency">
+                            <i class="fas fa-phone me-1"></i>Call 999
+                        </label>
+                        <input type="radio" class="btn-check" name="emergencyContact" id="smsEmergency" value="sms">
+                        <label class="btn btn-outline-danger" for="smsEmergency">
+                            <i class="fas fa-sms me-1"></i>Send SMS
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Emergency Contacts Display -->
+                <div class="alert alert-warning py-2 small">
+                    <strong>Emergency Services Contact:</strong><br>
+                    <i class="fas fa-phone me-1"></i> Phone: <strong>999</strong><br>
+                    <i class="fas fa-map-marker me-1"></i> Dispatch requires location information<br>
+                    <i class="fas fa-clock me-1"></i> Average response time: 8-10 minutes
+                </div>
+
+                <!-- Confirmation Checkbox -->
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="emergencyConfirm" required>
+                    <label class="form-check-label" for="emergencyConfirm">
+                        I confirm this is a genuine emergency and I have provided accurate information
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="callEmergencyServicesBtn">
+                    <i class="fas fa-exclamation-circle me-1"></i>Call Emergency Services
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -780,22 +1091,386 @@
         window.location.href = `/communication/appointment/${appointmentId}`;
     }
 
+    // ===== PRESCRIPTION MANAGEMENT =====
+    let medicationCount = 0;
+    const prescriptionPatients = {};
+
+    function initPrescriptionModal() {
+        // Populate patient dropdown
+        fetch('/api/doctor/appointments')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('rxPatient');
+                const groups = data.appointments_by_patient || [];
+                groups.forEach(g => {
+                    if (g.patient) {
+                        prescriptionPatients[g.patient.id] = g.patient;
+                        const opt = document.createElement('option');
+                        opt.value = g.patient.id;
+                        opt.textContent = `${g.patient.first_name} ${g.patient.last_name}`;
+                        select.appendChild(opt);
+                    }
+                });
+            })
+            .catch(error => console.error('Error loading patients:', error));
+
+        // Set today's date by default
+        document.getElementById('rxDate').valueAsDate = new Date();
+
+        // Add medication button
+        document.getElementById('addMedicationBtn').addEventListener('click', addMedicationField);
+
+        // Save prescription button
+        document.getElementById('savePrescriptionBtn').addEventListener('click', savePrescription);
+    }
+
+    function addMedicationField() {
+        const container = document.getElementById('medicationsContainer');
+        medicationCount++;
+        const medId = `med${medicationCount}`;
+
+        const div = document.createElement('div');
+        div.id = medId;
+        div.className = 'card mb-2 p-3 border-light';
+        div.innerHTML = `
+            <div class="row">
+                <div class="col-md-6 mb-2">
+                    <input type="text" class="form-control form-control-sm" name="medication_name" placeholder="Medication name" required>
+                </div>
+                <div class="col-md-3 mb-2">
+                    <input type="text" class="form-control form-control-sm" name="medication_dosage" placeholder="Dosage (e.g., 500mg)" required>
+                </div>
+                <div class="col-md-2 mb-2">
+                    <select class="form-control form-control-sm" name="medication_frequency" required>
+                        <option value="">Frequency</option>
+                        <option value="once_daily">Once Daily</option>
+                        <option value="twice_daily">Twice Daily</option>
+                        <option value="three_times">Three Times</option>
+                        <option value="four_times">Four Times</option>
+                        <option value="as_needed">As Needed</option>
+                    </select>
+                </div>
+                <div class="col-md-1 mb-2">
+                    <button type="button" class="btn btn-sm btn-danger" onclick="document.getElementById('${medId}').remove()">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12">
+                    <input type="text" class="form-control form-control-sm" name="medication_instructions" placeholder="Instructions (e.g., take with food, do not mix with alcohol)">
+                </div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-md-4">
+                    <input type="number" class="form-control form-control-sm" name="medication_duration" placeholder="Duration (days)" min="1" required>
+                </div>
+                <div class="col-md-8">
+                    <input type="text" class="form-control form-control-sm" name="medication_refills" placeholder="Refills allowed (e.g., 0 or 3)">
+                </div>
+            </div>
+        `;
+
+        container.appendChild(div);
+    }
+
+    function savePrescription() {
+        const form = document.getElementById('prescriptionForm');
+        const patientId = document.getElementById('rxPatient').value;
+        const date = document.getElementById('rxDate').value;
+        const diagnosis = document.getElementById('rxDiagnosis').value;
+        const notes = document.getElementById('rxNotes').value;
+        const followupRequired = document.getElementById('rxFollowup').value;
+        const followupDate = document.getElementById('rxFollowupDate').value;
+
+        if (!patientId || !date || !diagnosis) {
+            alert('Please fill in all required fields (Patient, Date, Diagnosis)');
+            return;
+        }
+
+        // Collect medications
+        const medications = [];
+        document.querySelectorAll('#medicationsContainer > div').forEach(medDiv => {
+            const name = medDiv.querySelector('input[name="medication_name"]').value;
+            const dosage = medDiv.querySelector('input[name="medication_dosage"]').value;
+            const frequency = medDiv.querySelector('select[name="medication_frequency"]').value;
+            const instructions = medDiv.querySelector('input[name="medication_instructions"]').value;
+            const duration = medDiv.querySelector('input[name="medication_duration"]').value;
+            const refills = medDiv.querySelector('input[name="medication_refills"]').value;
+
+            if (name && dosage && frequency && duration) {
+                medications.push({
+                    name: name,
+                    dosage: dosage,
+                    frequency: frequency,
+                    instructions: instructions,
+                    duration: parseInt(duration),
+                    refills: refills || '0'
+                });
+            }
+        });
+
+        if (medications.length === 0) {
+            alert('Please add at least one medication');
+            return;
+        }
+
+        const prescriptionData = {
+            patient_id: parseInt(patientId),
+            date: date,
+            diagnosis: diagnosis,
+            medications: medications,
+            notes: notes,
+            followup_required: followupRequired === 'yes',
+            followup_date: followupDate || null
+        };
+
+        // Save to backend
+        fetch('/api/prescriptions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf_token || ''
+            },
+            body: JSON.stringify(prescriptionData)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                // Success notification
+                if (window.InpageToasts) {
+                    window.InpageToasts.show('Success', `Prescription created for ${prescriptionPatients[patientId]?.first_name} successfully!`);
+                } else {
+                    alert('Prescription saved successfully!');
+                }
+                
+                // Clear form
+                form.reset();
+                document.getElementById('medicationsContainer').innerHTML = '';
+                medicationCount = 0;
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('prescriptionModal'));
+                if (modal) modal.hide();
+            } else {
+                alert('Error: ' + (result.error || 'Failed to save prescription'));
+            }
+        })
+        .catch(error => {
+            console.error('Prescription save error:', error);
+            alert('Error saving prescription: ' + error.message);
+        });
+    }
+
+    // ===== REPORTS MANAGEMENT =====
+    function loadReports() {
+        const startDate = document.getElementById('reportStartDate').value;
+        const endDate = document.getElementById('reportEndDate').value;
+        const reportType = document.getElementById('reportType').value;
+
+        // Fetch statistics from backend
+        let url = '/api/doctor/reports';
+        const params = new URLSearchParams();
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        if (reportType && reportType !== 'all') params.append('report_type', reportType);
+
+        if (params.toString()) url += '?' + params.toString();
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                // Update statistics
+                document.getElementById('totalConsultations').textContent = data.total_consultations || '0';
+                document.getElementById('avgRating').textContent = (data.average_rating || 0).toFixed(1);
+                document.getElementById('totalRevenue').textContent = 'Ksh ' + (data.total_revenue || 0).toLocaleString();
+                document.getElementById('avgConsultationFee').textContent = 'Ksh ' + (data.average_fee || 0).toLocaleString();
+                document.getElementById('totalPrescriptions').textContent = data.total_prescriptions || '0';
+                document.getElementById('avgMedsPerPrescription').textContent = (data.average_medications_per_prescription || 0).toFixed(1);
+                document.getElementById('totalUniquePatients').textContent = data.unique_patients || '0';
+                document.getElementById('newPatientsCount').textContent = data.new_patients || '0';
+
+                // Update consultation table
+                const tbody = document.getElementById('consultationTableBody');
+                if (data.recent_consultations && data.recent_consultations.length > 0) {
+                    tbody.innerHTML = data.recent_consultations.map(consultation => `
+                        <tr>
+                            <td>${escapeHtml(consultation.patient_name)}</td>
+                            <td><span class="badge bg-info">${consultation.type}</span></td>
+                            <td>${new Date(consultation.date).toLocaleDateString()}</td>
+                            <td>${consultation.duration || 0} min</td>
+                            <td>Ksh ${(consultation.fee || 0).toLocaleString()}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No consultations found</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('Reports load error:', error);
+                document.getElementById('reportContent').innerHTML = `
+                    <div class="alert alert-danger col-12">Error loading reports: ${error.message}</div>
+                `;
+            });
+    }
+
+    function exportReport() {
+        // Generate PDF or export data
+        const startDate = document.getElementById('reportStartDate').value;
+        const endDate = document.getElementById('reportEndDate').value;
+        
+        let url = '/api/doctor/reports/export';
+        const params = new URLSearchParams();
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        params.append('format', 'pdf');
+
+        if (params.toString()) url += '?' + params.toString();
+
+        // Trigger download
+        window.location.href = url;
+    }
+
+    // ===== EMERGENCY SERVICES =====
+    function initiateEmergencyCall() {
+        const location = document.getElementById('emergencyLocation').value;
+        const severity = document.getElementById('emergencySeverity').value;
+        const description = document.getElementById('emergencyDescription').value;
+        const contactMethod = document.querySelector('input[name="emergencyContact"]:checked').value;
+        const isConfirmed = document.getElementById('emergencyConfirm').checked;
+
+        if (!location || !severity || !description || !isConfirmed) {
+            alert('Please fill in all required fields and confirm the emergency');
+            return;
+        }
+
+        // Log emergency action
+        const emergencyData = {
+            location: location,
+            severity: severity,
+            description: description,
+            contact_method: contactMethod,
+            timestamp: new Date().toISOString()
+        };
+
+        // Save to backend for audit trail
+        fetch('/api/emergency-log', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf_token || ''
+            },
+            body: JSON.stringify(emergencyData)
+        })
+        .then(response => response.json())
+        .catch(error => console.error('Emergency log error:', error));
+
+        // Perform actual call/SMS based on selection
+        if (contactMethod === 'call') {
+            performEmergencyCall(location, severity, description);
+        } else {
+            sendEmergencySMS(location, severity, description);
+        }
+
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('emergencyModal'));
+        if (modal) modal.hide();
+
+        // Show confirmation
+        if (window.InpageToasts) {
+            window.InpageToasts.show('Emergency', 'Emergency services have been contacted. Stay calm and provide location information to the dispatcher.', 'danger');
+        } else {
+            alert('Emergency services have been contacted. Dispatcher will call you shortly.');
+        }
+
+        // Reset form
+        document.getElementById('emergencyConfirm').checked = false;
+        document.getElementById('emergencyLocation').value = '';
+        document.getElementById('emergencySeverity').value = '';
+        document.getElementById('emergencyDescription').value = '';
+    }
+
+    function performEmergencyCall(location, severity, description) {
+        // If using VOIP integration
+        if (window.socket && window.socket.connected) {
+            window.socket.emit('emergency_call', {
+                location: location,
+                severity: severity,
+                description: description,
+                phone: '999'
+            });
+        } else {
+            // Fallback: Create clickable tel link
+            window.location.href = 'tel:999';
+        }
+        
+        console.log('Emergency call initiated:', { location, severity, description });
+    }
+
+    function sendEmergencySMS(location, severity, description) {
+        // Send SMS notification
+        const message = `EMERGENCY: Severity: ${severity}. Location: ${location}. Details: ${description}`;
+        
+        fetch('/api/emergency-sms', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf_token || ''
+            },
+            body: JSON.stringify({
+                phone: '999',
+                message: message,
+                location: location,
+                severity: severity
+            })
+        })
+        .then(response => response.json())
+        .catch(error => console.error('SMS error:', error));
+
+        console.log('Emergency SMS sent:', { location, severity, description });
+    }
+
+    // ===== EVENT LISTENERS SETUP =====
+    document.addEventListener('DOMContentLoaded', function() {
+        // Prescription modal initialization
+        const prescriptionModal = document.getElementById('prescriptionModal');
+        if (prescriptionModal) {
+            prescriptionModal.addEventListener('show.bs.modal', initPrescriptionModal);
+        }
+
+        // Reports modal initialization
+        const reportsModal = document.getElementById('reportsModal');
+        if (reportsModal) {
+            reportsModal.addEventListener('show.bs.modal', loadReports);
+            document.getElementById('generateReportBtn').addEventListener('click', loadReports);
+            document.getElementById('exportReportBtn').addEventListener('click', exportReport);
+        }
+
+        // Emergency modal initialization
+        const emergencyModal = document.getElementById('emergencyModal');
+        if (emergencyModal) {
+            document.getElementById('callEmergencyServicesBtn').addEventListener('click', initiateEmergencyCall);
+        }
+
+        // Emergency button in toolbar
+        document.querySelectorAll('.btn-outline-danger').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                if (this.textContent.toLowerCase().includes('emergency') || this.getAttribute('data-emergency') === 'true') {
+                    e.preventDefault();
+                    new bootstrap.Modal(document.getElementById('emergencyModal')).show();
+                }
+            });
+        });
+    });
+
     function createPrescription() {
-        alert('Create prescription functionality');
-        // Implement prescription creation
+        const modal = new bootstrap.Modal(document.getElementById('prescriptionModal'));
+        modal.show();
     }
 
     function viewReports() {
-        alert('View reports functionality');
-        // Implement reports viewing
+        const modal = new bootstrap.Modal(document.getElementById('reportsModal'));
+        modal.show();
     }
-
-    // Emergency call function
-    $('.btn-outline-danger').click(function() {
-        if (confirm('Are you sure you want to call Emergency Medical Services?')) {
-            alert('Calling Emergency Services...');
-            // Implement emergency call
-        }
-    });
 </script>
 {% endblock %}

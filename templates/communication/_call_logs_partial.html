@@ -138,160 +138,451 @@
 
 <script>
   (function(){
+    // ===== STATE MANAGEMENT =====
+    const state = {
+      cached: [],
+      activeFilter: 'all',
+      searchQuery: '',
+      currentPage: 1,
+      perPage: 25,
+      total: 0,
+      isLoading: false,
+      lastFetchTime: 0,
+      cacheExpiry: 30000 // 30 seconds
+    };
+
+    // ===== DOM ELEMENTS =====
     const searchEl = document.getElementById('callSearch');
     const listEl = document.getElementById('callLogsList');
     const refreshBtn = document.getElementById('callLogsRefresh');
     const summaryEl = document.getElementById('callLogsSummary');
     const modalEl = document.getElementById('callLogsModal');
-    let activeFilter = 'all';
-    let cached = [];
 
-    function timeAgo(iso){
-      try{
-        const s = Math.floor((Date.now() - new Date(iso))/1000);
-        if (s < 60) return s + 's ago';
-        if (s < 3600) return Math.floor(s/60) + 'm ago';
-        if (s < 86400) return Math.floor(s/3600) + 'h ago';
-        if (s < 172800) return 'Yesterday';
-        return Math.floor(s/86400) + 'd ago';
-      }catch(e){ return 'unknown'; }
+    if (!listEl || !searchEl || !refreshBtn || !summaryEl || !modalEl) {
+      console.error('Call logs: required DOM elements missing');
+      return;
     }
 
-    function formatDuration(sec){
-      if (!sec) return '—';
-      const s = Math.max(0, Math.floor(sec));
-      const m = Math.floor(s/60);
-      const r = s % 60;
-      return m > 0 ? `${m}m ${r}s` : `${r}s`;
+    // ===== UTILITY FUNCTIONS =====
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+      return String(text || '').replace(/[&<>"']/g, c => map[c]);
     }
 
-    function avatarHtml(item){
-      if (item.remote_user_avatar){
-        return `<div class="call-avatar"><img src="${item.remote_user_avatar}" alt="avatar" onerror="this.parentElement.innerHTML='<div class=\\'call-avatar-initials\\'>${(item.remote_user_name||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>'"/></div>`;
+    function timeAgo(isoString) {
+      try {
+        const date = new Date(isoString);
+        if (isNaN(date.getTime())) return 'unknown';
+        const seconds = Math.floor((Date.now() - date) / 1000);
+        if (seconds < 60) return seconds + 's ago';
+        if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+        if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+        if (seconds < 172800) return 'Yesterday';
+        if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+        return date.toLocaleDateString();
+      } catch (e) {
+        console.warn('timeAgo error:', e);
+        return 'unknown';
       }
-      const initials = (item.remote_user_name||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
-      return `<div class="call-avatar call-avatar-initials">${initials}</div>`;
     }
 
-    function statusBadge(status, endReason){
-      const s = (status||'').toLowerCase();
-      if (s === 'missed' || endReason === 'missed' || endReason === 'unanswered') return `<span class="badge bg-danger">Missed</span>`;
-      if (s === 'declined' || s === 'rejected' || endReason === 'callee_declined') return `<span class="badge bg-warning text-dark">Declined</span>`;
-      if (s === 'connected') return `<span class="badge bg-success">Connected</span>`;
-      if (s === 'initiated' || s === 'ringing') return `<span class="badge bg-info">Ringing</span>`;
-      return `<span class="badge bg-secondary">${status||'Unknown'}</span>`;
+    function formatDuration(seconds) {
+      if (!seconds || seconds <= 0) return '—';
+      const s = Math.floor(Math.max(0, seconds));
+      const hours = Math.floor(s / 3600);
+      const minutes = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+      if (minutes > 0) return `${minutes}m ${secs}s`;
+      return `${secs}s`;
     }
 
-    function renderGroup(title, items){
+    function getStatusBadge(status, endReason) {
+      const normalizedStatus = (status || '').toLowerCase();
+      const normalizedReason = (endReason || '').toLowerCase();
+      
+      if (normalizedStatus === 'missed' || normalizedReason === 'missed' || normalizedReason === 'unanswered') {
+        return '<span class="badge bg-danger" title="Call was not answered">Missed</span>';
+      }
+      if (normalizedStatus === 'declined' || normalizedStatus === 'rejected' || normalizedReason === 'callee_declined') {
+        return '<span class="badge bg-warning text-dark" title="Call was declined">Declined</span>';
+      }
+      if (normalizedStatus === 'connected' || normalizedReason === 'completed') {
+        return '<span class="badge bg-success" title="Call completed">Connected</span>';
+      }
+      if (normalizedStatus === 'initiated' || normalizedStatus === 'ringing' || normalizedReason === 'timeout') {
+        return '<span class="badge bg-info" title="Call timed out">No Answer</span>';
+      }
+      return `<span class="badge bg-secondary" title="${normalizedStatus}">${escapeHtml(normalizedStatus || 'Unknown')}</span>`;
+    }
+
+    function getDirectionIcon(direction) {
+      if (direction === 'outgoing') {
+        return '<i class="fas fa-arrow-up-right-from-square text-primary" title="Outgoing call"></i>';
+      }
+      return '<i class="fas fa-arrow-down-left fa-flip-horizontal text-info" title="Incoming call"></i>';
+    }
+
+    function createAvatar(item) {
+      const name = item.remote_user_name || 'U';
+      const initials = name.split(' ').map(p => p.charAt(0)).slice(0, 2).join('').toUpperCase();
+      
+      if (item.remote_user_avatar) {
+        return `
+          <div class="call-avatar" title="${escapeHtml(name)}">
+            <img src="${escapeHtml(item.remote_user_avatar)}" 
+                 alt="${escapeHtml(name)}" 
+                 onerror="this.parentElement.innerHTML='<div class=\\'call-avatar-initials\\'>${initials}</div>'"
+                 style="width:100%; height:100%; object-fit:cover;">
+          </div>`;
+      }
+      return `<div class="call-avatar call-avatar-initials" title="${escapeHtml(name)}">${initials}</div>`;
+    }
+
+    function createCallItem(callRecord) {
       const container = document.createElement('div');
-      container.className = 'call-group';
-      const header = document.createElement('div');
-      header.className = 'd-flex justify-content-between align-items-center';
-      header.innerHTML = `<span>${title}</span><span class="small text-muted">${items.length} call${items.length>1?'s':''}</span>`;
-      container.appendChild(header);
-      items.forEach(i => container.appendChild(renderItem(i)));
-      return container;
-    }
+      container.className = 'call-log-item d-flex align-items-center';
+      container.setAttribute('data-call-id', callRecord.id);
 
-    function renderItem(c){
-      const el = document.createElement('div');
-      el.className = 'call-log-item d-flex align-items-center';
-      const callTypeIcon = c.direction === 'outgoing' ? 'fa-arrow-up-right-from-square text-primary' : 'fa-arrow-down-left fa-flip-horizontal text-info';
-      el.innerHTML = `
-        ${avatarHtml(c)}
+      const duration = formatDuration(callRecord.duration);
+      const timeText = timeAgo(callRecord.created_at);
+      const callTypeEmoji = callRecord.call_type === 'video' ? '📹' : '🎤';
+      const statusBadge = getStatusBadge(callRecord.status, callRecord.end_reason);
+      const directionIcon = getDirectionIcon(callRecord.direction);
+
+      const html = `
+        ${createAvatar(callRecord)}
         <div class="flex-grow-1 ms-3">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <div class="fw-bold" style="color: #333;">${c.remote_user_name || 'Unknown'}</div>
-              <div class="small text-muted">${c.call_type === 'video' ? '📹 Video' : '🎤 Voice'} • ${timeAgo(c.created_at)}</div>
+          <div class="d-flex justify-content-between align-items-start" style="gap: 8px;">
+            <div style="min-width: 0;">
+              <div class="fw-bold" style="color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${escapeHtml(callRecord.remote_user_name || 'Unknown')}
+              </div>
+              <div class="small text-muted">${callTypeEmoji} ${callRecord.call_type === 'video' ? 'Video' : 'Voice'} • ${timeText}</div>
             </div>
-            <div class="text-end small">
-              ${statusBadge(c.status, c.end_reason)}
+            <div class="text-end" style="white-space: nowrap;">
+              ${statusBadge}
             </div>
           </div>
-          <div class="d-flex justify-content-between align-items-center mt-2 small">
-            <span class="text-muted"><i class="fas ${callTypeIcon}"></i> ${formatDuration(c.duration)}</span>
+          <div class="d-flex justify-content-between align-items-center mt-2 small" style="gap: 8px; flex-wrap: wrap;">
+            <span class="text-muted">${directionIcon} ${duration}</span>
             <div style="display: flex; gap: 6px;">
-              <button class="btn btn-sm btn-outline-secondary btn-view" data-id="${c.id}" style="font-size: 11px; padding: 3px 8px;">Details</button>
-              <button class="btn btn-sm btn-redial" data-id="${c.id}" style="font-size: 11px; padding: 3px 8px;">Call</button>
+              <button class="btn btn-sm btn-outline-secondary btn-details" 
+                      data-call-id="${callRecord.id}"
+                      type="button"
+                      title="View call details">
+                <i class="fas fa-info-circle"></i>
+              </button>
+              <button class="btn btn-sm btn-redial" 
+                      data-doctor-id="${callRecord.remote_user_id}"
+                      data-doctor-name="${escapeHtml(callRecord.remote_user_name)}"
+                      type="button"
+                      title="Start new call">
+                <i class="fas fa-phone"></i>
+              </button>
             </div>
           </div>
         </div>`;
 
-      // wire buttons
-      el.querySelectorAll('.btn-view').forEach(b=> b.addEventListener('click', ()=> { console.log('Call ID:', b.dataset.id); alert('Call details for ID: '+b.dataset.id); }));
-      el.querySelectorAll('.btn-redial').forEach(b=> b.addEventListener('click', ()=> { console.log('Redial ID:', b.dataset.id); alert('Start new call based on log ID: '+b.dataset.id); }));
-      return el;
+      container.innerHTML = html;
+
+      // Attach event listeners
+      container.querySelector('.btn-details')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showCallDetails(callRecord);
+      });
+
+      container.querySelector('.btn-redial')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const doctorId = e.target.closest('button').dataset.doctorId;
+        const doctorName = e.target.closest('button').dataset.doctorName;
+        initiateNewCall(doctorId, doctorName);
+      });
+
+      return container;
     }
 
-    function groupByDate(items){
+    function showCallDetails(callRecord) {
+      const details = `
+        <strong>Call Details</strong><br>
+        <small>
+          <strong>Name:</strong> ${escapeHtml(callRecord.remote_user_name || 'Unknown')}<br>
+          <strong>Type:</strong> ${callRecord.call_type === 'video' ? 'Video Call' : 'Voice Call'}<br>
+          <strong>Direction:</strong> ${callRecord.direction === 'incoming' ? 'Incoming' : 'Outgoing'}<br>
+          <strong>Duration:</strong> ${formatDuration(callRecord.duration)}<br>
+          <strong>Status:</strong> ${callRecord.status || 'Unknown'}<br>
+          <strong>Time:</strong> ${new Date(callRecord.created_at).toLocaleString()}<br>
+          ${callRecord.call_note ? `<strong>Notes:</strong> ${escapeHtml(callRecord.call_note)}<br>` : ''}
+        </small>`;
+      
+      alert(details);
+    }
+
+    function initiateNewCall(doctorId, doctorName) {
+      if (!doctorId) {
+        alert('Unable to start call: doctor information missing');
+        return;
+      }
+
+      const currentUserId = document.getElementById('currentUserId')?.value;
+      const appointmentId = null; // Would need additional logic to find related appointment
+      
+      if (!currentUserId) {
+        alert('User session error. Please refresh the page.');
+        return;
+      }
+
+      console.log('Initiating call to doctor:', doctorName, 'ID:', doctorId);
+
+      // Emit through socket if available
+      if (window.socket && window.socket.connected) {
+        window.socket.emit('initiate_video_call', {
+          caller_id: currentUserId,
+          callee_id: doctorId,
+          appointment_id: appointmentId,
+          caller_name: document.getElementById('currentUserName')?.textContent || 'Patient'
+        });
+
+        // Show toast
+        if (window.InpageToasts) {
+          window.InpageToasts.show('Call', `Starting call with ${doctorName}...`);
+        }
+      } else {
+        alert('Not connected to server. Please refresh the page.');
+      }
+    }
+
+    function createDateGroup(title, items) {
+      const group = document.createElement('div');
+      group.className = 'call-group';
+      
+      const header = document.createElement('div');
+      header.className = 'd-flex justify-content-between align-items-center';
+      header.style.cssText = 'font-weight: 600; color: #333; font-size: 14px; padding: 8px 0; border-bottom: 2px solid #e9ecef; margin-bottom: 12px;';
+      header.innerHTML = `
+        <span>${title}</span>
+        <span class="small text-muted">${items.length} call${items.length > 1 ? 's' : ''}</span>`;
+      
+      group.appendChild(header);
+      items.forEach(item => group.appendChild(createCallItem(item)));
+      
+      return group;
+    }
+
+    function groupByDate(items) {
       const today = new Date();
-      const groups = { 'Today': [], 'Yesterday': [], 'Earlier': [] };
-      items.forEach(i => {
-        const d = new Date(i.created_at);
-        const diff = (today - d) / (1000*60*60*24);
-        if (diff < 1) groups['Today'].push(i);
-        else if (diff < 2) groups['Yesterday'].push(i);
-        else groups['Earlier'].push(i);
+      today.setHours(0, 0, 0, 0);
+      
+      const groups = {
+        'Today': [],
+        'Yesterday': [],
+        'This Week': [],
+        'Earlier': []
+      };
+
+      items.forEach(item => {
+        const itemDate = new Date(item.created_at);
+        itemDate.setHours(0, 0, 0, 0);
+        
+        const diffTime = today - itemDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) {
+          groups['Today'].push(item);
+        } else if (diffDays === 1) {
+          groups['Yesterday'].push(item);
+        } else if (diffDays < 7) {
+          groups['This Week'].push(item);
+        } else {
+          groups['Earlier'].push(item);
+        }
       });
+
       return groups;
     }
 
-    async function fetchCallLogs(){
-      listEl.innerHTML = '<div class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 30px; height: 30px;"><span class="visually-hidden">Loading...</span></div><div class="small text-muted mt-3">Loading call logs...</div></div>';
-      try{
-        const url = '/api/call_logs';
-        const resp = await fetch(url);
-        if(!resp.ok) throw new Error('Failed to fetch');
-        const data = await resp.json();
-        cached = (data.call_logs || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        applyFilters();
-        summaryEl.textContent = cached.length > 0 ? `📊 ${cached.length} total call${cached.length>1?'s':''}` : '📊 No calls yet';
-      }catch(e){
-        console.error('Call logs fetch error:', e);
-        listEl.innerHTML = `<div class="alert alert-danger" role="alert"><strong>Error:</strong> Failed to load call logs. ${e.message}</div>`;
-        summaryEl.textContent = '⚠️ Error loading';
+    function renderCallLogs(items) {
+      if (!items || items.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-center text-muted p-5" style="font-style: italic;">
+            <i class="fas fa-inbox" style="font-size: 36px; opacity: 0.3; display: block; margin-bottom: 12px;"></i>
+            No calls match your filters
+          </div>`;
+        return;
       }
+
+      const groups = groupByDate(items);
+      listEl.innerHTML = '';
+
+      Object.keys(groups).forEach(key => {
+        if (groups[key].length > 0) {
+          listEl.appendChild(createDateGroup(key, groups[key]));
+        }
+      });
     }
 
-    function applyFilters(){
-      const q = (searchEl.value||'').toLowerCase().trim();
-      const filtered = cached.filter(i => {
-        if (activeFilter && activeFilter !== 'all'){
-          if ((activeFilter === 'missed') && (i.status !== 'missed' && i.end_reason !== 'missed' && i.end_reason !== 'unanswered')) return false;
-          if ((activeFilter === 'incoming') && i.direction !== 'incoming') return false;
-          if ((activeFilter === 'outgoing') && i.direction !== 'outgoing') return false;
-          if ((activeFilter === 'declined') && (i.status !== 'declined' && i.status !== 'rejected' && i.end_reason !== 'callee_declined')) return false;
+    function applyFilters() {
+      const query = (searchEl.value || '').toLowerCase().trim();
+      
+      let filtered = state.cached.filter(item => {
+        // Apply type filter
+        if (state.activeFilter !== 'all') {
+          if (state.activeFilter === 'incoming' && item.direction !== 'incoming') return false;
+          if (state.activeFilter === 'outgoing' && item.direction !== 'outgoing') return false;
+          if (state.activeFilter === 'missed' && 
+              (item.status !== 'missed' && item.end_reason !== 'missed' && item.end_reason !== 'unanswered')) {
+            return false;
+          }
+          if (state.activeFilter === 'declined' && 
+              (item.status !== 'declined' && item.status !== 'rejected' && item.end_reason !== 'callee_declined')) {
+            return false;
+          }
         }
-        if (!q) return true;
-        return (i.remote_user_name||'').toLowerCase().includes(q) || (i.call_note||'').toLowerCase().includes(q) || (i.call_type||'').toLowerCase().includes(q);
+
+        // Apply search filter
+        if (query) {
+          const searchFields = [
+            item.remote_user_name || '',
+            item.call_note || '',
+            item.call_type || ''
+          ].join(' ').toLowerCase();
+          
+          return searchFields.includes(query);
+        }
+
+        return true;
       });
 
-      // empty state
-      if (!filtered.length){ listEl.innerHTML = '<div class="text-center text-muted p-5" style="font-style: italic;">No calls match your filters.</div>'; return; }
-
-      // group by date
-      const groups = groupByDate(filtered);
-      listEl.innerHTML = '';
-      Object.keys(groups).forEach(k => { if (groups[k] && groups[k].length) listEl.appendChild(renderGroup(k, groups[k])); });
+      renderCallLogs(filtered);
+      updateSummary(filtered.length);
     }
 
-    // wire filter buttons
-    document.querySelectorAll('.call-filter').forEach(b=> b.addEventListener('click', ()=> { activeFilter = b.dataset.filter; applyFilters(); }));
-    searchEl.addEventListener('input', ()=> applyFilters());
-    refreshBtn.addEventListener('click', ()=> fetchCallLogs());
-
-    // Bootstrap modal wiring: open modal and fetch when shown
-    try{
-      const bsModal = modalEl ? new bootstrap.Modal(modalEl) : null;
-      if (modalEl){
-        modalEl.addEventListener('shown.bs.modal', function(){ fetchCallLogs(); });
-        // Allow Escape key to close (Bootstrap handles this, but explicit handler for clarity)
-        modalEl.addEventListener('keydown', function(e){ if (e.key === 'Escape' && bsModal) bsModal.hide(); });
+    function updateSummary(count) {
+      if (state.cached.length === 0) {
+        summaryEl.textContent = '📊 No calls yet';
+      } else {
+        summaryEl.textContent = `📊 ${count} of ${state.cached.length} call${state.cached.length > 1 ? 's' : ''}`;
       }
-    }catch(e){ console.warn('Bootstrap modal setup failed', e); }
+    }
 
-    // initial load (preload cache) — optional
-    setTimeout(fetchCallLogs, 100);
+    async function fetchCallLogs(force = false) {
+      // Check cache validity
+      if (!force && state.cached.length > 0 && (Date.now() - state.lastFetchTime) < state.cacheExpiry) {
+        applyFilters();
+        return;
+      }
+
+      if (state.isLoading) return;
+
+      state.isLoading = true;
+      listEl.innerHTML = `
+        <div class="text-center py-5">
+          <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 30px; height: 30px;">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <div class="small text-muted mt-3">Loading your call logs...</div>
+        </div>`;
+
+      try {
+        const url = `/api/call_logs?page=${state.currentPage}&per_page=${state.perPage}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Session expired. Please login again.');
+          }
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.call_logs || !Array.isArray(data.call_logs)) {
+          throw new Error('Invalid response format');
+        }
+
+        state.cached = data.call_logs;
+        state.total = data.total || 0;
+        state.lastFetchTime = Date.now();
+        
+        applyFilters();
+      } catch (error) {
+        console.error('Call logs fetch error:', error);
+        listEl.innerHTML = `
+          <div class="alert alert-danger" role="alert" style="margin: 12px;">
+            <strong>Error loading call logs:</strong><br>
+            <small>${escapeHtml(error.message || 'Unknown error')}</small><br>
+            <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">Retry</button>
+          </div>`;
+        summaryEl.textContent = '⚠️ Error loading logs';
+      } finally {
+        state.isLoading = false;
+      }
+    }
+
+    // ===== EVENT LISTENERS =====
+    
+    // Debounce search input
+    let searchTimeout;
+    searchEl.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        state.searchQuery = searchEl.value;
+        applyFilters();
+      }, 300);
+    });
+
+    // Filter buttons
+    document.querySelectorAll('.call-filter').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        // Update button styling
+        document.querySelectorAll('.call-filter').forEach(b => {
+          b.classList.remove('active');
+          b.style.opacity = '1';
+        });
+        e.target.classList.add('active');
+        e.target.style.opacity = '0.8';
+        
+        state.activeFilter = e.target.dataset.filter || 'all';
+        applyFilters();
+      });
+    });
+
+    // Refresh button
+    refreshBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      refreshBtn.disabled = true;
+      refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
+      
+      fetchCallLogs(true).finally(() => {
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = '⟲ Refresh';
+      });
+    });
+
+    // Modal event listeners
+    if (modalEl) {
+      modalEl.addEventListener('shown.bs.modal', () => {
+        fetchCallLogs();
+      });
+
+      modalEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const bsModal = bootstrap.Modal.getInstance(modalEl);
+          if (bsModal) bsModal.hide();
+        }
+      });
+    }
+
+    // Initialize
+    setTimeout(() => fetchCallLogs(true), 100);
   })();
 </script>
