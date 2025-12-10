@@ -1232,8 +1232,34 @@ function initializeCallManager() {
         // Read ICE servers JSON injected in DOM to avoid JS parser errors in editors
         const iceServersEl = document.getElementById('iceServersData');
         const iceServersConfig = (iceServersEl && iceServersEl.textContent) ? JSON.parse(iceServersEl.textContent) : [];
+        // Ensure we have a signaling client (reuse global if present)
+        let _signaling = window.signalingClient || null;
+        if (!_signaling) {
+            if (typeof SignalingClient === 'function') {
+                try {
+                    _signaling = new SignalingClient(window.socket);
+                    window.signalingClient = _signaling;
+                } catch (e) {
+                    console.error('Failed to construct SignalingClient, retrying...', e);
+                    setTimeout(initializeCallManager, 500);
+                    return;
+                }
+            } else {
+                console.warn('SignalingClient not available yet; retrying...');
+                setTimeout(initializeCallManager, 500);
+                return;
+            }
+        }
+
+        // Only create CallManager if signaling client exposes the expected interface
+        if (!(typeof _signaling.addEventListener === 'function' || typeof _signaling.on === 'function')) {
+            console.warn('Signaling client missing required interface; retrying...');
+            setTimeout(initializeCallManager, 500);
+            return;
+        }
+
         window.callManager = new CallManager(
-            new SignalingClient(window.socket),
+            _signaling,
             {
                 iceServers: iceServersConfig,
                 audioConstraints: {
@@ -2661,12 +2687,23 @@ function initiateVideoCall() {
         alert('Real-time connection not ready. Try again in a moment.');
         return;
     }
-    const calleeId = selectedPatientData?.user_id || selectedPatientData?.id;
-    socket.emit('initiate_video_call', {
-        caller_id: currentUserId,
-        callee_id: calleeId,
-        appointment_id: selectedAppointmentId
-    });
+        const calleeId = selectedPatientData?.user_id || selectedPatientData?.id;
+        // Open outgoing window for caller
+        try {
+            const params = new URLSearchParams();
+            params.set('appointment_id', selectedAppointmentId);
+            params.set('doctor_user_id', calleeId);
+            params.set('callee_name', selectedPatientData?.first_name ? `${selectedPatientData.first_name} ${selectedPatientData.last_name || ''}`.trim() : '');
+            params.set('caller_profile_pic', window.currentUserProfilePic || '');
+            const popup = window.open(`/outgoing-call/${encodeURIComponent(selectedAppointmentId)}?${params.toString()}`, '_blank', 'width=420,height=640');
+            console.info('Outgoing popup opened (doctor):', !!popup, popup);
+        } catch (e) { console.warn('Could not open outgoing window', e); }
+
+        socket.emit('initiate_video_call', {
+            caller_id: currentUserId,
+            callee_id: calleeId,
+            appointment_id: selectedAppointmentId
+        });
 
     
     

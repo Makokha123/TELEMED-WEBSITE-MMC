@@ -359,7 +359,7 @@
         .mark-complete-btn.disabled:hover {
             transform: scale(1);
         }
-        }
+        
 
         /* Responsive - mobile view */
         @media (max-width: 768px) {
@@ -1284,11 +1284,10 @@
         // Request media, geolocation and timezone, then POST to server
         async function grantCallPermissions() {
             try {
-                // Ensure csrf_token is available (defined in base.html)
-                if (typeof csrf_token === 'undefined') {
-                    console.error('csrf_token is not defined; cannot proceed with permission request');
-                    alert('Security token missing. Please refresh the page.');
-                    return;
+                // Resolve CSRF token safely: prefer template-provided `csrf_token`, else read hidden input
+                const token = (typeof csrf_token !== 'undefined') ? csrf_token : (document.querySelector('input[name="csrf_token"]')?.value || '');
+                if (!token) {
+                    console.warn('CSRF token not found; proceeding with same-origin credentials. Server may reject the request.');
                 }
 
                 // Request camera and microphone
@@ -1316,7 +1315,7 @@
 
                 const resp = await fetch('/api/user/permissions', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
                     credentials: 'same-origin',
                     body: JSON.stringify(payload)
                 });

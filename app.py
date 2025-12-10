@@ -774,10 +774,17 @@ def handle_initiate_video_call(data):
         callee_user = db.session.get(User, callee_id)
         if caller_user:
             call_info['caller_name'] = safe_display_name(caller_user)
-            call_info['caller_profile_picture'] = caller_user.profile_picture if getattr(caller_user, 'profile_picture', None) else None
+            # Provide a full URL that the client can use to load the profile picture
+            try:
+                call_info['caller_profile_picture'] = get_user_profile_picture_url(caller_user)
+            except Exception:
+                call_info['caller_profile_picture'] = None
         if callee_user:
             call_info['callee_name'] = safe_display_name(callee_user)
-            call_info['callee_profile_picture'] = callee_user.profile_picture if getattr(callee_user, 'profile_picture', None) else None
+            try:
+                call_info['callee_profile_picture'] = get_user_profile_picture_url(callee_user)
+            except Exception:
+                call_info['callee_profile_picture'] = None
     except Exception:
         pass
 
@@ -8709,11 +8716,20 @@ def handle_initiate_voice_call(data):
             'caller_profile_pic': get_user_profile_picture_url(current_user),
             'caller_role': caller_role,
             'callee_role': callee_role,
+            'callee_profile_pic': None,
             'call_type': 'voice',
             'appointment_date': appointment.appointment_date.isoformat(),
             'appointment_time': appointment.appointment_date.strftime('%H:%M'),
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
+
+        # Try to include callee profile picture URL for client rendering
+        try:
+            callee_user = db.session.get(User, callee_user_id)
+            if callee_user:
+                call_data['callee_profile_pic'] = get_user_profile_picture_url(callee_user)
+        except Exception:
+            pass
         
         # Notify caller that call is ringing
         emit('call_ringing', {

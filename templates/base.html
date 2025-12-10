@@ -253,24 +253,44 @@
 
             // Expose signaling and call manager singletons
             try {
-                window.signalingClient = window.signalingClient || new SignalingClient(window.socket);
+                // Create signaling client only if available; otherwise defer
+                if (!window.signalingClient) {
+                    if (typeof SignalingClient === 'function') {
+                        try {
+                            window.signalingClient = new SignalingClient(window.socket);
+                        } catch (e) {
+                            console.error('Failed to construct SignalingClient', e);
+                        }
+                    } else {
+                        console.warn('SignalingClient class not available yet - will defer initialization');
+                    }
+                }
             } catch (e) {
                 console.error('Failed to create SignalingClient', e);
             }
 
-            // Safely read current user id from server-rendered template when available
+            // Safely read current user id and profile picture URL from server-rendered template when available
             const __currentUserId = '{{ current_user.id if current_user else "" }}';
-            // expose as global for static scripts
-            try{ window.currentUserId = __currentUserId || ''; }catch(e){}
+            const __currentUserProfilePic = '{{ current_user.profile_picture_url if current_user else "" }}';
+            // expose as globals for static scripts
+            try{ window.currentUserId = __currentUserId || ''; window.currentUserProfilePic = __currentUserProfilePic || ''; }catch(e){}
 
             function ensureCallManager() {
                 try {
-                    if (!window.callManager) {
-                        window.callManager = new CallManager(window.signalingClient, { iceServers: window.ICE_SERVERS || [{ urls: 'stun:stun.l.google.com:19302' }] });
-                        // attach a lightweight presence updater
-                        try { window.callManager.localUserId = __currentUserId || null; } catch(e){}
-                        console.log('CallManager initialized');
+                    if (window.callManager) return;
+
+                    // Require a valid signaling client that exposes addEventListener or on
+                    const sig = window.signalingClient;
+                    const hasInterface = sig && (typeof sig.addEventListener === 'function' || typeof sig.on === 'function');
+                    if (!hasInterface) {
+                        console.warn('CallManager init deferred: signaling client missing or invalid');
+                        return;
                     }
+
+                    window.callManager = new CallManager(sig, { iceServers: window.ICE_SERVERS || [{ urls: 'stun:stun.l.google.com:19302' }] });
+                    // attach a lightweight presence updater
+                    try { window.callManager.localUserId = __currentUserId || null; } catch(e){}
+                    console.log('CallManager initialized');
                 } catch (e) {
                     console.error('CallManager init failed', e);
                 }
@@ -347,7 +367,7 @@
 
             // Attempt to register a Service Worker to support notifications and future push
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('{{ url_for('static', filename='js/sw.js') }}').then(reg => {
+                navigator.serviceWorker.register("{{ url_for('static', filename='js/sw.js') }}").then(reg => {
                     console.log('Service worker registered', reg.scope);
                 }).catch(err => {
                     console.warn('Service worker register failed', err);
@@ -678,7 +698,10 @@
                         console.warn('push toggle failed', e);
                         window.InpageToasts && window.InpageToasts.show('Push', 'Error: ' + (e.message || 'Unknown error'));
                     }
-                    finally{ pushBtn.disabled = false; }
+                    finally{
+                        try { await updatePushBtn(); } catch(e){}
+                        pushBtn.disabled = false;
+                    }
                 });
                 // initial state
                 setTimeout(updatePushBtn, 800);
