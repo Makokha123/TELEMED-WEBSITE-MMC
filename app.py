@@ -5022,7 +5022,7 @@ def doctor_testimonials_page(doctor_id):
 
 @app.route('/api/testimonials')
 def get_testimonials():
-    """Return recent public testimonials for display."""
+    """Return recent public testimonials for display with profile pictures."""
     # Pagination and sorting
     try:
         page = int(request.args.get('page', 1))
@@ -5056,17 +5056,22 @@ def get_testimonials():
     for t in items:
         try:
             patient_name = t.patient.user.get_display_name() if t.patient and t.patient.user else None
+            patient_id = t.patient.user.id if t.patient and t.patient.user else None
         except Exception:
             patient_name = None
+            patient_id = None
         try:
             doctor_user = t.doctor.user if t.doctor and getattr(t.doctor, 'user', None) else None
             doctor_name = doctor_user.get_display_name() if doctor_user else None
+            doctor_id = doctor_user.id if doctor_user else None
         except Exception:
             doctor_name = None
+            doctor_id = None
 
         out.append({
             'id': t.id,
             'patient_name': patient_name,
+            'patient_id': patient_id,
             'doctor_name': doctor_name,
             'doctor_id': t.doctor_id,
             'rating': t.rating,
@@ -5091,6 +5096,64 @@ def get_testimonials():
         'per_page': per_page,
         'doctor_average': doctor_avg
     })
+
+
+@app.route('/api/doctors/<int:doctor_id>/profile-with-reviews')
+def get_doctor_profile_with_reviews(doctor_id):
+    """Get doctor profile with testimonials and average rating (public)."""
+    try:
+        doctor = db.session.get(Doctor, doctor_id)
+        if not doctor:
+            return jsonify({'error': 'Doctor not found'}), 404
+        
+        user = doctor.user
+        
+        # Get testimonials for this doctor
+        testimonials = Testimonial.query.filter_by(doctor_id=doctor_id, is_public=True).order_by(
+            Testimonial.created_at.desc()
+        ).limit(10).all()
+        
+        # Calculate average rating
+        avg_rating = db.session.query(func.avg(Testimonial.rating)).filter(
+            Testimonial.doctor_id == doctor_id,
+            Testimonial.is_public == True
+        ).scalar()
+        avg_rating = round(float(avg_rating), 2) if avg_rating else 0
+        
+        # Build testimonials list
+        testimonials_list = []
+        for t in testimonials:
+            try:
+                patient_name = t.patient.user.get_display_name() if t.patient and t.patient.user else "Anonymous"
+                patient_id = t.patient.user.id if t.patient and t.patient.user else None
+            except:
+                patient_name = "Anonymous"
+                patient_id = None
+            
+            testimonials_list.append({
+                'id': t.id,
+                'patient_name': patient_name,
+                'patient_id': patient_id,
+                'rating': t.rating,
+                'content': t.content,
+                'created_at': t.created_at.isoformat()
+            })
+        
+        return jsonify({
+            'doctor': {
+                'id': doctor.id,
+                'name': user.get_display_name() if user else "Unknown",
+                'specialization': doctor.specialization,
+                'bio': doctor.bio,
+                'experience_years': doctor.experience_years,
+                'qualifications': doctor.qualifications,
+                'average_rating': avg_rating,
+                'testimonials_count': len(testimonials),
+                'testimonials': testimonials_list
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/call_logs')

@@ -57,6 +57,9 @@
 
 {% block content %}
 <div class="container-fluid">
+    <!-- Hidden patient ID for JavaScript access -->
+    <input type="hidden" id="patientIdInput" value="{{ patient.id }}">
+    
     <!-- Welcome Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -656,7 +659,22 @@
         if (healthTipsState.isLoading) return;
         healthTipsState.isLoading = true;
 
-        const patientId = '{{ current_user.patient.id if current_user.patient else 0 }}';
+        // Get patient ID from hidden input (most reliable)
+        let patientId = document.getElementById('patientIdInput')?.value || '';
+        patientId = patientId.trim();
+        
+        // Fallback to template variable
+        if (!patientId || patientId === 'None') {
+            patientId = '{{ patient.id if patient and patient.id else "" }}';
+            patientId = patientId.trim();
+        }
+        
+        // Final fallback: parse as integer and ensure it's valid
+        patientId = parseInt(patientId) || 0;
+        
+        if (patientId === 0) {
+            console.warn('Patient ID is 0 or invalid');
+        }
         
         fetch(`/api/health-tips/patient/${patientId}`)
             .then(response => {

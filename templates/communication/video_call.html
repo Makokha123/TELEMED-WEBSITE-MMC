@@ -464,6 +464,9 @@
     </style>
 </head>
 <body>
+    <!-- Hidden CSRF token for API requests -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    
     <div class="video-call-container">
         <!-- Remote video -->
         <div class="remote-video-section">
@@ -561,6 +564,20 @@
     <script>
         // Get appointment ID from URL
         const appointmentId = window.location.pathname.split('/').pop();
+        
+        // Get CSRF token from hidden input or meta tag (or fallback)
+        const csrf_token = (() => {
+            // Try to get from hidden input first
+            const tokenInput = document.querySelector('input[name="csrf_token"]');
+            if (tokenInput) return tokenInput.value;
+            
+            // Try to get from meta tag
+            const metaTag = document.querySelector('meta[name="csrf-token"]');
+            if (metaTag) return metaTag.getAttribute('content');
+            
+            // Fallback: empty string (server will use same-origin credentials)
+            return '';
+        })();
         
         // DOM Elements
         const localVideo = document.getElementById('localVideo');

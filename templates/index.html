@@ -1036,19 +1036,31 @@ setInterval(fetchTestimonials, 20000);
             {% if doctors %}
                 {% for doctor, user in doctors %}
                 <div class="col-lg-4 col-md-6">
-                    <div class="card doctor-card fade-in">
+                    <div class="card doctor-card fade-in position-relative">
                             <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Dr. {{ user.first_name }} {{ user.last_name }}" class="doctor-image" style="object-fit:cover;">
                         <div class="card-body text-center p-4">
                             <h5 class="card-title mb-1">Dr. {{ user.first_name }} {{ user.last_name }}</h5>
                             <p class="doctor-specialty mb-2">{{ doctor.specialization }}</p>
                             <p class="doctor-experience mb-3">{{ doctor.experience_years }} years experience</p>
-                            <div class="d-flex justify-content-center gap-2 mb-3">
-                                {% for i in range(5) %}
-                                    <i class="fas fa-star text-warning"></i>
-                                {% endfor %}
+                            <!-- Average Rating Display -->
+                            <div class="mb-3" id="doctor-rating-{{ doctor.id }}">
+                                <div class="d-flex justify-content-center gap-2 mb-2">
+                                    <span class="badge bg-warning text-dark" id="doctor-avg-{{ doctor.id }}">Loading...</span>
+                                </div>
+                                <small class="text-muted d-block" id="doctor-reviews-{{ doctor.id }}"></small>
                             </div>
-                            <a href="{{ url_for('doctor_profile', doctor_id=doctor.id) }}" class="btn btn-outline-primary btn-sm">View Profile</a>
+                            <!-- Action Buttons -->
+                            <div class="d-flex gap-2 justify-content-center">
+                                <button class="btn btn-outline-primary btn-sm" onclick="viewDoctorProfileFromIndex({{ doctor.id }})">
+                                    <i class="fas fa-info-circle me-1"></i>Profile & Reviews
+                                </button>
+                                <a href="{{ url_for('doctor_profile', doctor_id=doctor.id) }}" class="btn btn-outline-secondary btn-sm">View Full</a>
+                            </div>
                         </div>
+                    </div>
+                    <!-- Doctor Reviews Carousel -->
+                    <div id="doctor-reviews-container-{{ doctor.id }}" class="mt-3" style="display:none;">
+                        <!-- Reviews will be loaded here -->
                     </div>
                 </div>
                 {% endfor %}
@@ -1344,5 +1356,134 @@ setInterval(fetchTestimonials, 20000);
     window.addEventListener('scroll', checkVisibility);
 
     // Emergency banner removed; no emergency button handler required
+
+    // Load doctor ratings and reviews
+    async function loadDoctorRatings() {
+        const doctors = document.querySelectorAll('[id^="doctor-rating-"]');
+        doctors.forEach(async el => {
+            const match = el.id.match(/doctor-rating-(\d+)/);
+            if (match) {
+                const doctorId = match[1];
+                try {
+                    const response = await fetch(`/api/doctors/${doctorId}/profile-with-reviews`);
+                    if (!response.ok) return;
+                    
+                    const data = await response.json();
+                    const doctor = data.doctor;
+                    
+                    // Update average rating
+                    const avgEl = document.getElementById(`doctor-avg-${doctorId}`);
+                    if (avgEl) {
+                        avgEl.innerHTML = `${doctor.average_rating}★ (${doctor.testimonials_count} review${doctor.testimonials_count !== 1 ? 's' : ''})`;
+                    }
+                    
+                    // Update reviews count
+                    const reviewsEl = document.getElementById(`doctor-reviews-${doctorId}`);
+                    if (reviewsEl && doctor.testimonials_count > 0) {
+                        reviewsEl.innerHTML = `${doctor.testimonials_count} patient review${doctor.testimonials_count !== 1 ? 's' : ''}`;
+                    }
+                } catch (error) {
+                    console.error('Error loading doctor ratings:', error);
+                }
+            }
+        });
+    }
+
+    // View doctor profile from index
+    async function viewDoctorProfileFromIndex(doctorId) {
+        try {
+            const response = await fetch(`/api/doctors/${doctorId}/profile-with-reviews`);
+            if (!response.ok) throw new Error('Failed to load doctor profile');
+            
+            const data = await response.json();
+            showDoctorProfileModalIndex(data.doctor);
+        } catch (error) {
+            console.error('Error loading doctor profile:', error);
+            alert('Unable to load doctor profile. Please try again.');
+        }
+    }
+
+    // Show doctor profile modal on index
+    function showDoctorProfileModalIndex(doctor) {
+        const modalHtml = `
+        <div id="doctorProfileIndexModal" class="modal fade" tabindex="-1" role="dialog">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Doctor Profile & Reviews</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                        <!-- Doctor Info -->
+                        <div class="mb-4">
+                            <h6 class="text-muted mb-3">Doctor Information</h6>
+                            <div class="card p-3">
+                                <h5 class="mb-2">${doctor.name}</h5>
+                                <p class="mb-2"><strong>${doctor.specialization}</strong></p>
+                                <p class="text-muted mb-2"><i class="fas fa-briefcase me-2"></i>${doctor.experience_years || 0} years experience</p>
+                                <div class="mb-3">
+                                    <span class="badge bg-warning text-dark me-2">${doctor.average_rating}★</span>
+                                    <span class="text-muted small">(${doctor.testimonials_count} review${doctor.testimonials_count !== 1 ? 's' : ''})</span>
+                                </div>
+                                ${doctor.bio ? `<p class="text-muted small mb-2">${doctor.bio.substring(0, 200)}...</p>` : ''}
+                                ${doctor.qualifications ? `
+                                    <div class="mt-2">
+                                        <strong class="small">Qualifications:</strong>
+                                        <p class="text-muted small mb-0">${doctor.qualifications}</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        
+                        <!-- Reviews Section -->
+                        ${doctor.testimonials && doctor.testimonials.length > 0 ? `
+                            <div>
+                                <h6 class="text-muted mb-3">Patient Reviews (${doctor.testimonials.length})</h6>
+                                <div class="space-y-3">
+                                    ${doctor.testimonials.map(review => `
+                                        <div class="card p-3 border-start border-warning border-3">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <div>
+                                                    <strong class="small">${review.patient_name}</strong>
+                                                    <br>
+                                                    <small class="text-muted">${new Date(review.created_at).toLocaleDateString()}</small>
+                                                </div>
+                                                <span class="badge bg-warning text-dark">${review.rating}★</span>
+                                            </div>
+                                            <p class="small mb-0 text-dark">${review.content}</p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>No reviews yet. Be the first to review this doctor!
+                            </div>
+                        `}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+        
+        // Remove existing modal if any
+        const existing = document.getElementById('doctorProfileIndexModal');
+        if (existing) existing.remove();
+        
+        // Add new modal
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('doctorProfileIndexModal'));
+        modal.show();
+    }
+
+    // Load ratings when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        loadDoctorRatings();
+    });
 </script>
 {% endblock %}

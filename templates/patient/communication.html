@@ -2183,14 +2183,101 @@ function setupEventListeners() {
     });
 }
 
-// Show doctor info
-function showDoctorInfo() {
+// Show doctor info with profile and reviews
+async function showDoctorInfo() {
     if (!selectedDoctorId) {
         alert('Please select a doctor first');
         return;
     }
     
-    window.location.href = `/doctor/${selectedDoctorId}`;
+    try {
+        const response = await fetch(`/api/doctors/${selectedDoctorId}/profile-with-reviews`);
+        if (!response.ok) throw new Error('Failed to load doctor profile');
+        
+        const data = await response.json();
+        showDoctorProfileModalCommunication(data.doctor);
+    } catch (error) {
+        console.error('Error loading doctor profile:', error);
+        alert('Unable to load doctor profile. Please try again.');
+    }
+}
+
+// Show doctor profile modal in communication page
+function showDoctorProfileModalCommunication(doctor) {
+    const modalHtml = `
+    <div id="doctorProfileCommunicationModal" class="modal fade" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Doctor Profile & Reviews</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <!-- Doctor Info -->
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-3">Doctor Information</h6>
+                        <div class="card p-3">
+                            <h5 class="mb-2">${doctor.name}</h5>
+                            <p class="mb-2"><strong>${doctor.specialization}</strong></p>
+                            <p class="text-muted mb-2"><i class="fas fa-briefcase me-2"></i>${doctor.experience_years || 0} years experience</p>
+                            <div class="mb-3">
+                                <span class="badge bg-warning text-dark me-2">${doctor.average_rating}★</span>
+                                <span class="text-muted small">(${doctor.testimonials_count} review${doctor.testimonials_count !== 1 ? 's' : ''})</span>
+                            </div>
+                            ${doctor.bio ? `<p class="text-muted small mb-2">${escapeHtml(doctor.bio)}</p>` : ''}
+                            ${doctor.qualifications ? `
+                                <div class="mt-2">
+                                    <strong class="small">Qualifications:</strong>
+                                    <p class="text-muted small mb-0">${escapeHtml(doctor.qualifications)}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- Reviews Section -->
+                    ${doctor.testimonials && doctor.testimonials.length > 0 ? `
+                        <div>
+                            <h6 class="text-muted mb-3">Patient Reviews (${doctor.testimonials.length})</h6>
+                            <div class="space-y-3">
+                                ${doctor.testimonials.map(review => `
+                                    <div class="card p-3 border-start border-warning border-3">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <div>
+                                                <strong class="small">${escapeHtml(review.patient_name)}</strong>
+                                                <br>
+                                                <small class="text-muted">${new Date(review.created_at).toLocaleDateString()}</small>
+                                            </div>
+                                            <span class="badge bg-warning text-dark">${review.rating}★</span>
+                                        </div>
+                                        <p class="small mb-0 text-dark">${escapeHtml(review.content)}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>No reviews yet. Be the first to review this doctor!
+                        </div>
+                    `}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    `;
+    
+    // Remove existing modal if any
+    const existing = document.getElementById('doctorProfileCommunicationModal');
+    if (existing) existing.remove();
+    
+    // Add new modal
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('doctorProfileCommunicationModal'));
+    modal.show();
 }
 
 // View prescription (patient)
