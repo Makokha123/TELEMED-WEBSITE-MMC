@@ -1202,7 +1202,7 @@ def handle_end_call(data):
 
 
 
-def _uploads_rel_root():
+#
     """Return uploads root relative to `static` (e.g. 'uploads')."""
     rel = app.config.get('UPLOAD_FOLDER', 'static/uploads').replace('\\', '/')
     if rel.startswith('static/'):
@@ -1596,6 +1596,87 @@ def handle_file_upload(user, file_obj, upload_type='profile_pics', encrypt=True)
         return None
 
 # Routes
+@app.route('/api/call_logs', methods=['GET'])
+@login_required
+def api_call_logs():
+    """Return call logs for the current user from CallHistory.
+    Optional query param 'filter': 'all' (default) or 'missed'.
+    """
+    try:
+        filt = (request.args.get('filter') or 'all').lower()
+        q = CallHistory.query
+        # filter where user is caller or callee
+        q = q.filter((CallHistory.caller_id == current_user.id) | (CallHistory.callee_id == current_user.id))
+        if filt == 'missed':
+            q = q.filter(CallHistory.end_reason.in_(['missed','timeout','connection_failed']))
+        q = q.order_by(CallHistory.initiated_at.desc()).limit(100)
+        items = [c.to_dict() for c in q.all()]
+        return jsonify({ 'call_logs': items })
+    except Exception as e:
+        app.logger.exception('api_call_logs failed: %s', e)
+        return jsonify({ 'call_logs': [] }), 200
+
+@app.route('/api/doctors/<int:doctor_id>/profile-with-reviews', methods=['GET'])
+@login_required
+def api_doctor_profile_with_reviews(doctor_id: int):
+    """Return doctor profile with aggregated ratings and recent testimonials for display.
+    Response shape matches frontend expectations in index and appointment pages.
+    """
+    try:
+        doc = db.session.get(Doctor, int(doctor_id))
+        if not doc:
+            return jsonify({'success': False, 'error': 'doctor_not_found'}), 404
+        # Load associated user for name and profile
+        usr = db.session.get(User, doc.user_id) if doc.user_id else None
+        name = (usr.get_display_name() if usr else doc.get_display_name()) or 'Doctor'
+        # Aggregate ratings
+        avg = db.session.query(func.avg(Testimonial.rating)).filter(Testimonial.doctor_id == doc.id).scalar()
+        avg = round(float(avg), 1) if avg is not None else 0.0
+        count = db.session.query(func.count(Testimonial.id)).filter(Testimonial.doctor_id == doc.id).scalar() or 0
+        # Recent testimonials (public first)
+        q = Testimonial.query.filter_by(doctor_id=doc.id).order_by(Testimonial.created_at.desc()).limit(20)
+        testimonials = []
+        for t in q.all():
+            # Resolve patient name and profile picture URL
+            patient_name = 'Patient'
+            pic_url = None
+            try:
+                if t.patient and t.patient.user:
+                    pu = t.patient.user
+                    patient_name = pu.get_display_name()
+                    # Only build picture URL if a picture exists
+                    if pu.profile_picture:
+                        try:
+                            pic_url = url_for('profile_picture', user_id=pu.id)
+                        except Exception:
+                            pic_url = None
+            except Exception:
+                pass
+            testimonials.append({
+                'patient_name': patient_name,
+                'patient_profile_picture_url': pic_url,
+                'rating': int(t.rating) if t.rating is not None else None,
+                'content': t.content or '',
+                'created_at': t.created_at.isoformat() if t.created_at else None
+            })
+        payload = {
+            'doctor': {
+                'id': doc.id,
+                'name': f"Dr. {name}",
+                'specialization': doc.specialization or '',
+                'experience_years': doc.experience_years or 0,
+                'qualifications': doc.qualifications or '',
+                'average_rating': avg,
+                'testimonials_count': int(count),
+                'testimonials': testimonials
+            },
+            'success': True
+        }
+        return jsonify(payload)
+    except Exception as e:
+        app.logger.exception('api_doctor_profile_with_reviews failed: %s', e)
+        return jsonify({'success': False, 'error': 'server_error'}), 500
+
 @app.route('/')
 def index():
     # Get real-time statistics from database
@@ -1690,6 +1771,13 @@ def settings():
         theme = request.form.get('theme')
         if theme:
             current_user.theme = theme
+        # Persist preferred timezone (IANA string); defaulting handled on client if absent
+        tz = request.form.get('timezone')
+        if tz:
+            try:
+                current_user.last_known_timezone = tz
+            except Exception:
+                pass
         # Role-specific toggles
         if current_user.role == 'admin':
             allow_user_creation = True if request.form.get('allow_user_creation') else False

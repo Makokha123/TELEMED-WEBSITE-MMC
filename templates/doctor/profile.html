@@ -156,7 +156,10 @@
                         <i class="fas fa-star-half-alt"></i>
                     {% endif %}
                 </span>
-                <small class="text-muted">{{ '%.2f'|format(avg) if avg else 'No ratings yet' }}</small>
+                <small class="text-muted">
+                    {{ '%.2f'|format(avg) if avg else 'No ratings yet' }}
+                    <span id="ratingsCount" class="ms-2"></span>
+                </small>
             </div>
             <p style="margin-bottom: 20px;">
                 <span class="online-indicator"></span>
@@ -235,11 +238,54 @@
     </div>
 </div>
 
+<!-- Reviews Section -->
+<div class="info-card" id="reviewsCard" style="display:none;">
+    <h3><i class="fas fa-star me-2"></i>Reviews</h3>
+    <div id="reviewsList" class="d-flex flex-column gap-3"></div>
+</div>
+
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
 <script>
     const doctorId = "{{ doctor.id }}";
     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    async function loadDoctorReviews() {
+        try {
+            const resp = await fetch(`/api/doctors/${doctorId}/profile-with-reviews`, { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data || !data.doctor) return;
+            const d = data.doctor;
+            // Ratings count
+            const countEl = document.getElementById('ratingsCount');
+            if (countEl) countEl.textContent = d.testimonials_count > 0 ? `(${d.testimonials_count} review${d.testimonials_count !== 1 ? 's' : ''})` : '';
+            // Reviews
+            const card = document.getElementById('reviewsCard');
+            const list = document.getElementById('reviewsList');
+            if (Array.isArray(d.testimonials) && d.testimonials.length > 0 && card && list) {
+                card.style.display = '';
+                list.innerHTML = d.testimonials.map(t => {
+                    const name = t.patient_name || 'Patient';
+                    const dateStr = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+                    const stars = (t.rating || 0);
+                    const starHtml = '<span class="text-warning">' + '★'.repeat(stars) + '</span>';
+                    const avatar = t.patient_profile_picture_url
+                        ? `<img src="${t.patient_profile_picture_url}" alt="${name}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">`
+                        : `<div style="width:40px;height:40px;border-radius:50%;background:#667eea;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;">${(name.split(' ').map(s=>s[0]).join('').slice(0,2) || 'P').toUpperCase()}</div>`;
+                    return `
+                    <div class="d-flex align-items-start gap-3">
+                        <div>${avatar}</div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between"><strong>${name}</strong><small class="text-muted">${dateStr}</small></div>
+                            <div class="mb-1">${starHtml}</div>
+                            <div class="text-muted">${(t.content || '').replace(/[<>]/g, '')}</div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+        } catch (e) { console.warn('Failed to load doctor reviews', e); }
+    }
 
     function initiateVideoCall() {
         window.location.href = `/video-call/doctor/${doctorId}`;
@@ -280,5 +326,8 @@
             alert('Upload failed');
         }
     });
+
+    // Load reviews on page ready
+    document.addEventListener('DOMContentLoaded', loadDoctorReviews);
 </script>
 {% endblock %}

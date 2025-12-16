@@ -246,7 +246,7 @@
                         <i class="fas fa-pause"></i>
                     </button>
                     {% if appointment and appointment.doctor and appointment.doctor.user_id == current_user.id %}
-                    <button class="control-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background:#06b6d4; color:#fff;">
+                        <button class="control-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color:#fff; box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);">
                         <i class="fas fa-check"></i>
                     </button>
                     {% endif %}
@@ -312,6 +312,8 @@
     </div>
 </div>
     <input type="hidden" id="consultationMarkedCompleteFlag" value="{{ '1' if appointment and appointment.status == 'completed' else '0' }}">
+    <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
+    <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 {% endblock %}
 
 {% block extra_js %}
@@ -326,7 +328,7 @@
     let localStream = null;
     let peerConnection = null;
     if (!window.socket) {
-        try { window.socket = io(); } catch (e) { console.error('Socket init failed', e); window.socket = null; }
+        try { window.socket = io({ transports:['websocket','polling'], reconnection:true }); } catch (e) { console.error('Socket init failed', e); window.socket = null; }
     }
     var socket = window.socket;
 
@@ -423,10 +425,11 @@
     async function saveMarkComplete(isAutosave=false) {
         const notes = $('#completeNotes').val();
         try {
+            const token = (typeof csrf_token !== 'undefined') ? csrf_token : ($('input[name="csrf_token"]').val() || '');
             const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
                 body: JSON.stringify({ notes })
             });
             if (resp.ok) {
@@ -455,7 +458,7 @@
     // Intercept end call to enforce doctor-only hangup
     $('#endCallBtn').on('click', function(e){
         e.preventDefault();
-        const currentUserId = '{{ current_user.id }}';
+        const currentUserId = $('#currentUserId').val();
         if (String(currentUserId) === String(appointmentDoctorUserId)) {
             if (!consultationMarkedComplete) {
                 const ok = confirm('Consultation has not been marked complete. Hanging up will record the appointment as incomplete. Continue?');
@@ -728,38 +731,8 @@
     }
 
     function endCall() {
-        if (confirm('Are you sure you want to end the call?')) {
-            clearInterval(callTimer);
-            
-            // Close peer connection
-            if (peerConnection) {
-                peerConnection.close();
-            }
-            
-            // Stop audio tracks
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
-            
-            // Show call ended screen
-            $('.voice-call-container').html(`
-                <div class="call-main">
-                    <div class="caller-avatar" style="background: #6c757d;">
-                        <i class="fas fa-phone-slash"></i>
-                    </div>
-                    <div class="call-status">Call Ended</div>
-                    <div class="call-timer">${$('#callTimer').text()}</div>
-                    <div class="mt-4">
-                        <button class="btn btn-primary me-2" onclick="window.location.href='/communication/${appointmentId}'">
-                            <i class="fas fa-comments me-1"></i>Send Message
-                        </button>
-                        <button class="btn btn-success" onclick="scheduleFollowUp()">
-                            <i class="fas fa-calendar-plus me-1"></i>Schedule Follow-up
-                        </button>
-                    </div>
-                </div>
-            `);
-        }
+        // handled via #endCallBtn role-aware logic
+        $('#endCallBtn').trigger('click');
     }
 
     function shareScreen() {

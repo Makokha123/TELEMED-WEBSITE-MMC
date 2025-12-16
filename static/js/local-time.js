@@ -1,6 +1,6 @@
 /**
- * Local Time Utility - Converts server timestamps to device's local time
- * This script handles timezone conversion for timestamps throughout the application
+ * Local Time Utility - Converts server timestamps to user's selected timezone (fallback to EAT)
+ * This script handles timezone conversion for timestamps throughout the application.
  */
 
 // Get device's local timezone offset
@@ -29,66 +29,49 @@ function storeDeviceTimezone() {
     }));
 }
 
-// Format date to local time with various formats
+// Resolve preferred timezone: window.USER_TZ if set, else EAT (Africa/Nairobi), else device tz
+function resolvePreferredTimeZone() {
+    try {
+        if (window && window.USER_TZ && typeof window.USER_TZ === 'string' && window.USER_TZ.trim()) {
+            return window.USER_TZ.trim();
+        }
+    } catch (e) {}
+    return 'Africa/Nairobi';
+}
+
+// Format date to local time with various formats using preferred timezone
 function formatToLocalTime(utcDate, format = 'datetime') {
     if (!utcDate) return 'N/A';
-    
-    // Handle string dates (ISO format or other formats)
     let date = utcDate instanceof Date ? utcDate : new Date(utcDate);
-    
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-        return 'Invalid date';
-    }
-    
-    const options = {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-    };
-    
+    if (isNaN(date.getTime())) return 'Invalid date';
+
+    const tz = resolvePreferredTimeZone();
+
+    const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: tz };
     const localeOptions = {
-        dateonly: {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        },
-        timeonly: {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
-        },
+        dateonly: { year: 'numeric', month: 'short', day: 'numeric', timeZone: tz },
+        timeonly: { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: tz },
         datetime: options,
-        short: {
-            year: '2-digit',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        }
+        short: { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: tz }
     };
-    
-    return date.toLocaleString('en-US', localeOptions[format] || options);
+    try {
+        return new Intl.DateTimeFormat('en-US', localeOptions[format] || options).format(date);
+    } catch (e) {
+        // Fallback to default toLocaleString if Intl fails
+        return date.toLocaleString('en-US');
+    }
 }
 
 // Convert time to "time ago" format with local timezone awareness
 function formatTimeAgo(utcDate) {
     if (!utcDate) return 'N/A';
-    
-    let date = utcDate instanceof Date ? utcDate : new Date(utcDate);
-    
-    if (isNaN(date.getTime())) {
-        return 'Invalid date';
-    }
-    
+    const date = utcDate instanceof Date ? utcDate : new Date(utcDate);
+    if (isNaN(date.getTime())) return 'Invalid date';
+
     const now = new Date();
-    const seconds = Math.floor((now - date) / 1000);
-    
+    const diffMs = now.getTime() - date.getTime();
+    const seconds = Math.floor(diffMs / 1000);
+
     if (seconds < 60) return 'just now';
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
@@ -96,8 +79,7 @@ function formatTimeAgo(utcDate) {
     if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
     const days = Math.floor(seconds / 86400);
     if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
-    
-    // For older dates, show full date
+
     return formatToLocalTime(date, 'short');
 }
 

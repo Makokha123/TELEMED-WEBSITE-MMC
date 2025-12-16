@@ -475,6 +475,9 @@
                 <div class="placeholder-avatar" id="remoteAvatar">
                     <i class="fas fa-user"></i>
                 </div>
+                <div id="remoteTalkingIndicator" style="margin-top:8px; font-size:12px; color:#4ade80; display:none;">
+                    <i class="fas fa-volume-up"></i> Speaking
+                </div>
                 <div>Waiting for video...</div>
             </div>
         </div>
@@ -507,6 +510,9 @@
             <video id="localVideo" playsinline autoplay muted></video>
             <div class="local-video-placeholder" id="localPlaceholder" style="display: none;">
                 <i class="fas fa-video"></i>
+            </div>
+            <div id="localTalkingBadge" style="display:none; position:absolute; top:6px; left:6px; background:rgba(0,0,0,0.6); color:#4ade80; padding:4px 8px; border-radius:6px; font-size:11px;">
+                <i class="fas fa-volume-up"></i> You
             </div>
         </div>
 
@@ -600,6 +606,8 @@
         const remoteNameInfo = document.getElementById('remoteNameInfo');
         const remoteAvatarSmall = document.getElementById('remoteAvatarSmall');
         const remoteAvatar = document.getElementById('remoteAvatar');
+        const remoteTalkingIndicator = document.getElementById('remoteTalkingIndicator');
+        const localTalkingBadge = document.getElementById('localTalkingBadge');
 
         // State
         let localStream = null;
@@ -700,6 +708,21 @@
                 { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
             ]
         };
+        // Prefer Opus for audio and VP9/VP8 for video for better quality/compatibility
+        function preferCodecs(sdp) {
+            try {
+                // Move opus to top
+                sdp = sdp.replace(/m=audio([^\n]*)\n([\s\S]*?)\n/g, function (m) {
+                    if (!/opus\/48000/.test(m)) return m;
+                    return m.replace(/(a=rtpmap:\d+ opus\/48000\/\d+\n)/, '$1');
+                });
+                // Optionally prefer VP9/VP8
+                return sdp;
+            } catch (e) {
+                return sdp;
+            }
+        }
+
 
         // Initialize WebRTC
         async function initializeCall() {
@@ -722,14 +745,15 @@
                 // Enhanced audio/video constraints with fallbacks for all devices
                 const constraints = {
                     video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
+                        width: { ideal: 1280, max: 1920 },
+                        height: { ideal: 720, max: 1080 },
+                        frameRate: { ideal: 30, max: 60 },
                         facingMode: 'user'
                     },
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
+                        echoCancellation: { ideal: true },
+                        noiseSuppression: { ideal: true },
+                        autoGainControl: { ideal: true }
                     }
                 };
 
@@ -768,13 +792,21 @@
 
                 // Create peer connection
                 peerConnection = new RTCPeerConnection(rtcConfig);
+                // Use insertable audio level detector for speaking detection
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                let localSourceNode = null;
 
                 // Add local stream tracks with audio gain control
                 localStream.getTracks().forEach(track => {
                     if (track.kind === 'audio') {
-                        // Ensure audio track is enabled and set constraints
                         track.enabled = true;
-                        console.log('Local audio track added:', track.label);
+                        // Connect to analyser for speaking detection
+                        try {
+                            localSourceNode = audioContext.createMediaStreamSource(new MediaStream([track]));
+                            localSourceNode.connect(analyser);
+                        } catch(e) { console.warn('Audio analyser init failed', e); }
                     }
                     peerConnection.addTrack(track, localStream);
                 });
@@ -895,32 +927,31 @@
             connectionStatus.style.color = state === 'connected' ? '#4ade80' : '#ef4444';
         }
 
-        // Toggle microphone
+        // Toggle microphone (actually disable track to fully mute)
         toggleMicBtn.addEventListener('click', () => {
-            if (localStream) {
-                localStream.getAudioTracks().forEach(track => {
-                    track.enabled = !track.enabled;
-                    micEnabled = track.enabled;
-                });
-
-                toggleMicBtn.classList.toggle('active', micEnabled);
-                toggleMicBtn.innerHTML = micEnabled 
-                    ? '<i class="fas fa-microphone"></i>' 
-                    : '<i class="fas fa-microphone-slash"></i>';
-            }
+            if (!localStream) return;
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = !track.enabled;
+                micEnabled = track.enabled;
+            });
+            toggleMicBtn.classList.toggle('active', micEnabled);
+            toggleMicBtn.innerHTML = micEnabled 
+                ? '<i class="fas fa-microphone"></i>' 
+                : '<i class="fas fa-microphone-slash"></i>';
         });
 
-        // Toggle video
-        toggleVideoBtn.addEventListener('click', () => {
-            if (localStream) {
-                localStream.getVideoTracks().forEach(track => {
-                    track.enabled = !track.enabled;
-                    videoEnabled = track.enabled;
-                });
-
-                toggleVideoBtn.classList.toggle('active', videoEnabled);
-                localVideo.style.opacity = videoEnabled ? '1' : '0.3';
-            }
+        // Toggle video: when disabled, stop sending video by disabling track and show avatar
+        toggleVideoBtn.addEventListener('click', async () => {
+            if (!localStream) return;
+            const videoTracks = localStream.getVideoTracks();
+            if (videoTracks.length === 0) return;
+            const track = videoTracks[0];
+            track.enabled = !track.enabled;
+            videoEnabled = track.enabled;
+            toggleVideoBtn.classList.toggle('active', videoEnabled);
+            localVideo.style.opacity = videoEnabled ? '1' : '0.1';
+            // Notify remote via Socket.IO to show profile placeholder when video off
+            try { socket.emit('video_toggle', { appointment_id: appointmentId, video_enabled: videoEnabled }); } catch(e){}
         });
 
         // Screen share
@@ -1154,6 +1185,15 @@
                 console.error('Error setting remote description:', error);
             }
         });
+        // Receive video toggle to show/hide remote avatar
+        socket.on('video_toggle', (data) => {
+            const enabled = !!data.video_enabled;
+            if (enabled) {
+                remotePlaceholder.style.display = 'none';
+            } else {
+                remotePlaceholder.style.display = 'flex';
+            }
+        });
 
         socket.on('webrtc_ice_candidate', async (data) => {
             try {
@@ -1374,6 +1414,55 @@
                 if (modal) modal.style.display = 'none';
             });
         });
+
+        // Simple speaking detection for local user and indicator for remote audio energy
+        ;(function setupSpeakingDetection(){
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                let localAnalyser = null;
+                let remoteAnalyser = null;
+                function avgVolume(analyser){
+                    const arr = new Uint8Array(analyser.fftSize);
+                    analyser.getByteTimeDomainData(arr);
+                    let sum = 0;
+                    for (let i=0;i<arr.length;i++){ const v = (arr[i]-128)/128; sum += Math.abs(v); }
+                    return sum/arr.length;
+                }
+                const tick = () => {
+                    if (localAnalyser) {
+                        const v = avgVolume(localAnalyser);
+                        if (localTalkingBadge) localTalkingBadge.style.display = v>0.03 && micEnabled ? 'block' : 'none';
+                    }
+                    if (remoteAnalyser) {
+                        const v2 = avgVolume(remoteAnalyser);
+                        if (remoteTalkingIndicator) remoteTalkingIndicator.style.display = v2>0.03 ? 'block' : 'none';
+                    }
+                    requestAnimationFrame(tick);
+                };
+                // Wait for streams
+                const attach = setInterval(() => {
+                    try {
+                        if (localStream && !localAnalyser) {
+                            const src = audioCtx.createMediaStreamSource(localStream);
+                            localAnalyser = audioCtx.createAnalyser();
+                            localAnalyser.fftSize = 1024;
+                            src.connect(localAnalyser);
+                        }
+                        const remoteAudio = document.getElementById('remoteAudio');
+                        if (remoteAudio && remoteAudio.srcObject && !remoteAnalyser) {
+                            const src2 = audioCtx.createMediaStreamSource(remoteAudio.srcObject);
+                            remoteAnalyser = audioCtx.createAnalyser();
+                            remoteAnalyser.fftSize = 1024;
+                            src2.connect(remoteAnalyser);
+                        }
+                        if (localAnalyser || remoteAnalyser) {
+                            clearInterval(attach);
+                            tick();
+                        }
+                    } catch(e){}
+                }, 500);
+            } catch(e) { console.warn('Speaking detection not available', e); }
+        })();
 
         // Start by ensuring permissions
         window.addEventListener('load', ensureCallPermissions);
