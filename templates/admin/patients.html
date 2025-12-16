@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+
+{% block title %}Patients Overview - Admin Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .patient-card {
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease;
+    }
+    .patient-card:hover {
+        transform: translateY(-5px);
+    }
+    .patient-avatar {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.5em;
+    }
+    .medical-badge {
+        font-size: 0.75em;
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+    .stats-number {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #007bff;
+    }
+    .view-toggle {
+        cursor: pointer;
+    }
+    .view-toggle.active {
+        color: #007bff;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-2">Patients Overview</h1>
+                    <p class="text-muted">Manage and monitor all patient records and activities.</p>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary view-toggle active" data-view="grid">
+                        <i class="fas fa-th-large"></i> Grid
+                    </button>
+                    <button class="btn btn-outline-primary view-toggle" data-view="list">
+                        <i class="fas fa-list"></i> List
+                    </button>
+                    <button class="btn btn-primary">
+                        <i class="fas fa-download me-2"></i>Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Patient Statistics -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card patient-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <div class="text-muted">Total Patients</div>
+                            <div class="stats-number">{{ stats.total_patients }}</div>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-users fa-2x text-primary"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-success">
+                            <i class="fas fa-arrow-up"></i> Live data
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card patient-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <div class="text-muted">Active Today</div>
+                            <div class="stats-number">{{ stats.active_today }}</div>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-user-check fa-2x text-success"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-success">Live data</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card patient-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <div class="text-muted">New This Month</div>
+                            <div class="stats-number">{{ stats.new_this_month }}</div>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-user-plus fa-2x text-info"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-success">Live data</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card patient-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <div class="text-muted">Pending Records</div>
+                            <div class="stats-number">{{ stats.pending_records }}</div>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-file-medical fa-2x text-warning"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-danger">Live data</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search and Filters -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <form method="get" action="{{ url_for('admin_patients') }}">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                <input type="text" name="search" class="form-control" placeholder="Search patients..." value="{{ filters.search if filters is defined else '' }}">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" name="status">
+                                <option value="">All Status</option>
+                                <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
+                                <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>Inactive</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" name="blood_type">
+                                <option value="">All Blood Types</option>
+                                <option value="A+" {% if filters.blood_type == 'A+' %}selected{% endif %}>A+</option>
+                                <option value="A-" {% if filters.blood_type == 'A-' %}selected{% endif %}>A-</option>
+                                <option value="B+" {% if filters.blood_type == 'B+' %}selected{% endif %}>B+</option>
+                                <option value="B-" {% if filters.blood_type == 'B-' %}selected{% endif %}>B-</option>
+                                <option value="AB+" {% if filters.blood_type == 'AB+' %}selected{% endif %}>AB+</option>
+                                <option value="AB-" {% if filters.blood_type == 'AB-' %}selected{% endif %}>AB-</option>
+                                <option value="O+" {% if filters.blood_type == 'O+' %}selected{% endif %}>O+</option>
+                                <option value="O-" {% if filters.blood_type == 'O-' %}selected{% endif %}>O-</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" name="from_date" class="form-control" placeholder="From Date" value="{{ filters.from_date if filters is defined else '' }}">
+                        </div>
+                        <div class="col-md-2">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-outline-secondary w-100">
+                                    <i class="fas fa-filter me-2"></i>Filter
+                                </button>
+                                <a href="{{ url_for('admin_patients') }}" class="btn btn-secondary">Reset</a>
+                            </div>
+                        </div>
+                    </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Patients Grid View -->
+    <div class="row" id="gridView">
+        <!-- Grid content will be populated by server-render initially and then updated via AJAX -->
+        {% for item in patient_items %}
+            {% set patient = item.patient %}
+            <div class="col-xl-4 col-lg-6 mb-4 patient-card-item" data-patient-id="{{ patient.id }}">
+                <div class="card patient-card h-100">
+                    <div class="card-body">
+                        <div class="text-center mb-4">
+                            {% set pic = None %}
+                            {% if patient.user.profile_picture %}
+                                {% set pic = patient.user.profile_picture %}
+                            {% elif patient.profile_picture is defined and patient.profile_picture %}
+                                {% set pic = patient.profile_picture %}
+                            {% endif %}
+                            {% if pic %}
+                                <div class="mx-auto mb-3" style="width:60px; height:60px; border-radius:50%; overflow:hidden;">
+                                    {% if pic.startswith('http') %}
+                                        <img src="{{ pic }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                    {% elif pic.endswith('.enc') or 'profile_pictures' in pic %}
+                                        <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                    {% elif pic.startswith('/') %}
+                                        <img src="{{ pic }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                    {% else %}
+                                        <img src="{{ url_for('static', filename=pic) }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <div class="patient-avatar mx-auto mb-3">
+                                    {{ patient.user.first_name[0] }}{{ patient.user.last_name[0] }}
+                                </div>
+                            {% endif %}
+                            <h5 class="card-title mb-1">{{ patient.user.first_name }} {{ patient.user.last_name }}</h5>
+                            <p class="text-muted mb-3">Patient ID: P{{ "%04d"|format(patient.id) }}</p>
+                            <div class="d-flex justify-content-center mb-3">
+                                <span class="badge bg-success me-2">{{ item.status if item.status is defined else 'Active' }}</span>
+                                {% if patient.blood_type %}
+                                <span class="badge bg-danger">{{ patient.blood_type }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="patient-info">
+                            <div class="row text-center mb-3">
+                                <div class="col-4">
+                                    <div class="text-muted small">Age</div>
+                                    <div class="fw-bold">
+                                        {% if patient.user.date_of_birth %}
+                                            {{ ((now - patient.user.date_of_birth).days / 365)|int }} yrs
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Gender</div>
+                                    <div class="fw-bold">{{ patient.user.gender if patient.user.__dict__.get('gender') else 'N/A' }}</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Visits</div>
+                                    <div class="fw-bold">{{ item.visits }}</div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="text-muted small mb-1">Contact</div>
+                                <div class="fw-bold">{{ patient.user.phone or 'N/A' }}</div>
+                                <div class="small text-muted">{{ patient.user.email }}</div>
+                            </div>
+                            {% if patient.emergency_contact %}
+                            <div class="mb-3">
+                                <div class="text-muted small mb-1">Emergency Contact</div>
+                                <div class="fw-bold">{{ patient.emergency_contact }}</div>
+                            </div>
+                            {% endif %}
+                            {% if patient.allergies %}
+                            <div class="mb-3">
+                                <div class="text-muted small mb-1">Allergies</div>
+                                <div class="small">{{ patient.allergies|truncate(50) }}</div>
+                            </div>
+                            {% endif %}
+                            {% if patient.insurance_provider %}
+                            <div class="mb-3">
+                                <div class="text-muted small mb-1">Insurance</div>
+                                <div class="small">{{ patient.insurance_provider }}</div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <div class="btn-group w-100">
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_view_patient', patient_id=patient.id) }}">
+                                <i class="fas fa-eye me-1"></i>View
+                            </a>
+                            <button class="btn btn-sm btn-outline-success" onclick="contactPatient('{{ patient.id }}')">
+                                <i class="fas fa-envelope me-1"></i>Contact
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination controls -->
+    <div class="row mt-3">
+        <div class="col-12 d-flex justify-content-center">
+            <nav aria-label="Patients pagination">
+                <ul class="pagination" id="patientsPagination">
+                    <!-- populated by JS -->
+                </ul>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Patients List View (Hidden by default) -->
+    <div class="row d-none" id="listView">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Patients List</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Patient</th>
+                                    <th>Contact</th>
+                                    <th>Blood Type</th>
+                                    <th>Insurance</th>
+                                    <th>Last Visit</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in patient_items %}
+                                {% set patient = item.patient %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            {% if patient.user.profile_picture %}
+                                            {% set lpic = patient.user.profile_picture %}
+                                            {% elif patient.profile_picture is defined and patient.profile_picture %}
+                                            {% set lpic = patient.profile_picture %}
+                                            {% else %}
+                                            {% set lpic = None %}
+                                            {% endif %}
+                                            {% if lpic %}
+                                            <div class="me-3" style="width: 40px; height: 40px; overflow:hidden; border-radius:50%;">
+                                                {% if lpic.startswith('http') %}
+                                                    <img src="{{ lpic }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                {% elif lpic.endswith('.enc') or 'profile_pictures' in lpic %}
+                                                    <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                {% elif lpic.startswith('/') %}
+                                                    <img src="{{ lpic }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                {% else %}
+                                                    <img src="{{ url_for('static', filename=lpic) }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                {% endif %}
+                                            </div>
+                                            {% else %}
+                                            <div class="patient-avatar me-3" style="width: 40px; height: 40px; font-size: 1em;">
+                                                {{ patient.user.first_name[0] }}{{ patient.user.last_name[0] }}
+                                            </div>
+                                            {% endif %}
+                                            <div>
+                                                <h6 class="mb-1">{{ patient.user.first_name }} {{ patient.user.last_name }}</h6>
+                                                <small class="text-muted">ID: P{{ "%04d"|format(patient.id) }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div>{{ patient.user.phone or 'N/A' }}</div>
+                                        <small class="text-muted">{{ patient.user.email }}</small>
+                                    </td>
+                                    <td>
+                                        {% if patient.blood_type %}
+                                        <span class="badge bg-danger">{{ patient.blood_type }}</span>
+                                        {% else %}
+                                        <span class="text-muted">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if patient.insurance_provider %}
+                                        <span class="badge bg-info">{{ patient.insurance_provider }}</span>
+                                        {% else %}
+                                        <span class="text-muted">None</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{% if item.last_visit %}{{ item.last_visit.strftime('%Y-%m-%d') }}{% else %}N/A{% endif %}</td>
+                                    <td>
+                                        <span class="badge {% if item.status == 'Active' %}bg-success{% else %}bg-secondary{% endif %}">{{ item.status }}</span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="viewPatientDetails('{{ patient.id }}')">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-info" 
+                                                    onclick="editPatient('{{ patient.id }}')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // View toggle functionality
+        $('.view-toggle').click(function() {
+            $('.view-toggle').removeClass('active');
+            $(this).addClass('active');
+            
+            const view = $(this).data('view');
+            if (view === 'grid') {
+                $('#gridView').removeClass('d-none');
+                $('#listView').addClass('d-none');
+            } else {
+                $('#gridView').addClass('d-none');
+                $('#listView').removeClass('d-none');
+            }
+        });
+    });
+
+    function viewPatientDetails(patientId) {
+        alert('View patient details: ' + patientId);
+        // Implement view patient details functionality
+    }
+
+    function editPatient(patientId) {
+        alert('Edit patient: ' + patientId);
+        // Implement edit patient functionality
+    }
+
+    function contactPatient(patientId) {
+        alert('Contact patient: ' + patientId);
+        // Implement contact patient functionality
+    }
+</script>
+<script>
+    // AJAX filtering + pagination for patients
+    (function(){
+        const form = document.querySelector('form[action="{{ url_for("admin_patients") }}"]');
+        const gridView = document.getElementById('gridView');
+        const listView = document.getElementById('listView');
+        const pagination = document.getElementById('patientsPagination');
+
+        function escapeHtml(s){
+            if(!s && s !== 0) return '';
+            return String(s).replace(/[&<>"'`]/g, function(ch){
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;","`":"&#96;"}[ch];
+            });
+        }
+
+        function renderGrid(items){
+            let out = '';
+            items.forEach(item => {
+                const user = item.user || {};
+                const pic = user.profile_picture || '';
+                const avatar = user.first_name && user.last_name ? escapeHtml(user.first_name[0] + user.last_name[0]) : 'U';
+                out += `
+                <div class="col-xl-4 col-lg-6 mb-4 patient-card-item" data-patient-id="${item.id}">
+                    <div class="card patient-card h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3" style="width:60px; height:60px; border-radius:50%; overflow:hidden; margin:0 auto;">
+                                ${pic && pic.startsWith && pic.startsWith('http') ? `<img src="${escapeHtml(pic)}" style="width:100%;height:100%;object-fit:cover;">` : (pic && pic.endsWith && pic.endsWith('.enc') ? `<img src="/profile_picture/${user.id}" style="width:100%;height:100%;object-fit:cover;">` : (pic ? `<img src="/static/${escapeHtml(pic)}" style="width:100%;height:100%;object-fit:cover;">` : `<div class="patient-avatar" style="width:60px;height:60px;line-height:60px">${avatar}</div>`))}
+                            </div>
+                            <h5 class="card-title mt-2">${escapeHtml(user.first_name || '')} ${escapeHtml(user.last_name || '')}</h5>
+                            <p class="text-muted mb-2">Patient ID: P${String(item.id).padStart(4,'0')}</p>
+                            <div class="d-flex justify-content-center mb-3">
+                                <span class="badge bg-success me-2">${escapeHtml(item.status || 'Active')}</span>
+                                ${item.blood_type ? `<span class="badge bg-danger">${escapeHtml(item.blood_type)}</span>` : ''}
+                            </div>
+                            <div class="small text-muted">${escapeHtml(user.email || '')}</div>
+                        </div>
+                        <div class="card-footer bg-transparent">
+                            <div class="btn-group w-100">
+                                <a class="btn btn-sm btn-outline-primary" href="/admin/patient/${item.id}"><i class="fas fa-eye me-1"></i>View</a>
+                                <button class="btn btn-sm btn-outline-success" onclick="contactPatient('${item.id}')"><i class="fas fa-envelope me-1"></i>Contact</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+            gridView.innerHTML = out;
+        }
+
+        function renderList(items){
+            const tbody = listView.querySelector('tbody');
+            let out = '';
+            items.forEach(item => {
+                const user = item.user || {};
+                const picHtml = user.profile_picture ? (user.profile_picture.startsWith && user.profile_picture.startsWith('http') ? `<img src="${escapeHtml(user.profile_picture)}" style="width:40px;height:40px;object-fit:cover;">` : (user.profile_picture.endsWith && user.profile_picture.endsWith('.enc') ? `<img src="/profile_picture/${user.id}" style="width:40px;height:40px;object-fit:cover;">` : `<img src="/static/${escapeHtml(user.profile_picture)}" style="width:40px;height:40px;object-fit:cover;">`)) : `<div class="patient-avatar" style="width:40px;height:40px;line-height:40px">${escapeHtml((user.first_name||'')[0] || 'U')}${escapeHtml((user.last_name||'')[0] || '')}</div>`;
+                out += `<tr>
+                    <td><div class="d-flex align-items-center">${picHtml}<div class="ms-2"><h6 class="mb-0">${escapeHtml(user.first_name||'')} ${escapeHtml(user.last_name||'')}</h6><small class="text-muted">ID: P${String(item.id).padStart(4,'0')}</small></div></div></td>
+                    <td>${escapeHtml(user.phone || 'N/A')}<br><small class="text-muted">${escapeHtml(user.email || '')}</small></td>
+                    <td>${item.blood_type ? `<span class="badge bg-danger">${escapeHtml(item.blood_type)}</span>` : '<span class="text-muted">N/A</span>'}</td>
+                    <td>${item.insurance_provider ? `<span class="badge bg-info">${escapeHtml(item.insurance_provider)}</span>` : '<span class="text-muted">None</span>'}</td>
+                    <td>${item.last_visit ? escapeHtml(item.last_visit.split('T')[0]) : 'N/A'}</td>
+                    <td><span class="badge ${item.status=='Active' ? 'bg-success' : 'bg-secondary'}">${escapeHtml(item.status)}</span></td>
+                    <td><div class="btn-group"><button class="btn btn-sm btn-outline-primary" onclick="window.location='/admin/patient/${item.id}'"><i class="fas fa-eye"></i></button></div></td>
+                </tr>`;
+            });
+            tbody.innerHTML = out;
+        }
+
+        function renderPagination(page, pages){
+            let out = '';
+            const prevDisabled = page <= 1 ? 'disabled' : '';
+            const nextDisabled = page >= pages ? 'disabled' : '';
+            out += `<li class="page-item ${prevDisabled}"><a class="page-link" href="#" data-page="${page-1}">Previous</a></li>`;
+            // show up to 5 pages
+            const start = Math.max(1, page - 2);
+            const end = Math.min(pages, start + 4);
+            for(let p=start;p<=end;p++){
+                out += `<li class="page-item ${p==page? 'active':''}"><a class="page-link" href="#" data-page="${p}">${p}</a></li>`;
+            }
+            out += `<li class="page-item ${nextDisabled}"><a class="page-link" href="#" data-page="${page+1}">Next</a></li>`;
+            pagination.innerHTML = out;
+        }
+
+        async function fetchAndRender(params){
+            const qs = new URLSearchParams(params);
+            const res = await fetch(`/admin/patients_data?${qs.toString()}`, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+            if(!res.ok) return;
+            const data = await res.json();
+            if(data.error) return;
+            renderGrid(data.items || []);
+            renderList(data.items || []);
+            renderPagination(data.page || 1, data.pages || 1);
+        }
+
+        if(form){
+            form.addEventListener('submit', function(e){
+                e.preventDefault();
+                const fd = new FormData(form);
+                const params = {};
+                for(const [k,v] of fd.entries()){
+                    if(v) params[k]=v;
+                }
+                params.page = 1;
+                fetchAndRender(params);
+            });
+        }
+
+        // handle clicks on pagination
+        pagination.addEventListener('click', function(e){
+            e.preventDefault();
+            const a = e.target.closest('a[data-page]');
+            if(!a) return;
+            const page = parseInt(a.getAttribute('data-page'))||1;
+            // gather current filters
+            const fd = new FormData(form);
+            const params = {};
+            for(const [k,v] of fd.entries()) if(v) params[k]=v;
+            params.page = page;
+            fetchAndRender(params);
+        });
+
+        // initial AJAX load (preserve server-rendered initial page but load page 1 via AJAX to get counts)
+        (function(){
+            const initial = {};
+            const fd = new FormData(form);
+            for(const [k,v] of fd.entries()) if(v) initial[k]=v;
+            initial.page = 1;
+            initial.per_page = 12;
+            fetchAndRender(initial).catch(()=>{});
+        })();
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-10 offset-md-1">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Notifications</h5>
+          <div>
+            <button id="markAll" class="btn btn-sm btn-outline-secondary">Mark all read</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="notificationsPageList" class="list-group"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  function _iconForType(t){
+    switch((t||'').toLowerCase()){
+      case 'message': return {icon:'fas fa-envelope', color:'text-primary'};
+      case 'missed_video_call':
+      case 'missed_voice_call': return {icon:'fas fa-phone-slash', color:'text-danger'};
+      case 'video_call_ended':
+      case 'voice_call_ended': return {icon:'fas fa-phone', color:'text-success'};
+      case 'video_call_rejected':
+      case 'voice_call_rejected': return {icon:'fas fa-ban', color:'text-warning'};
+      case 'incoming_call': return {icon:'fas fa-bell', color:'text-info'};
+      default: return {icon:'fas fa-info-circle', color:'text-secondary'};
+    }
+  }
+
+  async function loadAll(page=1){
+    try{
+      const resp = await fetch(`/api/notifications?include_read=true&page=${page}&per_page=50`);
+      if(!resp.ok) throw new Error('fetch failed');
+      const data = await resp.json();
+      if(!data.success) return;
+      const list = document.getElementById('notificationsPageList');
+      list.innerHTML = '';
+      const arr = data.notifications || [];
+      if(!arr.length){ list.innerHTML = '<div class="text-muted">No notifications found.</div>'; return; }
+      arr.forEach(n => {
+        const meta = _iconForType(n.type || n.notification_type);
+        const el = document.createElement('div');
+        el.className = 'list-group-item d-flex align-items-start justify-content-between';
+        el.dataset.id = n.id;
+        el.innerHTML = `<div class="me-2"><i class="${meta.icon} ${meta.color}" style="width:28px;text-align:center;"></i></div><div class="flex-grow-1"><div class="d-flex w-100 justify-content-between"><strong class="mb-1">${n.title||'Notification'}</strong><small class="text-muted ms-2">${new Date(n.created_at).toLocaleString()}</small></div><p class="mb-1 small text-muted">${n.body||''}</p></div><div class="ms-2 text-end"><button class="btn btn-sm btn-light mark-read-btn" data-id="${n.id}">${n.is_read? 'Read':'Mark read'}</button></div>`;
+        if(n.is_read){ el.style.opacity = '0.6'; }
+        el.querySelector('.mark-read-btn').addEventListener('click', async function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          const id = this.dataset.id;
+          try{
+            const r = await fetch(`/api/notifications/${id}/read`, { method: 'POST', headers: {'X-CSRFToken': csrf_token} });
+            if(r.ok){ this.textContent = 'Read'; el.style.opacity = '0.6'; }
+          }catch(e){ console.warn('mark read failed', e); }
+        });
+        list.appendChild(el);
+      });
+
+      // simple pagination controls
+      const cardBody = document.querySelector('.card-body');
+      let pager = document.getElementById('notificationsPager');
+      if(!pager){
+        pager = document.createElement('div'); pager.id = 'notificationsPager'; pager.className = 'd-flex justify-content-between mt-3';
+        pager.innerHTML = `<div><button id="prevPage" class="btn btn-sm btn-outline-secondary" disabled>Previous</button></div><div><span id="pageInfo" class="text-muted">Page ${data.page || 1} of ${data.pages || 1}</span></div><div><button id="nextPage" class="btn btn-sm btn-outline-secondary">Next</button></div>`;
+        cardBody.appendChild(pager);
+        document.getElementById('prevPage').addEventListener('click', function(){ if(data.page>1) loadAll(data.page-1); });
+        document.getElementById('nextPage').addEventListener('click', function(){ if(data.page < data.pages) loadAll(data.page+1); });
+      }
+      // update pager state
+      try{
+        document.getElementById('pageInfo').textContent = `Page ${data.page || 1} of ${data.pages || 1}`;
+        document.getElementById('prevPage').disabled = (data.page <= 1);
+        document.getElementById('nextPage').disabled = (data.page >= (data.pages||1));
+      }catch(e){}
+    }catch(e){ console.error('Failed to load notifications', e); }
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    document.getElementById('markAll').addEventListener('click', async function(){
+      try{
+        await fetch('/api/notifications/read-all', { method: 'POST', headers: {'X-CSRFToken': csrf_token} });
+        loadAll();
+      }catch(e){ console.warn('mark all failed', e); }
+    });
+
+    loadAll();
+  });
+})();
+</script>
+{% endblock %}

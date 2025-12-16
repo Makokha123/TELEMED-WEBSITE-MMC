@@ -1,0 +1,1489 @@
+{% extends "base.html" %}
+
+{% block title %}MAKOKHA MEDICAL CENTRE - Telemedicine & Healthcare Services{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --primary-light: #3b82f6;
+        --secondary: #10b981;
+        --secondary-dark: #059669;
+        --accent: #8b5cf6;
+        --dark: #1e293b;
+        --light: #f8fafc;
+        --gray: #64748b;
+        --gray-light: #e2e8f0;
+        --danger: #ef4444;
+        --danger-dark: #dc2626;
+        --success: #10b981;
+        --warning: #f59e0b;
+    }
+    
+    /* Base Styles */
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.6;
+        color: var(--dark);
+    }
+    
+    .section-padding {
+        padding: 80px 0;
+    }
+    
+    .section-title {
+        font-weight: 700;
+        color: var(--dark);
+        margin-bottom: 1rem;
+    }
+    
+    .section-subtitle {
+        color: var(--gray);
+        font-size: 1.1rem;
+        max-width: 600px;
+        margin: 0 auto 3rem;
+    }
+    
+    /* Quick Navigation */
+    .quick-nav {
+        background: var(--light);
+        padding: 15px 0;
+        border-bottom: 1px solid var(--gray-light);
+    }
+    
+    .quick-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--gray);
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.3s ease;
+    }
+    
+    .quick-nav-item:hover {
+        color: var(--primary);
+    }
+    
+    /* Hero Section */
+    .hero-section {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        color: white;
+        padding: 120px 0 100px;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+        opacity: 0.1;
+    }
+    
+    .hero-content {
+        position: relative;
+        z-index: 2;
+    }
+    
+    .hero-badge {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 10px 24px;
+        border-radius: 50px;
+        font-size: 0.9em;
+        display: inline-block;
+        margin-bottom: 24px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .hero-title {
+        font-weight: 800;
+        line-height: 1.1;
+        margin-bottom: 1.5rem;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.25rem;
+        opacity: 0.9;
+        margin-bottom: 2.5rem;
+        max-width: 600px;
+    }
+    
+    .hero-image-container {
+        position: relative;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        transform: perspective(1000px) rotateY(-5deg) rotateX(5deg);
+        transition: transform 0.5s ease;
+    }
+    
+    .hero-image-container:hover {
+        transform: perspective(1000px) rotateY(0) rotateX(0);
+    }
+    
+    .hero-image-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+        z-index: 1;
+    }
+    
+    .hero-image {
+        width: 100%;
+        height: 500px;
+        object-fit: cover;
+    }
+    
+    .live-badge {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 2;
+        background: var(--success);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 50px;
+        font-weight: 600;
+        font-size: 0.875rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Button Styles */
+    .btn-hero {
+        padding: 12px 32px;
+        border-radius: 50px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    
+    .btn-hero-primary {
+        background: white;
+        color: var(--primary);
+        border: none;
+    }
+    
+    .btn-hero-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        background: white;
+        color: var(--primary-dark);
+    }
+    
+    .btn-hero-outline {
+        background: transparent;
+        color: white;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .btn-hero-outline:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.5);
+        color: white;
+        transform: translateY(-2px);
+    }
+    
+    /* Stats Section */
+    .stats-section {
+        background: var(--light);
+        padding: 80px 0;
+    }
+    
+    .stat-item {
+        text-align: center;
+        padding: 30px;
+    }
+    
+    .stat-number {
+        font-size: 3rem;
+        font-weight: 800;
+        color: var(--primary);
+        margin-bottom: 10px;
+        line-height: 1;
+    }
+    
+    .stat-label {
+        color: var(--gray);
+        font-weight: 500;
+    }
+    
+    /* Features Section */
+    .feature-card {
+        border: none;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: all 0.3s ease;
+        height: 100%;
+        overflow: hidden;
+        background: white;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    
+    .feature-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, var(--primary), var(--accent));
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        margin: 0 auto 24px;
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+    }
+    
+    .feature-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .feature-list li {
+        padding: 8px 0;
+        display: flex;
+        align-items: center;
+    }
+    
+    .feature-list i {
+        color: var(--success);
+        margin-right: 12px;
+        font-size: 0.875rem;
+    }
+    
+    /* How It Works Section */
+    .steps-section {
+        background: var(--light);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .step-card {
+        text-align: center;
+        padding: 40px 20px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .step-number {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: var(--primary);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.5rem;
+        margin: 0 auto 20px;
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+    }
+    
+    .step-connector {
+        position: absolute;
+        top: 30px;
+        left: 50%;
+        width: 100%;
+        height: 2px;
+        background: var(--gray-light);
+        z-index: 0;
+    }
+    
+    .step-connector::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 100%;
+        background: var(--primary);
+        transition: width 1s ease;
+    }
+    
+    .steps-section.in-view .step-connector::after {
+        width: 100%;
+    }
+    
+    /* Services Section */
+    .service-card {
+        border: none;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: all 0.3s ease;
+        height: 100%;
+        background: white;
+    }
+    
+    .service-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    
+    .service-icon {
+        font-size: 3rem;
+        margin-bottom: 20px;
+        color: var(--primary);
+        background: linear-gradient(135deg, var(--primary), var(--accent));
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    
+    /* Doctors Section */
+    .doctor-card {
+        border: none;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: all 0.3s ease;
+        height: 100%;
+        background: white;
+    }
+    
+    .doctor-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    
+    .doctor-image {
+        width: 100%;
+        height: 250px;
+        object-fit: cover;
+    }
+    
+    .doctor-specialty {
+        color: var(--primary);
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    
+    .doctor-experience {
+        color: var(--gray);
+        font-size: 0.875rem;
+    }
+    
+    /* Testimonials */
+    .testimonials-section {
+        background: var(--light);
+    }
+    
+    .testimonial-card {
+        border: none;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        padding: 30px;
+        background: white;
+        height: 100%;
+    }
+    
+    .testimonial-avatar {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--primary), var(--accent));
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.2rem;
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+    }
+    
+    .testimonial-text {
+        position: relative;
+    }
+    
+    .testimonial-text::before {
+        content: '"';
+        font-size: 4rem;
+        color: var(--gray-light);
+        position: absolute;
+        top: -20px;
+        left: -10px;
+        line-height: 1;
+        z-index: 0;
+    }
+    
+    /* CTA Section */
+    .cta-section {
+        background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-dark) 100%);
+        color: white;
+        padding: 100px 0;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .cta-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+        opacity: 0.1;
+    }
+    
+    .cta-content {
+        position: relative;
+        z-index: 2;
+    }
+    
+    /* FAQ Section */
+    .faq-section {
+        background: white;
+    }
+    
+    .accordion-item {
+        border: none;
+        border-radius: 12px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        overflow: hidden;
+    }
+    
+    .accordion-button {
+        background: white;
+        color: var(--dark);
+        font-weight: 600;
+        padding: 20px 24px;
+        border: none;
+        box-shadow: none;
+    }
+    
+    .accordion-button:not(.collapsed) {
+        background: var(--primary);
+        color: white;
+    }
+    
+    .accordion-button:focus {
+        box-shadow: none;
+        border: none;
+    }
+    
+    .accordion-body {
+        padding: 20px 24px;
+        color: var(--gray);
+    }
+    
+    /* About Section */
+    .about-section {
+        background: var(--light);
+    }
+    
+    .about-image {
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Emergency Banner */
+    .emergency-banner {
+        background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%);
+        color: white;
+        padding: 16px 0;
+        text-align: center;
+        margin-bottom: 0;
+        font-weight: 500;
+    }
+    
+    .emergency-btn {
+        background: white;
+        color: var(--danger);
+        border: none;
+        border-radius: 50px;
+        padding: 8px 20px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .emergency-btn:hover {
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--danger-dark);
+        transform: translateY(-2px);
+    }
+    
+    /* Animation Classes */
+    .fade-in {
+        opacity: 0;
+        transform: translateY(30px);
+        transition: all 0.6s ease;
+    }
+    
+    .fade-in.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    
+    /* Trust Badges */
+    .trust-badges {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        margin-top: 40px;
+        flex-wrap: wrap;
+    }
+    
+    .trust-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--gray);
+        font-size: 0.9rem;
+    }
+    
+    .trust-badge i {
+        color: var(--success);
+        font-size: 1.2rem;
+    }
+    
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+        .hero-section {
+            padding: 100px 0 60px;
+            text-align: center;
+        }
+        
+        .hero-title {
+            font-size: 2.5rem;
+        }
+        
+        .hero-image-container {
+            transform: none;
+            margin-top: 40px;
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+        }
+        
+        .step-connector {
+            display: none;
+        }
+        
+        .trust-badges {
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .quick-nav {
+            display: none;
+        }
+    }
+    
+    @media (max-width: 576px) {
+        .hero-title {
+            font-size: 2rem;
+        }
+        
+        .section-padding {
+            padding: 60px 0;
+        }
+        
+        .btn-hero {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Quick Navigation -->
+<div class="quick-nav d-none d-md-block">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-auto">
+                <a href="#about" class="quick-nav-item">
+                    <i class="fas fa-info-circle"></i> About Us
+                </a>
+            </div>
+            <div class="col-auto">
+                <a href="#services" class="quick-nav-item">
+                    <i class="fas fa-stethoscope"></i> Services
+                </a>
+            </div>
+            <div class="col-auto">
+                <a href="#doctors" class="quick-nav-item">
+                    <i class="fas fa-user-md"></i> Our Doctors
+                </a>
+            </div>
+            <div class="col-auto">
+                <a href="#how-it-works" class="quick-nav-item">
+                    <i class="fas fa-play-circle"></i> How It Works
+                </a>
+            </div>
+            <div class="col-auto">
+                <a href="#testimonials" class="quick-nav-item">
+                    <i class="fas fa-comments"></i> Testimonials
+                </a>
+            </div>
+            <div class="col-auto">
+                <a href="#faq" class="quick-nav-item">
+                    <i class="fas fa-question-circle"></i> FAQ
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6 hero-content">
+                <span class="hero-badge">
+                    <i class="fas fa-shield-alt me-2"></i>Secure Telemedicine Platform
+                </span>
+                <h1 class="hero-title display-4 fw-bold">Quality Healthcare From The Comfort Of Your Home</h1>
+                <p class="hero-subtitle">MAKOKHA MEDICAL CENTRE brings expert medical care to you through our advanced telemedicine platform. Connect with certified healthcare professionals anytime, anywhere.</p>
+                <div class="d-flex flex-wrap gap-3 mb-4">
+                    {% if not current_user.is_authenticated %}
+                    <a href="{{ url_for('signup') }}" class="btn btn-hero btn-hero-primary">
+                        <i class="fas fa-user-plus me-2"></i>Get Started Free
+                    </a>
+                    <a href="{{ url_for('login') }}" class="btn btn-hero btn-hero-outline">
+                        <i class="fas fa-sign-in-alt me-2"></i>Patient Login
+                    </a>
+                    {% else %}
+                    <a href="{% if current_user.role == 'patient' %}{{ url_for('patient_dashboard') }}{% elif current_user.role == 'doctor' %}{{ url_for('doctor_dashboard') }}{% else %}{{ url_for('admin_dashboard') }}{% endif %}" 
+                       class="btn btn-hero btn-hero-primary">
+                        <i class="fas fa-tachometer-alt me-2"></i>Go to Dashboard
+                    </a>
+                    {% endif %}
+                    <a href="#how-it-works" class="btn btn-hero btn-hero-outline">
+                        <i class="fas fa-play-circle me-2"></i>How It Works
+                    </a>
+                </div>
+                <div class="trust-badges">
+                    <div class="trust-badge">
+                        <i class="fas fa-check-circle"></i>
+                        <span>No registration fees</span>
+                    </div>
+                    <div class="trust-badge">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>HIPAA compliant</span>
+                    </div>
+                    <div class="trust-badge">
+                        <i class="fas fa-clock"></i>
+                        <span>24/7 Support</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="hero-image-container fade-in">
+                    <img src="{{ url_for('static', filename='images/hero-telemedicine.jpg') }}"
+                        data-fallback="{{ url_for('static', filename='images/hero-telemedicine.svg') }}"
+                        data-remote="https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                        alt="Telemedicine Consultation"
+                        class="hero-image"
+                        onerror="this.onerror=null;this.src=this.dataset.fallback;">
+                    <div class="live-badge">
+                        <i class="fas fa-video me-1"></i>Live Now
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<script>
+// Try to preload the remote hero image and swap it in only if it loads successfully
+(function(){
+    const hero = document.querySelector('.hero-image');
+    if (!hero) return;
+    const remote = hero.dataset.remote;
+    if (!remote) return;
+    const tester = new Image();
+    tester.onload = function() { hero.src = remote; };
+    tester.onerror = function() { /* keep local fallback */ };
+    tester.src = remote;
+})();
+
+// Poll testimonials every 20 seconds and update the testimonials section
+async function fetchTestimonials() {
+    try {
+        const resp = await fetch('/api/testimonials');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const container = document.getElementById('testimonials-row');
+        if (!container) return;
+        const items = data.testimonials || [];
+        if (items.length === 0) {
+            container.innerHTML = '<div class="col-12 text-center"><p class="text-muted">Patient testimonials will be displayed here.</p></div>';
+            return;
+        }
+        let html = '';
+        for (const t of items) {
+            const patientName = t.patient_name || 'Patient';
+            const doctorName = t.doctor_name ? ('Dr. ' + t.doctor_name) : '';
+            const initials = patientName.split(' ').map(s => s[0]||'').slice(0,2).join('');
+            let stars = '';
+            for (let i=0;i< (t.rating||0); i++) stars += '<i class="fas fa-star"></i>';
+            html += `
+                <div class="col-lg-4">
+                    <div class="testimonial-card fade-in">
+                        <div class="d-flex align-items-center mb-4">
+                            <div class="testimonial-avatar me-3">${initials}</div>
+                            <div>
+                                <h6 class="mb-1 fw-bold">${patientName}</h6>
+                                <small class="text-muted">${doctorName}</small>
+                            </div>
+                        </div>
+                        <div class="testimonial-text">
+                            <p class="text-muted mb-0">"${(t.content||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"</p>
+                        </div>
+                        <div class="text-warning mt-3">${stars}</div>
+                    </div>
+                </div>`;
+        }
+        container.innerHTML = html;
+    } catch (e) {
+        console.error('Failed to fetch testimonials', e);
+    }
+}
+
+// Initial load
+fetchTestimonials();
+// Refresh every 20 seconds
+setInterval(fetchTestimonials, 20000);
+</script>
+
+<!-- Stats Section -->
+<section class="stats-section">
+    <div class="container">
+        <div class="row text-center">
+            <div class="col-md-3 col-6 stat-item fade-in">
+                <div class="stat-number" data-count="{{ stats.total_patients }}">0</div>
+                <div class="stat-label">Patients Served</div>
+            </div>
+            <div class="col-md-3 col-6 stat-item fade-in">
+                <div class="stat-number" data-count="{{ stats.total_doctors }}">0</div>
+                <div class="stat-label">Certified Doctors</div>
+            </div>
+            <div class="col-md-3 col-6 stat-item fade-in">
+                <div class="stat-number" data-count="{{ stats.total_appointments }}">0</div>
+                <div class="stat-label">Appointments</div>
+            </div>
+            <div class="col-md-3 col-6 stat-item fade-in">
+                <div class="stat-number" data-count="{{ stats.satisfaction_rate }}">0</div>
+                <div class="stat-label">% Satisfaction</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- About Section -->
+<section id="about" class="about-section section-padding">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6 mb-5 mb-lg-0">
+                <div class="about-image fade-in">
+                    <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" 
+                         alt="MAKOKHA MEDICAL CENTRE" 
+                         class="img-fluid">
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="ps-lg-5">
+                    <h2 class="section-title">About MAKOKHA MEDICAL CENTRE</h2>
+                    <p class="text-muted mb-4">
+                        Founded with a vision to make quality healthcare accessible to everyone, MAKOKHA MEDICAL CENTRE has been serving the community with excellence in medical care for over 15 years.
+                    </p>
+                    <p class="text-muted mb-4">
+                        Our telemedicine platform represents our commitment to innovation in healthcare delivery, ensuring that patients receive timely, professional medical attention regardless of their location.
+                    </p>
+                    <div class="row">
+                        <div class="col-sm-6">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="feature-icon me-3" style="width: 50px; height: 50px; font-size: 1.2rem;">
+                                    <i class="fas fa-award"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1">Certified Excellence</h6>
+                                    <small class="text-muted">Accredited healthcare facility</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="feature-icon me-3" style="width: 50px; height: 50px; font-size: 1.2rem;">
+                                    <i class="fas fa-users"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1">Expert Team</h6>
+                                    <small class="text-muted">Qualified medical professionals</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('about') }}" class="btn btn-primary mt-3">Learn More About Us</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="section-padding">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="section-title">Why Choose Our Telemedicine Platform?</h2>
+                <p class="section-subtitle">Experience healthcare that comes to you with our comprehensive telemedicine solutions</p>
+            </div>
+        </div>
+        <div class="row g-4">
+            <div class="col-lg-4 col-md-6">
+                <div class="card feature-card fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="feature-icon">
+                            <i class="fas fa-video"></i>
+                        </div>
+                        <h4 class="card-title mb-3">Video Consultations</h4>
+                        <p class="card-text text-muted mb-4">
+                            Face-to-face virtual appointments with board-certified doctors from the comfort of your home.
+                        </p>
+                        <ul class="feature-list text-start">
+                            <li><i class="fas fa-check"></i>HD Quality Video</li>
+                            <li><i class="fas fa-check"></i>Secure Connection</li>
+                            <li><i class="fas fa-check"></i>Screen Sharing</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <div class="card feature-card fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="feature-icon">
+                            <i class="fas fa-file-medical"></i>
+                        </div>
+                        <h4 class="card-title mb-3">Digital Prescriptions</h4>
+                        <p class="card-text text-muted mb-4">
+                            Get prescriptions sent directly to your pharmacy without visiting a physical clinic.
+                        </p>
+                        <ul class="feature-list text-start">
+                            <li><i class="fas fa-check"></i>Instant Delivery</li>
+                            <li><i class="fas fa-check"></i>E-Signature Ready</li>
+                            <li><i class="fas fa-check"></i>Pharmacy Integration</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <div class="card feature-card fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="feature-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h4 class="card-title mb-3">Secure & Private</h4>
+                        <p class="card-text text-muted mb-4">
+                            Your health information is protected with enterprise-grade security and HIPAA compliance.
+                        </p>
+                        <ul class="feature-list text-start">
+                            <li><i class="fas fa-check"></i>End-to-End Encryption</li>
+                            <li><i class="fas fa-check"></i>HIPAA Compliant</li>
+                            <li><i class="fas fa-check"></i>Data Privacy</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works Section -->
+<section id="how-it-works" class="steps-section section-padding">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="section-title">How Our Telemedicine Works</h2>
+                <p class="section-subtitle">Get quality healthcare in three simple steps</p>
+            </div>
+        </div>
+        <div class="row position-relative">
+            <div class="step-connector d-none d-lg-block"></div>
+            <div class="col-lg-4">
+                <div class="step-card fade-in">
+                    <div class="step-number">1</div>
+                    <h4 class="mb-3">Create Your Account</h4>
+                    <p class="text-muted">Sign up and complete your medical profile in minutes. It's free and secure.</p>
+                    <div class="mt-4">
+                        <i class="fas fa-user-circle fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="step-card fade-in">
+                    <div class="step-number">2</div>
+                    <h4 class="mb-3">Book Appointment</h4>
+                    <p class="text-muted">Choose your preferred doctor, select appointment type, and pick a time that works for you.</p>
+                    <div class="mt-4">
+                        <i class="fas fa-calendar-check fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="step-card fade-in">
+                    <div class="step-number">3</div>
+                    <h4 class="mb-3">Connect & Consult</h4>
+                    <p class="text-muted">Join your appointment via video, voice, or chat and receive professional medical care.</p>
+                    <div class="mt-4">
+                        <i class="fas fa-video fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-5">
+            <div class="col-12 text-center">
+                {% if not current_user.is_authenticated %}
+                <a href="{{ url_for('signup') }}" class="btn btn-primary btn-lg px-5 py-3">
+                    <i class="fas fa-rocket me-2"></i>Start Your Journey
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Services Section -->
+<section id="services" class="section-padding">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="section-title">Our Medical Services</h2>
+                <p class="section-subtitle">Comprehensive healthcare services available through telemedicine</p>
+            </div>
+        </div>
+        <div class="row g-4">
+            <div class="col-lg-3 col-md-6">
+                <div class="card service-card h-100 fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="service-icon">
+                            <i class="fas fa-heartbeat"></i>
+                        </div>
+                        <h5 class="mb-3">Primary Care</h5>
+                        <p class="text-muted">Routine check-ups, chronic condition management, and general health consultations.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card service-card h-100 fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="service-icon">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <h5 class="mb-3">Mental Health</h5>
+                        <p class="text-muted">Therapy sessions, counseling, and mental health support with licensed professionals.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card service-card h-100 fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="service-icon">
+                            <i class="fas fa-baby"></i>
+                        </div>
+                        <h5 class="mb-3">Pediatrics</h5>
+                        <p class="text-muted">Child healthcare, developmental assessments, and parental guidance.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card service-card h-100 fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="service-icon">
+                            <i class="fas fa-user-md"></i>
+                        </div>
+                        <h5 class="mb-3">Specialist Care</h5>
+                        <p class="text-muted">Access to various medical specialists for comprehensive healthcare.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Doctors Section -->
+<section id="doctors" class="section-padding bg-light">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="section-title">Meet Our Doctors</h2>
+                <p class="section-subtitle">Our team of certified healthcare professionals</p>
+            </div>
+        </div>
+        <div class="row g-4">
+            {% if doctors %}
+                {% for doctor, user in doctors %}
+                <div class="col-lg-4 col-md-6">
+                    <div class="card doctor-card fade-in position-relative">
+                            <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Dr. {{ user.first_name }} {{ user.last_name }}" class="doctor-image" style="object-fit:cover;">
+                        <div class="card-body text-center p-4">
+                            <h5 class="card-title mb-1">Dr. {{ user.first_name }} {{ user.last_name }}</h5>
+                            <p class="doctor-specialty mb-2">{{ doctor.specialization }}</p>
+                            <p class="doctor-experience mb-3">{{ doctor.experience_years }} years experience</p>
+                            <!-- Average Rating Display -->
+                            <div class="mb-3" id="doctor-rating-{{ doctor.id }}">
+                                <div class="d-flex justify-content-center gap-2 mb-2">
+                                    <span class="badge bg-warning text-dark" id="doctor-avg-{{ doctor.id }}">Loading...</span>
+                                </div>
+                                <small class="text-muted d-block" id="doctor-reviews-{{ doctor.id }}"></small>
+                            </div>
+                            <!-- Action Buttons -->
+                            <div class="d-flex gap-2 justify-content-center">
+                                <button class="btn btn-outline-primary btn-sm" onclick="viewDoctorProfileFromIndex({{ doctor.id }})">
+                                    <i class="fas fa-info-circle me-1"></i>Profile & Reviews
+                                </button>
+                                <a href="{{ url_for('doctor_profile', doctor_id=doctor.id) }}" class="btn btn-outline-secondary btn-sm">View Full</a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Doctor Reviews Carousel -->
+                    <div id="doctor-reviews-container-{{ doctor.id }}" class="mt-3" style="display:none;">
+                        <!-- Reviews will be loaded here -->
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-12 text-center">
+                    <p class="text-muted">Our doctor profiles are being updated. Please check back soon.</p>
+                </div>
+            {% endif %}
+        </div>
+        <div class="row mt-5">
+            <div class="col-12 text-center">
+                <a href="{{ url_for('doctors') }}" class="btn btn-primary">View All Doctors</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Testimonials Section -->
+<section id="testimonials" class="testimonials-section section-padding">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="section-title">What Our Patients Say</h2>
+                <p class="section-subtitle">Real stories from our satisfied patients</p>
+            </div>
+        </div>
+        <div class="row g-4" id="testimonials-row">
+            {% if testimonials %}
+                {% for testimonial in testimonials %}
+                <div class="col-lg-4">
+                    <div class="testimonial-card fade-in">
+                        <div class="d-flex align-items-center mb-4">
+                            {% if testimonial.patient and testimonial.patient.user %}
+                                <img src="{{ url_for('profile_picture', user_id=testimonial.patient.user.id) }}" alt="Profile" class="testimonial-avatar me-3" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                            {% else %}
+                                <div class="testimonial-avatar me-3">P</div>
+                            {% endif %}
+                            <div>
+                                <h6 class="mb-1 fw-bold">{{ testimonial.patient.user.get_display_name() if testimonial.patient and testimonial.patient.user else 'Patient' }}</h6>
+                                <small class="text-muted">Dr. {{ testimonial.doctor.user.get_display_name() if testimonial.doctor and testimonial.doctor.user else '' }}</small>
+                            </div>
+                        </div>
+                        <div class="testimonial-text">
+                            <p class="text-muted mb-0">
+                                "{{ testimonial.content }}"
+                            </p>
+                        </div>
+                        <div class="text-warning mt-3">
+                            {% for i in range(testimonial.rating) %}
+                                <i class="fas fa-star"></i>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-12 text-center">
+                    <p class="text-muted">Patient testimonials will be displayed here.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="cta-section">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8 text-center cta-content">
+                <h2 class="display-5 fw-bold mb-4">Ready to Experience Modern Healthcare?</h2>
+                <p class="lead mb-5 opacity-90">
+                    Join thousands of patients who have transformed their healthcare experience with our telemedicine platform.
+                </p>
+                <div class="d-flex flex-wrap justify-content-center gap-3">
+                    {% if not current_user.is_authenticated %}
+                    <a href="{{ url_for('signup') }}" class="btn btn-light btn-lg px-5 py-3 fw-bold">
+                        <i class="fas fa-user-plus me-2"></i>Sign Up Free
+                    </a>
+                    <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg px-5 py-3 fw-bold">
+                        <i class="fas fa-sign-in-alt me-2"></i>Patient Login
+                    </a>
+                    {% else %}
+                    <a href="{% if current_user.role == 'patient' %}{{ url_for('patient_dashboard') }}{% elif current_user.role == 'doctor' %}{{ url_for('doctor_dashboard') }}{% else %}{{ url_for('admin_dashboard') }}{% endif %}" 
+                       class="btn btn-light btn-lg px-5 py-3 fw-bold">
+                        <i class="fas fa-tachometer-alt me-2"></i>Go to Dashboard
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="mt-4">
+                    <small class="opacity-90">
+                        <i class="fas fa-lock me-1"></i>Secure & Confidential • 
+                        <i class="fas fa-shield-alt me-1"></i>HIPAA Compliant • 
+                        <i class="fas fa-clock me-1"></i>24/7 Available
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- FAQ Section -->
+<section id="faq" class="faq-section section-padding">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="section-title">Frequently Asked Questions</h2>
+                <p class="section-subtitle">Get answers to common questions about our telemedicine services</p>
+            </div>
+        </div>
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="accordion" id="faqAccordion">
+                    <div class="accordion-item fade-in">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                How does telemedicine work?
+                            </button>
+                        </h2>
+                        <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                Telemedicine allows you to consult with healthcare providers remotely using video, voice, or messaging. You can schedule appointments, have virtual consultations, receive prescriptions, and get medical advice without visiting a physical clinic.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item fade-in">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                Is telemedicine secure and private?
+                            </button>
+                        </h2>
+                        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                Yes, we use enterprise-grade security measures including end-to-end encryption, secure servers, and comply with HIPAA regulations to ensure your health information remains private and secure.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item fade-in">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                Can I get prescriptions through telemedicine?
+                            </button>
+                        </h2>
+                        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                Yes, our licensed healthcare providers can prescribe medications when appropriate. Prescriptions are sent electronically to your preferred pharmacy for convenient pickup.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item fade-in">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                                What equipment do I need for a telemedicine appointment?
+                            </button>
+                        </h2>
+                        <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                You need a smartphone, tablet, or computer with a camera and microphone, plus a stable internet connection. Our platform works on all major browsers and devices.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Contact Us Section -->
+<section id="contact" class="contact-section section-padding bg-white">
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-12 text-center">
+                <h2 class="section-title">Contact Us</h2>
+                <p class="section-subtitle">We're here to help — reach out via phone, WhatsApp or message.</p>
+            </div>
+        </div>
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="row g-2" style="font-size:0.95em;">
+                    <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
+                        <span class="footer-contact-icon phone"><i class="fas fa-phone"></i></span>
+                        <a href="tel:+254741256531/+254 713580997" class="text-dark text-decoration-none">+254 741256531/+254 713580997</a>
+                    </div>
+                    <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
+                        <span class="footer-contact-icon whatsapp"><i class="fab fa-whatsapp"></i></span>
+                        <a href="https://wa.me/254741256531/+254 713580997" target="_blank" class="text-success text-decoration-none">0741256531/+254 713580997</a>
+                    </div>
+                    <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
+                        <span class="footer-contact-icon message"><i class="fas fa-envelope"></i></span>
+                        <a href="mailto:makokhamedicalcentre@gmail.com" class="text-primary text-decoration-none">makokhamedicalcentre@gmail.com</a>
+                    </div>
+                    <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
+                        <span class="social-icon facebook"><i class="fab fa-facebook-f"></i></span>
+                        <a href="https://facebook.com/makokhamedical" target="_blank" class="text-primary text-decoration-none">@makokhamedical</a>
+                    </div>
+                    <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
+                        <span class="social-icon telegram"><i class="fab fa-telegram-plane"></i></span>
+                        <a href="https://t.me/makokhamedical" target="_blank" class="text-info text-decoration-none">@makokhamedical</a>
+                    </div>
+                    <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
+                        <span class="social-icon instagram"><i class="fab fa-instagram"></i></span>
+                        <a href="https://instagram.com/makokhamedical" target="_blank" class="text-danger text-decoration-none">@makokhamedical</a>
+                    </div>
+                    <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
+                        <span class="social-icon twitter"><i class="fab fa-twitter"></i></span>
+                        <a href="https://twitter.com/makokhamedical" target="_blank" class="text-dark text-decoration-none">@makokhamedicaltelemed</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Animation on scroll
+    function checkVisibility() {
+        const elements = document.querySelectorAll('.fade-in');
+        elements.forEach(element => {
+            const elementTop = element.getBoundingClientRect().top;
+            const elementVisible = 150;
+            
+            if (elementTop < window.innerHeight - elementVisible) {
+                element.classList.add('visible');
+            }
+        });
+        
+        // Check if steps section is in view
+        const stepsSection = document.querySelector('.steps-section');
+        if (stepsSection) {
+            const sectionTop = stepsSection.getBoundingClientRect().top;
+            if (sectionTop < window.innerHeight - 100) {
+                stepsSection.classList.add('in-view');
+            }
+        }
+    }
+
+    // Number counting animation
+    function animateNumbers() {
+        const counters = document.querySelectorAll('.stat-number');
+        const speed = 200;
+
+        counters.forEach(counter => {
+            const target = +counter.getAttribute('data-count');
+            const count = +counter.innerText;
+            const increment = target / speed;
+
+            if (count < target) {
+                counter.innerText = Math.ceil(count + increment);
+                setTimeout(animateNumbers, 1);
+            } else {
+                counter.innerText = target;
+            }
+        });
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check visibility on load
+        checkVisibility();
+        
+        // Start number animation when stats section is visible
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    animateNumbers();
+                    observer.unobserve(entry.target);
+                }
+            });
+        });
+
+        const statsSection = document.querySelector('.stats-section');
+        if (statsSection) {
+            observer.observe(statsSection);
+        }
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    });
+
+    // Check visibility on scroll
+    window.addEventListener('scroll', checkVisibility);
+
+    // Emergency banner removed; no emergency button handler required
+
+    // Load doctor ratings and reviews
+    async function loadDoctorRatings() {
+        const doctors = document.querySelectorAll('[id^="doctor-rating-"]');
+        doctors.forEach(async el => {
+            const match = el.id.match(/doctor-rating-(\d+)/);
+            if (match) {
+                const doctorId = match[1];
+                try {
+                    const response = await fetch(`/api/doctors/${doctorId}/profile-with-reviews`);
+                    if (!response.ok) return;
+                    
+                    const data = await response.json();
+                    const doctor = data.doctor;
+                    
+                    // Update average rating
+                    const avgEl = document.getElementById(`doctor-avg-${doctorId}`);
+                    if (avgEl) {
+                        avgEl.innerHTML = `${doctor.average_rating}★ (${doctor.testimonials_count} review${doctor.testimonials_count !== 1 ? 's' : ''})`;
+                    }
+                    
+                    // Update reviews count
+                    const reviewsEl = document.getElementById(`doctor-reviews-${doctorId}`);
+                    if (reviewsEl && doctor.testimonials_count > 0) {
+                        reviewsEl.innerHTML = `${doctor.testimonials_count} patient review${doctor.testimonials_count !== 1 ? 's' : ''}`;
+                    }
+                } catch (error) {
+                    console.error('Error loading doctor ratings:', error);
+                }
+            }
+        });
+    }
+
+    // View doctor profile from index
+    async function viewDoctorProfileFromIndex(doctorId) {
+        try {
+            const response = await fetch(`/api/doctors/${doctorId}/profile-with-reviews`);
+            if (!response.ok) throw new Error('Failed to load doctor profile');
+            
+            const data = await response.json();
+            showDoctorProfileModalIndex(data.doctor);
+        } catch (error) {
+            console.error('Error loading doctor profile:', error);
+            alert('Unable to load doctor profile. Please try again.');
+        }
+    }
+
+    // Show doctor profile modal on index
+    function showDoctorProfileModalIndex(doctor) {
+        const modalHtml = `
+        <div id="doctorProfileIndexModal" class="modal fade" tabindex="-1" role="dialog">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Doctor Profile & Reviews</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                        <!-- Doctor Info -->
+                        <div class="mb-4">
+                            <h6 class="text-muted mb-3">Doctor Information</h6>
+                            <div class="card p-3">
+                                <h5 class="mb-2">${doctor.name}</h5>
+                                <p class="mb-2"><strong>${doctor.specialization}</strong></p>
+                                <p class="text-muted mb-2"><i class="fas fa-briefcase me-2"></i>${doctor.experience_years || 0} years experience</p>
+                                <div class="mb-3">
+                                    <span class="badge bg-warning text-dark me-2">${doctor.average_rating}★</span>
+                                    <span class="text-muted small">(${doctor.testimonials_count} review${doctor.testimonials_count !== 1 ? 's' : ''})</span>
+                                </div>
+                                ${doctor.bio ? `<p class="text-muted small mb-2">${doctor.bio.substring(0, 200)}...</p>` : ''}
+                                ${doctor.qualifications ? `
+                                    <div class="mt-2">
+                                        <strong class="small">Qualifications:</strong>
+                                        <p class="text-muted small mb-0">${doctor.qualifications}</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        
+                        <!-- Reviews Section -->
+                        ${doctor.testimonials && doctor.testimonials.length > 0 ? `
+                            <div>
+                                <h6 class="text-muted mb-3">Patient Reviews (${doctor.testimonials.length})</h6>
+                                <div class="space-y-3">
+                                    ${doctor.testimonials.map(review => `
+                                        <div class="card p-3 border-start border-warning border-3">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <div>
+                                                    <strong class="small">${review.patient_name}</strong>
+                                                    <br>
+                                                    <small class="text-muted">${new Date(review.created_at).toLocaleDateString()}</small>
+                                                </div>
+                                                <span class="badge bg-warning text-dark">${review.rating}★</span>
+                                            </div>
+                                            <p class="small mb-0 text-dark">${review.content}</p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>No reviews yet. Be the first to review this doctor!
+                            </div>
+                        `}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+        
+        // Remove existing modal if any
+        const existing = document.getElementById('doctorProfileIndexModal');
+        if (existing) existing.remove();
+        
+        // Add new modal
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('doctorProfileIndexModal'));
+        modal.show();
+    }
+
+    // Load ratings when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        loadDoctorRatings();
+    });
+</script>
+{% endblock %}

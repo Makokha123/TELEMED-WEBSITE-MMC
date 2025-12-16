@@ -1,0 +1,1476 @@
+{% extends "base.html" %}
+
+{% block title %}Messages - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    .whatsapp-container {
+        display: flex;
+        height: 90vh;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 5px 40px 16px rgba(82, 98, 130, 0.1);
+    }
+
+    /* Left Sidebar - Conversations List */
+    .conversations-sidebar {
+        width: 360px;
+        background: #fff;
+        border-right: 1px solid #e5e5e5;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sidebar-header {
+        padding: 16px 16px;
+        border-bottom: 1px solid #e5e5e5;
+    }
+
+    .sidebar-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+    .sidebar-header-top h5 {
+        font-size: 32px;
+        font-weight: 800;
+        margin: 0;
+        color: #000;
+    }
+
+    .header-icons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .header-icon-btn {
+        background: none;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #54656f;
+        font-size: 20px;
+        transition: background-color 0.2s;
+    }
+
+    .header-icon-btn:hover {
+        background-color: #f0f0f0;
+    }
+
+    .search-container {
+        padding: 8px 8px;
+    }
+
+    .search-box {
+        background: #f0f0f0;
+        border: none;
+        border-radius: 24px;
+        padding: 10px 16px;
+        width: 100%;
+        font-size: 14px;
+    }
+
+    .search-box::placeholder {
+        color: #999;
+    }
+
+    .conversations-list {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .conversations-list::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .conversations-list::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .conversations-list::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 4px;
+    }
+
+    .conversation-item {
+        padding: 8px 8px;
+        margin: 0 8px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 72px;
+    }
+
+    .conversation-item:hover {
+        background-color: #f5f5f5;
+    }
+
+    .conversation-item.active {
+        background-color: #e7f3ff;
+    }
+
+    .conversation-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .conversation-item.active .conversation-avatar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .conversation-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .conversation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 4px;
+    }
+
+    .conversation-name {
+        font-weight: 500;
+        color: #000;
+        font-size: 15px;
+    }
+
+    .conversation-time {
+        font-size: 13px;
+        color: #999;
+        flex-shrink: 0;
+        margin-left: 8px;
+    }
+
+    .conversation-preview {
+        font-size: 13px;
+        color: #999;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Right Chat Area */
+    .chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+    }
+
+    .chat-header {
+        padding: 12px 20px;
+        border-bottom: 1px solid #e5e5e5;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f8f8f8;
+    }
+
+    .chat-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .chat-header-info {
+        min-width: 0;
+    }
+
+    .chat-header-name {
+        font-weight: 500;
+        color: #000;
+        font-size: 15px;
+        margin: 0;
+    }
+
+    .chat-header-status {
+        font-size: 13px;
+        color: #999;
+        margin: 0;
+    }
+
+    .chat-header-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .chat-action-btn {
+        background: none;
+        border: none;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #54656f;
+        font-size: 18px;
+        transition: background-color 0.2s;
+    }
+
+    .chat-action-btn:hover {
+        background-color: #e9ecef;
+    }
+
+    .chat-action-btn.video {
+        color: #667eea;
+    }
+
+    .chat-action-btn.voice {
+        color: #667eea;
+    }
+
+    .chat-messages {
+        flex: 1;
+        padding: 16px 20px;
+        overflow-y: auto;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .chat-messages::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 4px;
+    }
+
+    .message-group {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .message-group.sent {
+        justify-content: flex-end;
+    }
+
+    .message-bubble {
+        max-width: 55%;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        line-height: 1.4;
+        word-wrap: break-word;
+    }
+
+    .message-bubble.sent {
+        background: #dcf8c6;
+        color: #000;
+        border-radius: 0 8px 8px 8px;
+    }
+
+    .message-bubble.received {
+        background: #e5e5ea;
+        color: #000;
+        border-radius: 8px 0 8px 8px;
+    }
+
+    .message-time {
+        font-size: 12px;
+        color: #999;
+        margin-top: 4px;
+    }
+
+    /* Chat Input Area */
+    .chat-input-area {
+        padding: 12px 20px;
+        border-top: 1px solid #e5e5e5;
+        background: #fff;
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+
+    .input-action-btn {
+        background: none;
+        border: none;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #667eea;
+        font-size: 20px;
+        transition: background-color 0.2s;
+    }
+
+    .input-action-btn:hover {
+        background-color: #f0f0f0;
+    }
+
+    .message-input-wrapper {
+        flex: 1;
+        display: flex;
+        gap: 8px;
+    }
+
+    .message-input {
+        flex: 1;
+        border: 1px solid #e5e5e5;
+        border-radius: 24px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-family: inherit;
+        resize: none;
+        max-height: 100px;
+    }
+
+    .message-input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .send-btn {
+        background: none;
+        border: none;
+        color: #667eea;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 0 8px;
+    }
+
+    .send-btn:hover {
+        transform: scale(1.1);
+    }
+
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #999;
+        gap: 16px;
+    }
+
+    .empty-state-icon {
+        font-size: 80px;
+        color: #ddd;
+    }
+
+    .empty-state-text {
+        font-size: 16px;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="whatsapp-container">
+        <!-- Left Sidebar - Appointments List -->
+        <div class="conversations-sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-header-top">
+                    <h5>Messages</h5>
+                    <div class="header-icons">
+                        <button class="header-icon-btn" title="New chat">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="header-icon-btn" title="Menu">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="search-container">
+                    <input type="text" class="search-box" id="searchInput" placeholder="🔍 Search or start new chat">
+                </div>
+            </div>
+
+            <div class="conversations-list" id="appointmentsList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-inbox"></i>
+                    </div>
+                    <div class="empty-state-text">Loading appointments...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Chat Area -->
+        <div class="chat-area">
+            <!-- Chat Header -->
+            <div class="chat-header">
+                <div class="chat-header-left">
+                    <div class="conversation-avatar" id="chatAvatar">-</div>
+                    <div class="chat-header-info">
+                        <h6 class="chat-header-name" id="chatHeaderName">Select a conversation</h6>
+                        <p class="chat-header-status" id="chatHeaderStatus">Online</p>
+                    </div>
+                </div>
+                <div class="chat-header-actions">
+                    <button class="chat-action-btn video" id="videoCallBtn" title="Video call">
+                        <i class="fas fa-video"></i>
+                    </button>
+                    <button class="chat-action-btn" id="openCallLogsHeaderBtn" title="Call logs" data-bs-toggle="modal" data-bs-target="#callLogsModal" style="margin-right:6px; background: linear-gradient(135deg,#198754 0%,#157347 100%); color: #fff; border: none;">
+                        <i class="fas fa-list"></i>
+                    </button>
+                    <button class="chat-action-btn voice" id="voiceCallBtn" title="Voice call">
+                        <i class="fas fa-phone"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div class="chat-messages" id="chatMessages">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-inbox"></i>
+                    </div>
+                    <div class="empty-state-text">Select an appointment to start messaging</div>
+                </div>
+            </div>
+
+            <!-- Message Input Area -->
+            <div class="chat-input-area">
+                <button class="input-action-btn" id="attachFileBtn" title="Attach file">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <input type="file" id="fileInput" style="display: none;" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt,.xlsx">
+
+                <div class="message-input-wrapper">
+                    <input type="text" class="message-input" id="messageInput" placeholder="Type a message...">
+                    <button class="send-btn" id="sendMessageBtn" title="Send message">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+
+                <button class="input-action-btn" id="voiceNoteBtn" title="Send voice note">
+                    <i class="fas fa-microphone"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Upload Modal -->
+<div class="modal fade" id="fileUploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Upload Document</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="file" id="documentFile" class="form-control" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt,.xlsx">
+                <div id="uploadStatus" class="mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="uploadDocumentBtn">Upload</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Voice Note Recording Modal -->
+<div class="modal fade" id="voiceNoteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Record Voice Note</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div class="mb-3">
+                    <button class="btn btn-danger btn-lg" id="recordBtn">
+                        <i class="fas fa-circle"></i> Record
+                    </button>
+                    <button class="btn btn-warning btn-lg ms-2" id="stopBtn" style="display: none;">
+                        <i class="fas fa-stop"></i> Stop
+                    </button>
+                </div>
+                <div id="recordingTime" class="fs-4 fw-bold">00:00</div>
+                <div id="voiceNotePlayback" class="mt-4"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="sendVoiceNoteBtn">Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Outgoing Call Modal (in-page, replaces popup for caller) -->
+<div class="modal fade" id="outgoingCallModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div id="outgoingCallAvatar" style="width:96px;height:96px;border-radius:50%;background:#eef2ff;display:inline-flex;align-items:center;justify-content:center;font-size:32px;color:#667eea;margin:0 auto;"></div>
+                </div>
+                <h5 id="outgoingCallName">Calling...</h5>
+                <p id="outgoingCallStatus" class="text-muted">Ringing...</p>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-secondary me-2" id="outgoingCallCancelBtn">Cancel</button>
+                    <button type="button" class="btn btn-danger d-none" id="outgoingCallEndBtn">End</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incoming Video Call Modal (callee) -->
+<div class="modal fade" id="incomingVideoModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div id="incomingVideoCallerAvatar" style="width:96px;height:96px;border-radius:50%;background:#f8f9ff;display:inline-flex;align-items:center;justify-content:center;font-size:28px;color:#333;margin:0 auto;"></div>
+                </div>
+                <h5 id="incomingVideoCallerName">Incoming Video Call</h5>
+                <p id="incomingVideoCallerStatus" class="text-muted">Incoming video call...</p>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-success me-2" id="incomingVideoAcceptBtn">Accept</button>
+                    <button type="button" class="btn btn-danger" id="incomingVideoRejectBtn">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incoming Voice Call Modal (callee) -->
+<div class="modal fade" id="incomingVoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div id="incomingVoiceCallerAvatar" style="width:96px;height:96px;border-radius:50%;background:#f8f9ff;display:inline-flex;align-items:center;justify-content:center;font-size:28px;color:#333;margin:0 auto;"></div>
+                </div>
+                <h5 id="incomingVoiceCallerName">Incoming Voice Call</h5>
+                <p id="incomingVoiceCallerStatus" class="text-muted">Incoming voice call...</p>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-success me-2" id="incomingVoiceAcceptBtn">Accept</button>
+                    <button type="button" class="btn btn-danger" id="incomingVoiceRejectBtn">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ringtone audio file (optional) - place your file at static/audio/ringtone.mp3 -->
+<audio id="incomingRingtone" preload="auto" style="display:none;">
+    <source src="{{ url_for('static', filename='audio/ringtone.mp3') }}" type="audio/mpeg">
+    Your browser does not support the audio element.
+</audio>
+
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
+
+<script>
+const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+let currentAppointmentId = null;
+let currentPatientId = null;
+let selectedAppointmentData = null;
+let mediaRecorder;
+let recordedChunks = [];
+let recordingStartTime;
+let recordingTimer;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadAppointments();
+    setupEventListeners();
+    setupSocketIO();
+});
+
+// Load appointments
+function loadAppointments() {
+    fetch('/api/appointments')
+        .then(response => response.json())
+        .then(data => {
+            const list = document.getElementById('appointmentsList');
+            list.innerHTML = '';
+            
+            if (data.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-calendar"></i></div>
+                        <div class="empty-state-text">No appointments</div>
+                    </div>
+                `;
+                return;
+            }
+
+            data.forEach(appointment => {
+                const doctorName = appointment.doctor.first_name + ' ' + appointment.doctor.last_name;
+                const avatar = appointment.doctor.first_name[0] + appointment.doctor.last_name[0];
+                const div = document.createElement('div');
+                div.className = 'conversation-item';
+                div.dataset.appointmentId = appointment.id;
+                div.dataset.patientId = appointment.patient_id;
+                div.innerHTML = `
+                    <div class="conversation-avatar">${avatar}</div>
+                    <div class="conversation-content">
+                        <div class="conversation-header">
+                            <span class="conversation-name">${doctorName}</span>
+                            <span class="conversation-time">${new Date(appointment.appointment_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <div class="conversation-preview">${appointment.reason || 'No reason specified'}</div>
+                    </div>
+                `;
+                div.addEventListener('click', () => selectAppointment(appointment.id, appointment.patient_id, appointment.doctor, appointment));
+                list.appendChild(div);
+            });
+        })
+        .catch(error => console.error('Error loading appointments:', error));
+}
+
+// Select appointment
+function selectAppointment(appointmentId, patientId, doctor, appointment) {
+    currentAppointmentId = appointmentId;
+    currentPatientId = patientId;
+    selectedAppointmentData = appointment || null;
+    
+    document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+    event.target.closest('.conversation-item').classList.add('active');
+
+    // Update header
+    const avatar = document.getElementById('chatAvatar');
+    avatar.textContent = doctor.first_name[0] + doctor.last_name[0];
+    document.getElementById('chatHeaderName').textContent = doctor.first_name + ' ' + doctor.last_name;
+    document.getElementById('chatHeaderStatus').textContent = 'Online';
+
+    // Load messages
+    loadMessages(appointmentId);
+}
+
+// Load messages once on appointment select (cached in UI)
+function loadMessages(appointmentId) {
+    const messagesArea = document.getElementById('chatMessages');
+    
+    // Only load if messages area is empty (first load)
+    if (messagesArea.children.length === 0 || messagesArea.querySelector('.empty-state')) {
+        fetch(`/api/appointment/${appointmentId}/messages?limit=50`)
+            .then(response => response.json())
+            .then(data => {
+                messagesArea.innerHTML = '';
+                
+                if (data.length === 0) {
+                    messagesArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><i class="fas fa-inbox"></i></div><div class="empty-state-text">No messages yet. Start the conversation!</div></div>';
+                    return;
+                }
+                
+                data.forEach(message => {
+                    addMessageToUIFast(message);
+                });
+                
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            })
+            .catch(error => console.error('Error loading messages:', error));
+    }
+}
+
+// Optimized message rendering without re-rendering entire list
+function addMessageToUIFast(message) {
+    const messagesArea = document.getElementById('chatMessages');
+    
+    // Remove empty state if present
+    const emptyState = messagesArea.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+    
+    const group = document.createElement('div');
+    group.className = `message-group ${message.is_sent ? 'sent' : 'received'}`;
+    group.dataset.messageId = message.id;
+    
+    // Use LocalTime utility to format timestamp in device's local time
+    const timestamp = window.LocalTime ? window.LocalTime.formatToLocalTime(message.timestamp, 'timeonly') : new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    let messageContent = message.content || '';
+    
+    // Handle file/media messages
+    if (message.file_path) {
+        messageContent = renderMediaMessage(message);
+    }
+    
+    const status = message.is_sent ? `<small class="message-status ms-2" data-status="${message.message_status || 'sent'}">${getStatusIcon(message.message_status)}</small>` : '';
+    
+    group.innerHTML = `
+        <div>
+            <div class="message-bubble ${message.is_sent ? 'sent' : 'received'}">
+                ${messageContent}
+            </div>
+            <div class="message-time" data-timestamp="${message.timestamp}" data-timestamp-format="timeonly">${timestamp}${status}</div>
+        </div>
+    `;
+    messagesArea.appendChild(group);
+}
+
+// Get status icon for messages
+function getStatusIcon(status) {
+    switch(status) {
+        case 'sent': return '✓';
+        case 'delivered': return '✓✓';
+        case 'read': return '<span style="color: #667eea;">✓✓</span>';
+        default: return '⏱';
+    }
+}
+
+// Render media messages with proper formatting
+function renderMediaMessage(message) {
+    const filename = message.content || 'Unnamed file';
+    const messageType = message.message_type || 'document';
+    
+    if (messageType === 'image') {
+        return `
+            <div class="media-message">
+                <img src="${message.file_path}" alt="${filename}" style="max-width: 200px; border-radius: 4px;">
+                <p class="small mt-2 mb-0">${filename}</p>
+            </div>
+        `;
+    } else if (messageType === 'audio' || filename.endsWith('.webm') || filename.endsWith('.wav')) {
+        return `
+            <div class="media-message">
+                <i class="fas fa-microphone me-2"></i><strong>Voice Note</strong>
+                <audio controls style="display: block; width: 100%; margin-top: 8px; height: 32px;">
+                    <source src="${message.file_path}" type="audio/webm">
+                    Your browser does not support audio playback.
+                </audio>
+            </div>
+        `;
+    } else {
+        return `
+            <div class="media-message">
+                <i class="fas fa-file me-2"></i>
+                <a href="${message.file_path}" download="${filename}">📎 ${filename}</a>
+            </div>
+        `;
+    }
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    document.getElementById('sendMessageBtn').addEventListener('click', sendMessage);
+    document.getElementById('messageInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    document.getElementById('attachFileBtn').addEventListener('click', () => {
+        document.getElementById('fileInput').click();
+    });
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        handleFileUpload(e);
+    });
+    
+    // Initialize emoji picker once on button click
+    const emojiIcon = document.querySelector('[data-emoji-btn]') || document.querySelector('.emoji-btn');
+    if (emojiIcon) {
+        emojiIcon.addEventListener('click', initEmojiPickerOnce);
+    }
+
+    document.getElementById('videoCallBtn').addEventListener('click', initiateVideoCall);
+    document.getElementById('voiceCallBtn').addEventListener('click', initiateVoiceCall);
+    
+    document.getElementById('voiceNoteBtn').addEventListener('click', () => {
+        const modal = new bootstrap.Modal(document.getElementById('voiceNoteModal'));
+        modal.show();
+    });
+
+    // Voice recording
+    document.getElementById('recordBtn').addEventListener('click', startRecording);
+    document.getElementById('stopBtn').addEventListener('click', stopRecording);
+    document.getElementById('sendVoiceNoteBtn').addEventListener('click', sendVoiceNote);
+
+    // Search
+    document.getElementById('searchInput').addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        document.querySelectorAll('.conversation-item').forEach(item => {
+            const name = item.querySelector('.conversation-name').textContent.toLowerCase();
+            item.style.display = name.includes(query) ? 'flex' : 'none';
+        });
+    });
+}
+
+// Send message via Socket.IO (real-time)
+function sendMessage() {
+    const content = document.getElementById('messageInput').value;
+    if (!content.trim() || !currentAppointmentId) return;
+
+    // Emit message through Socket.IO
+    socket.emit('send_message', {
+        appointment_id: currentAppointmentId,
+        content: content
+    });
+
+    document.getElementById('messageInput').value = '';
+}
+
+// Initiate video call via Socket.IO
+function initiateVideoCall() {
+    if (!currentAppointmentId) {
+        alert('Please select an appointment first');
+        return;
+    }
+    // Show an outgoing in-page modal for caller immediately (replaces popup)
+    try {
+        if (selectedAppointmentData) {
+            const role = document.getElementById('currentUserRole')?.value;
+            const callee = (role === 'doctor') ? selectedAppointmentData.patient : selectedAppointmentData.doctor;
+            const calleeName = callee ? (callee.first_name + ' ' + (callee.last_name || '')) : '';
+            const calleePic = callee ? (callee.profile_picture_url || '') : '';
+            showOutgoingCallModal('video', calleeName, calleePic);
+        }
+    } catch (e) {
+        console.warn('Could not show outgoing call modal:', e);
+    }
+
+    socket.emit('initiate_video_call', {
+        appointment_id: currentAppointmentId
+    });
+}
+
+// Initiate voice call via Socket.IO
+function initiateVoiceCall() {
+    if (!currentAppointmentId) {
+        alert('Please select an appointment first');
+        return;
+    }
+    // Show an outgoing in-page modal for caller immediately (replaces popup)
+    try {
+        if (selectedAppointmentData) {
+            const role = document.getElementById('currentUserRole')?.value;
+            const callee = (role === 'doctor') ? selectedAppointmentData.patient : selectedAppointmentData.doctor;
+            const calleeName = callee ? (callee.first_name + ' ' + (callee.last_name || '')) : '';
+            const calleePic = callee ? (callee.profile_picture_url || '') : '';
+            showOutgoingCallModal('voice', calleeName, calleePic);
+        }
+    } catch (e) {
+        console.warn('Could not show outgoing call modal:', e);
+    }
+
+    socket.emit('initiate_voice_call', {
+        appointment_id: currentAppointmentId
+    });
+}
+
+// File upload handler for messaging - non-blocking with direct Socket.IO
+function handleFileUpload(event) {
+    const files = event.target.files;
+    if (!files.length || !currentAppointmentId) return;
+    
+    const file = files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('appointment_id', currentAppointmentId);
+    
+    const uploadBtn = document.getElementById('attachFileBtn');
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    
+    // Send file upload without blocking message display
+    fetch('/api/upload-file', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Message will appear via socket.io message_received event
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="fas fa-paperclip"></i>';
+        } else {
+            alert('Failed to upload file: ' + data.error);
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="fas fa-paperclip"></i>';
+        }
+    })
+    .catch(error => {
+        console.error('Upload error:', error);
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-paperclip"></i>';
+    });
+    
+    // Reset file input
+    event.target.value = '';
+}
+
+// One-time emoji picker initialization
+// One-time emoji picker initialization
+let emojiPickerInitialized = false;
+function initEmojiPickerOnce(event) {
+    if (emojiPickerInitialized) return;
+    
+    emojiPickerInitialized = true;
+    
+    const input = document.getElementById('messageInput');
+    const emojis = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '👏', '💯', '😍', '😢', '🤔', '😎'];
+    const emojiMenu = document.createElement('div');
+    emojiMenu.className = 'emoji-menu';
+    emojiMenu.style.cssText = 'position: absolute; background: white; border: 1px solid #ccc; border-radius: 4px; padding: 8px; bottom: 50px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; z-index: 1000;';
+    
+    emojis.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.textContent = emoji;
+        btn.style.cssText = 'background: none; border: none; cursor: pointer; font-size: 20px; padding: 4px;';
+        btn.addEventListener('click', () => {
+            input.value += emoji;
+            input.focus();
+            emojiMenu.remove();
+        });
+        emojiMenu.appendChild(btn);
+    });
+    
+    document.body.appendChild(emojiMenu);
+    setTimeout(() => emojiMenu.remove(), 5000);
+}
+
+// Voice recording functions
+function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            recordedChunks = [];
+            recordingStartTime = Date.now();
+
+            mediaRecorder.addEventListener('dataavailable', event => {
+                recordedChunks.push(event.data);
+            });
+
+            mediaRecorder.start();
+            document.getElementById('recordBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'inline-block';
+
+            recordingTimer = setInterval(updateRecordingTime, 100);
+        })
+        .catch(error => {
+            console.error('Error accessing microphone:', error);
+            alert('Unable to access microphone. Please check permissions.');
+        });
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        clearInterval(recordingTimer);
+        document.getElementById('recordBtn').style.display = 'inline-block';
+        document.getElementById('stopBtn').style.display = 'none';
+
+        mediaRecorder.addEventListener('stop', () => {
+            const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+            const url = URL.createObjectURL(blob);
+            document.getElementById('voiceNotePlayback').innerHTML = `
+                <div class="alert alert-info mb-0">
+                    <small>Preview: </small>
+                    <audio controls style="width: 100%; height: 32px;" class="mt-2">
+                        <source src="${url}" type="audio/webm">
+                        Your browser does not support audio playback.
+                    </audio>
+                </div>
+            `;
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }, { once: true });
+    }
+}
+
+function updateRecordingTime() {
+    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    document.getElementById('recordingTime').textContent = 
+        String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+}
+
+function sendVoiceNote() {
+    if (recordedChunks.length === 0 || !currentAppointmentId) {
+        alert('Please record a voice note first');
+        return;
+    }
+
+    const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+    const formData = new FormData();
+    formData.append('appointment_id', currentAppointmentId);
+    formData.append('file', blob, 'voice-note.webm');
+
+    const sendBtn = document.getElementById('sendVoiceNoteBtn');
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sending...';
+
+    // Send voice note without blocking - Socket.IO will broadcast it
+    fetch('/api/upload-file', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reset form - message will appear via socket event
+            bootstrap.Modal.getInstance(document.getElementById('voiceNoteModal')).hide();
+            recordedChunks = [];
+            document.getElementById('recordingTime').textContent = '00:00';
+            document.getElementById('voiceNotePlayback').innerHTML = '';
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = 'Send';
+        } else {
+            alert('Failed to send voice note: ' + data.error);
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = 'Send';
+        }
+    })
+    .catch(error => {
+        console.error('Error sending voice note:', error);
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = 'Send';
+    });
+}
+
+// Outgoing call modal helpers
+let outgoingCallModalInstance = null;
+let outgoingCallCurrentType = null;
+let incomingVideoModalInstance = null;
+let incomingVoiceModalInstance = null;
+// WebAudio ringtone resources
+let _audioCtx = null;
+let _ringtoneOsc = null;
+let _ringtoneGain = null;
+let _ringtoneUsingFile = false;
+
+function startRingtone() {
+    try {
+        if (!_audioCtx) {
+            _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        stopRingtone();
+        _ringtoneOsc = _audioCtx.createOscillator();
+        _ringtoneGain = _audioCtx.createGain();
+        _ringtoneOsc.type = 'sine';
+        _ringtoneOsc.frequency.value = 480; // base frequency
+        _ringtoneGain.gain.value = 0.06;
+        _ringtoneOsc.connect(_ringtoneGain);
+        _ringtoneGain.connect(_audioCtx.destination);
+        // simple pulsing: change frequency slightly every 300ms
+        _ringtoneOsc.start();
+        // implement subtle pulse using gain automation
+        _ringtoneGain.gain.setValueAtTime(0.0001, _audioCtx.currentTime);
+        _ringtoneGain.gain.linearRampToValueAtTime(0.06, _audioCtx.currentTime + 0.05);
+        // periodic pulse
+        _ringtonePulseInterval = setInterval(() => {
+            try {
+                _ringtoneGain.gain.cancelScheduledValues(_audioCtx.currentTime);
+                _ringtoneGain.gain.setValueAtTime(0.0001, _audioCtx.currentTime);
+                _ringtoneGain.gain.linearRampToValueAtTime(0.06, _audioCtx.currentTime + 0.03);
+                _ringtoneGain.gain.linearRampToValueAtTime(0.0001, _audioCtx.currentTime + 0.28);
+            } catch (e) {}
+        }, 450);
+    } catch (e) {
+        console.warn('Ringtone start failed:', e);
+    }
+}
+
+function playRingtone() {
+    // Try the static audio file first, fall back to WebAudio if unavailable or playback blocked
+    try {
+        const audioEl = document.getElementById('incomingRingtone');
+        if (audioEl) {
+            // reset
+            try { audioEl.pause(); audioEl.currentTime = 0; } catch(e){}
+            const p = audioEl.play();
+            if (p && typeof p.then === 'function') {
+                p.then(() => {
+                    _ringtoneUsingFile = true;
+                }).catch(err => {
+                    console.warn('Static ringtone play failed, falling back to WebAudio:', err);
+                    _ringtoneUsingFile = false;
+                    startRingtone();
+                });
+            } else {
+                // play may be synchronous in older browsers
+                _ringtoneUsingFile = true;
+            }
+        } else {
+            startRingtone();
+        }
+    } catch (e) {
+        console.warn('playRingtone error, falling back to WebAudio', e);
+        startRingtone();
+    }
+}
+
+function stopRingtone() {
+    try {
+        if (typeof _ringtonePulseInterval !== 'undefined') {
+            clearInterval(_ringtonePulseInterval);
+            _ringtonePulseInterval = undefined;
+        }
+        if (_ringtoneOsc) {
+            try { _ringtoneOsc.stop(); } catch (e) {}
+            _ringtoneOsc.disconnect();
+            _ringtoneOsc = null;
+        }
+        if (_ringtoneGain) {
+            try { _ringtoneGain.disconnect(); } catch (e) {}
+            _ringtoneGain = null;
+        }
+        // stop HTML audio if used
+        try {
+            const audioEl = document.getElementById('incomingRingtone');
+            if (audioEl) {
+                try { audioEl.pause(); audioEl.currentTime = 0; } catch(e){}
+            }
+            _ringtoneUsingFile = false;
+        } catch (e) {}
+        // do not close audio context; leave it reusable
+    } catch (e) {
+        console.warn('Ringtone stop failed:', e);
+    }
+}
+
+function showOutgoingCallModal(callType, calleeName, calleePic) {
+    outgoingCallCurrentType = callType;
+    const nameEl = document.getElementById('outgoingCallName');
+    const avatarEl = document.getElementById('outgoingCallAvatar');
+    const statusEl = document.getElementById('outgoingCallStatus');
+
+    if (nameEl) nameEl.textContent = calleeName || 'Calling...';
+    if (statusEl) statusEl.textContent = 'Ringing...';
+
+    if (avatarEl) {
+        if (calleePic) {
+            avatarEl.style.backgroundImage = `url('${calleePic}')`;
+            avatarEl.style.backgroundSize = 'cover';
+            avatarEl.style.backgroundPosition = 'center';
+            avatarEl.textContent = '';
+        } else {
+            avatarEl.style.backgroundImage = '';
+            const initials = (calleeName || '').split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase() || '?';
+            avatarEl.textContent = initials;
+        }
+    }
+
+    try {
+        outgoingCallModalInstance = new bootstrap.Modal(document.getElementById('outgoingCallModal'));
+        outgoingCallModalInstance.show();
+    } catch (e) {
+        console.warn('Bootstrap modal unavailable:', e);
+    }
+}
+
+// Cancel / End button handling
+document.addEventListener('DOMContentLoaded', () => {
+    const cancelBtn = document.getElementById('outgoingCallCancelBtn');
+    const endBtn = document.getElementById('outgoingCallEndBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            try {
+                if (outgoingCallCurrentType === 'video') {
+                    socket.emit('end_video_call', { appointment_id: currentAppointmentId });
+                } else if (outgoingCallCurrentType === 'voice') {
+                    socket.emit('end_voice_call', { appointment_id: currentAppointmentId });
+                }
+            } catch (e) {
+                console.warn('Socket not available to cancel call yet:', e);
+            }
+            try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
+        });
+    }
+    if (endBtn) {
+        endBtn.addEventListener('click', () => {
+            try {
+                if (outgoingCallCurrentType === 'video') {
+                    socket.emit('end_video_call', { appointment_id: currentAppointmentId });
+                } else if (outgoingCallCurrentType === 'voice') {
+                    socket.emit('end_voice_call', { appointment_id: currentAppointmentId });
+                }
+            } catch (e) {}
+            try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
+        });
+    }
+});
+
+// Real-time Socket.IO setup for FAST messaging
+function setupSocketIO() {
+    // Ensure socket binding exists (reuse global instance or create)
+    if (!window.socket) { try { window.socket = (typeof io !== 'undefined' ? io() : null); } catch(e) { console.error('Socket init failed', e); window.socket = null; } }
+    var socket = window.socket;
+    // Join room when appointment is selected
+    socket.on('connect', function() {
+        console.log('Socket connected for messaging');
+    });
+
+    // Receive real-time messages - ADD INCREMENTALLY (no reload)
+    socket.on('message_received', function(data) {
+        console.log('Message received:', data);
+        if (data.appointment_id === parseInt(currentAppointmentId)) {
+            // Add message to UI immediately without reloading all
+            addMessageToUIFast(data);
+            // Update appointment list but DON'T reload messages
+            loadAppointmentsQuick();
+        }
+    });
+
+    // Update message status in real-time
+    socket.on('message_status_updated', function(data) {
+        if (data.appointment_id === parseInt(currentAppointmentId)) {
+            const messageEl = document.querySelector(`[data-message-id="${data.message_id}"] .message-status`);
+            if (messageEl) {
+                messageEl.dataset.status = data.status;
+                messageEl.innerHTML = getStatusIcon(data.status);
+            }
+        }
+    });
+
+    // Typing indicators
+    socket.on('user_typing', function(data) {
+        if (data.appointment_id === parseInt(currentAppointmentId) && data.user_id !== currentAppointmentId) {
+            showTypingIndicator(data.user_name);
+        }
+    });
+
+    socket.on('user_stop_typing', function(data) {
+        if (data.appointment_id === parseInt(currentAppointmentId)) {
+            hideTypingIndicator();
+        }
+    });
+
+    // Call notifications
+    socket.on('incoming_video_call', function(data) {
+        console.log('Incoming video call from:', data.initiator_name);
+        showIncomingVideoCallNotification(data);
+    });
+
+    socket.on('incoming_voice_call', function(data) {
+        console.log('Incoming voice call from:', data.initiator_name);
+        showIncomingVoiceCallNotification(data);
+    });
+
+    socket.on('video_call_accepted', function(data) {
+        console.log('Video call accepted');
+        try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
+        proceedWithVideoCall(data.appointment_id);
+    });
+
+    socket.on('video_call_rejected', function(data) {
+        alert('Video call was rejected');
+    });
+
+    socket.on('video_call_ended', function(data) {
+        console.log('Video call ended');
+        endVideoCall(data.appointment_id);
+    });
+
+    socket.on('voice_call_accepted', function(data) {
+        console.log('Voice call accepted');
+        try { if (outgoingCallModalInstance) outgoingCallModalInstance.hide(); } catch(e){}
+        proceedWithVoiceCall(data.appointment_id);
+    });
+
+    socket.on('voice_call_ended', function(data) {
+        console.log('Voice call ended');
+        endVoiceCall(data.appointment_id);
+    });
+
+    socket.on('call_error', function(data) {
+        console.error('Call error:', data.error);
+        alert('Call error: ' + data.error);
+    });
+}
+
+// Quick refresh of appointment list without reloading messages
+function loadAppointmentsQuick() {
+    fetch('/api/appointments')
+        .then(response => response.json())
+        .then(data => {
+            // Update last message preview only, don't reload messages
+            data.forEach(apt => {
+                const item = document.querySelector(`[data-appointment-id="${apt.id}"]`);
+                if (item && apt.last_message) {
+                    const preview = item.querySelector('.conversation-preview');
+                    if (preview) {
+                        preview.textContent = apt.last_message.substring(0, 50) + '...';
+                    }
+                }
+            });
+        })
+        .catch(error => console.error('Error loading appointments:', error));
+}
+
+function addMessageToUI(messageData) {
+    addMessageToUIFast(messageData);
+}
+
+function showTypingIndicator(userName) {
+    const indicator = document.getElementById('typingIndicator');
+    if (!indicator) {
+        const messagesArea = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.id = 'typingIndicator';
+        div.style.paddingLeft = '20px';
+        div.innerHTML = `<small class="text-muted"><em>${userName} is typing...</em></small>`;
+        messagesArea.appendChild(div);
+    }
+}
+
+function hideTypingIndicator() {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) indicator.remove();
+}
+
+function showIncomingVideoCallNotification(data) {
+    // Show incoming in-page modal for callee
+    try {
+        const callerName = data.caller_name || data.initiator_name || 'Caller';
+        const callerPic = data.caller_profile_pic || '';
+        const callerNameEl = document.getElementById('incomingVideoCallerName');
+        const callerAvatarEl = document.getElementById('incomingVideoCallerAvatar');
+        const acceptBtn = document.getElementById('incomingVideoAcceptBtn');
+        const rejectBtn = document.getElementById('incomingVideoRejectBtn');
+
+        if (callerNameEl) callerNameEl.textContent = callerName;
+        if (callerAvatarEl) {
+            if (callerPic) {
+                callerAvatarEl.style.backgroundImage = `url('${callerPic}')`;
+                callerAvatarEl.style.backgroundSize = 'cover';
+                callerAvatarEl.textContent = '';
+            } else {
+                callerAvatarEl.style.backgroundImage = '';
+                callerAvatarEl.textContent = (callerName.split(' ').map(n => n[0]).slice(0,2).join('') || '?').toUpperCase();
+            }
+        }
+
+        // Bind handlers (overwrite previous)
+        acceptBtn.onclick = function() {
+            try { socket.emit('accept_video_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVideoModalInstance.hide(); } catch(e){}
+        };
+        rejectBtn.onclick = function() {
+            try { socket.emit('reject_video_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVideoModalInstance.hide(); } catch(e){}
+        };
+
+        // Show modal and start ringtone
+        try {
+            incomingVideoModalInstance = new bootstrap.Modal(document.getElementById('incomingVideoModal'));
+            incomingVideoModalInstance.show();
+            playRingtone();
+            // stop ringtone when modal is hidden
+            document.getElementById('incomingVideoModal').addEventListener('hidden.bs.modal', () => { stopRingtone(); });
+        } catch(e) {
+            // Fallback to confirm
+            if (confirm(`${callerName} is calling you for a video call. Accept?`)) {
+                socket.emit('accept_video_call', { appointment_id: data.appointment_id });
+            } else {
+                socket.emit('reject_video_call', { appointment_id: data.appointment_id });
+            }
+        }
+    } catch (e) {
+        console.error('Error showing incoming video call modal:', e);
+    }
+}
+
+function showIncomingVoiceCallNotification(data) {
+    // Show incoming voice call in-page modal
+    try {
+        const callerName = data.caller_name || data.initiator_name || 'Caller';
+        const callerPic = data.caller_profile_pic || '';
+        const callerNameEl = document.getElementById('incomingVoiceCallerName');
+        const callerAvatarEl = document.getElementById('incomingVoiceCallerAvatar');
+        const acceptBtn = document.getElementById('incomingVoiceAcceptBtn');
+        const rejectBtn = document.getElementById('incomingVoiceRejectBtn');
+
+        if (callerNameEl) callerNameEl.textContent = callerName;
+        if (callerAvatarEl) {
+            if (callerPic) {
+                callerAvatarEl.style.backgroundImage = `url('${callerPic}')`;
+                callerAvatarEl.style.backgroundSize = 'cover';
+                callerAvatarEl.textContent = '';
+            } else {
+                callerAvatarEl.style.backgroundImage = '';
+                callerAvatarEl.textContent = (callerName.split(' ').map(n => n[0]).slice(0,2).join('') || '?').toUpperCase();
+            }
+        }
+
+        acceptBtn.onclick = function() {
+            try { socket.emit('accept_voice_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVoiceModalInstance.hide(); } catch(e){}
+        };
+        rejectBtn.onclick = function() {
+            try { socket.emit('end_voice_call', { appointment_id: data.appointment_id }); } catch(e) { console.error(e); }
+            try { incomingVoiceModalInstance.hide(); } catch(e){}
+        };
+
+        try {
+            incomingVoiceModalInstance = new bootstrap.Modal(document.getElementById('incomingVoiceModal'));
+            incomingVoiceModalInstance.show();
+            playRingtone();
+            document.getElementById('incomingVoiceModal').addEventListener('hidden.bs.modal', () => { stopRingtone(); });
+        } catch(e) {
+            if (confirm(`${callerName} is calling you. Accept?`)) {
+                socket.emit('accept_voice_call', { appointment_id: data.appointment_id });
+            } else {
+                socket.emit('end_voice_call', { appointment_id: data.appointment_id });
+            }
+        }
+    } catch (e) {
+        console.error('Error showing incoming voice call modal:', e);
+    }
+}
+
+function proceedWithVideoCall(appointmentId) {
+    window.location.href = `/video-call/${appointmentId}`;
+}
+
+function proceedWithVoiceCall(appointmentId) {
+    window.location.href = `/voice-call/${appointmentId}`;
+}
+
+function endVideoCall(appointmentId) {
+    alert('Video call ended');
+}
+
+function endVoiceCall(appointmentId) {
+    alert('Voice call ended');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MAKOKHA MEDICAL CENTRE - Telemedicine{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <meta name="theme-color" content="#0d6efd">
+    <!-- Server-provided ICE servers (JSON) stored in a meta tag so JS doesn't contain raw Jinja markers -->
+    <meta name="ice-servers" content='{{ ice_servers|tojson | safe }}'>
+    
+    <!-- Bootstrap 5 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" 
+      rel="stylesheet" 
+      integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" 
+      crossorigin="anonymous">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+{% set user_theme = (current_user.theme if current_user.is_authenticated and current_user.theme else 'light') %}
+{% if current_user.is_authenticated and current_user.wallpaper %}
+    {% set wallpaper_url = url_for('static', filename=current_user.wallpaper.split('static/')[-1]) %}
+    <body data-theme="{{ user_theme }}" style="background-image: url('{{ wallpaper_url }}'); background-size: cover; background-repeat: no-repeat; background-attachment: fixed;">
+{% else %}
+    <body data-theme="{{ user_theme }}">
+{% endif %}
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+                        <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                                <img src="{{ url_for('static', filename='uploads/logo.png') }}" alt="Makokha MC" style="height:36px; margin-right:10px; object-fit:contain;"/>
+                                <div>
+                                    <div style="line-height:1; font-weight:700;">Makokha Medical Centre</div>
+                                    <div style="font-size:11px; margin-top:2px; opacity:0.85;">Telemedicine & Clinical Services</div>
+                                </div>
+                        </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">Home</a>
+                    </li>
+                    <!-- In the navbar section, update the authenticated user section -->
+                    {% if current_user.is_authenticated %}
+                        {% if current_user.role == 'admin' %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_users') }}">Users</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_patients') }}">Patients</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_communication') }}">Communications</a>
+                            </li>
+                        {% elif current_user.role == 'doctor' %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('doctor_dashboard') }}">Dashboard</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('get_doctor_patients') }}">Patients</a>    
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('doctor_communication') }}">Communications</a>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('patient_dashboard') }}">Dashboard</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('patient_appointment') }}">Appointments</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('patient_communication') }}">Messages</a>
+                            </li>
+                        {% endif %}
+                    {% endif %}
+                </ul>
+                
+                <ul class="navbar-nav">
+                    {% if current_user.is_authenticated %}
+                        <li class="nav-item dropdown me-2">
+                            <a class="nav-link position-relative" href="#" id="notificationsToggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-bell"></i>
+                                <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display:none;">0</span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end p-2" aria-labelledby="notificationsToggle" style="min-width:320px; max-height:420px; overflow:auto;">
+                                <li class="d-flex justify-content-between align-items-center px-2 mb-2">
+                                    <strong>Notifications</strong>
+                                    <button id="markAllReadBtn" class="btn btn-sm btn-link">Mark all read</button>
+                                </li>
+                                <div id="notificationsList" class="list-group px-2"></div>
+                                <div class="px-2 mt-2 d-flex justify-content-center"><button id="notifLoadMore" class="btn btn-sm btn-outline-secondary">Load more</button></div>
+                                <li class="text-center mt-2"><a href="/notifications" class="small">View all</a></li>
+                                <input type="hidden" id="notifDropdownPage" value="1">
+                            </ul>
+                        </li>
+                        <li class="nav-item me-2 d-flex align-items-center">
+                            <button id="pushToggleBtn" class="btn btn-sm btn-outline-light" title="Enable push notifications">Enable Push</button>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user-circle"></i> {{ current_user.get_display_name() }}
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{{ url_for('settings') }}"><i class="fas fa-cog"></i> Settings</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('signup') }}">Sign Up</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="container mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light mt-5 py-4">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>MAKOKHA MEDICAL CENTRE</h5>
+                    <p>Providing quality telemedicine services for all your healthcare needs.</p>
+                </div>
+                <div class="col-md-3">
+                    <h6>Quick Links</h6>
+                    <ul class="list-unstyled">
+                        <li><a href="{{ url_for('about') }}" class="text-light">About Us</a></li>
+                        <li><a href="{{ url_for('services') }}" class="text-light">Services</a></li>
+                        <li><a href="#" class="text-light">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-3">
+                    <h6>Contact Info</h6>
+                    <div class="footer-contact-icons mb-2" role="group" aria-label="Contact methods">
+                        <a href="tel:+254741256531" class="footer-contact-icon phone" aria-label="Call us"><i class="fas fa-phone"></i></a>
+                        <a href="https://wa.me/254741256531" target="_blank" rel="noopener" class="footer-contact-icon whatsapp" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+                        <a href="#" class="footer-contact-icon message" aria-label="Message"><i class="fas fa-comment-dots"></i></a>
+                    </div>
+
+                    <p class="mb-0">+254 741256531</p>
+                    <p class="mb-0">+254 713580997</p>
+
+                    <p class="mt-2"><i class="fas fa-envelope"></i> info@makokhamedical.com</p>
+                    <p class="mt-2"><i class="fas fa-exclamation-triangle"></i> <strong>Emergency:</strong> <a href="tel:911" class="text-light">911</a></p>
+
+                    <div class="social-links mt-3" aria-label="Social links">
+                        <a href="https://wa.me/254741256531" target="_blank" class="social-icon whatsapp" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+                        <a href="https://facebook.com/makokhamedical" target="_blank" class="social-icon facebook" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                        <a href="https://t.me/makokhamedical" target="_blank" class="social-icon telegram" aria-label="Telegram"><i class="fab fa-telegram-plane"></i></a>
+                        <a href="https://instagram.com/makokhamedical" target="_blank" class="social-icon instagram" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                        <a href="https://twitter.com/makokhamedical" target="_blank" class="social-icon twitter" aria-label="X"><i class="fab fa-twitter"></i></a>
+                    </div>
+                </div>
+            </div>
+            <hr>
+            <div class="text-center">
+                <p>&copy; 2024 MAKOKHA MEDICAL CENTRE. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/local-time.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/signaling-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/webrtc-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/call-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/push-subscription.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/toasts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/incoming-call-modal.js') }}"></script>
+
+    <!-- Expose ICE servers configured on server to client JS (read from meta to avoid Jinja in JS) -->
+    <script>
+        (function(){
+            try {
+                const meta = document.querySelector('meta[name="ice-servers"]');
+                const raw = meta ? meta.getAttribute('content') : null;
+                const parsed = raw ? JSON.parse(raw) : null;
+                window.ICE_SERVERS = parsed || [{ urls: 'stun:stun.l.google.com:19302' }];
+            } catch (e) {
+                window.ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+            }
+        })();
+    </script>
+
+    <!-- CSRF Token -->
+    <script>
+        const csrf_token = "{{ csrf_token() }}";
+
+        // Initialize Socket.IO connection (attach to window to avoid duplicate declarations)
+        if (!window.socket) {
+            try {
+                // Use robust reconnection settings
+                window.socket = io({
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    timeout: 20000
+                });
+            } catch (e) {
+                console.error('Socket.IO initialization failed', e);
+                window.socket = null;
+            }
+        }
+
+        // Create a persistent SignalingClient + CallManager available on every page
+        (function(){
+            if (!window.socket) return;
+
+            // Expose signaling and call manager singletons
+            try {
+                // Create signaling client only if available; otherwise defer
+                if (!window.signalingClient) {
+                    if (typeof SignalingClient === 'function') {
+                        try {
+                            window.signalingClient = new SignalingClient(window.socket);
+                        } catch (e) {
+                            console.error('Failed to construct SignalingClient', e);
+                        }
+                    } else {
+                        console.warn('SignalingClient class not available yet - will defer initialization');
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to create SignalingClient', e);
+            }
+
+            // Safely read current user id and profile picture URL from server-rendered template when available
+            const __currentUserId = '{{ current_user.id if current_user else "" }}';
+            const __currentUserProfilePic = '{{ current_user.profile_picture_url if current_user else "" }}';
+            // expose as globals for static scripts
+            try{ window.currentUserId = __currentUserId || ''; window.currentUserProfilePic = __currentUserProfilePic || ''; }catch(e){}
+
+            function ensureCallManager() {
+                try {
+                    if (window.callManager) return;
+
+                    // Require a valid signaling client that exposes addEventListener or on
+                    const sig = window.signalingClient;
+                    const hasInterface = sig && (typeof sig.addEventListener === 'function' || typeof sig.on === 'function');
+                    if (!hasInterface) {
+                        console.warn('CallManager init deferred: signaling client missing or invalid');
+                        return;
+                    }
+
+                    window.callManager = new CallManager(sig, { iceServers: window.ICE_SERVERS || [{ urls: 'stun:stun.l.google.com:19302' }] });
+                    // attach a lightweight presence updater
+                    try { window.callManager.localUserId = __currentUserId || null; } catch(e){}
+                    console.log('CallManager initialized');
+                } catch (e) {
+                    console.error('CallManager init failed', e);
+                }
+            }
+
+            // Connect signaling client with current user id when socket connects
+            window.socket.on('connect', () => {
+                console.log('Socket connected (global) id=', window.socket.id);
+                ensureCallManager();
+                try {
+                    if (typeof window.signalingClient.connect === 'function' && __currentUserId) {
+                        window.signalingClient.connect(__currentUserId);
+                    }
+                } catch(e){ console.warn('signaling connect failed', e); }
+            });
+
+            window.socket.on('disconnect', (reason) => {
+                console.warn('Socket disconnected (global):', reason);
+            });
+
+            // Reconnect when the browser regains network
+            window.addEventListener('online', () => {
+                console.log('Network online - attempting socket reconnect');
+                try { if (window.socket && !window.socket.connected) window.socket.connect(); } catch(e){}
+            });
+            window.addEventListener('offline', () => { console.warn('Network offline'); });
+
+            // Notification helper (uses Service Worker if available)
+            async function showLocalNotification(title, body, url) {
+                try {
+                    if (window.Notification && Notification.permission === 'granted') {
+                        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                            const reg = await navigator.serviceWorker.ready;
+                            reg.showNotification(title, { body: body, data: { url: url }, icon: '/static/img/favicon.ico' });
+                        } else {
+                            new Notification(title, { body: body });
+                        }
+                    } else if (window.Notification && Notification.permission !== 'denied') {
+                        Notification.requestPermission().then(p => { if (p === 'granted') showLocalNotification(title, body, url); });
+                    } else {
+                        // fallback in-page toast
+                        try {
+                            const el = document.createElement('div');
+                            el.style.position = 'fixed'; el.style.right = '16px'; el.style.bottom = '16px'; el.style.zIndex = '9999'; el.style.background = '#111'; el.style.color='#fff'; el.style.padding='12px 16px'; el.style.borderRadius='8px'; el.textContent = title + ' — ' + body;
+                            el.addEventListener('click', ()=>{ if (url) window.location.href = url; });
+                            document.body.appendChild(el);
+                            setTimeout(()=>el.remove(), 8000);
+                        } catch(e){ }
+                    }
+                } catch (e) { console.warn('showLocalNotification failed', e); }
+            }
+
+            // Incoming call and message handlers (global)
+            try {
+                window.socket.on('call:ringing', (data) => {
+                    console.log('Global incoming call', data);
+                    const apt = data && data.appointment_id ? data.appointment_id : null;
+                    const callerName = data && (data.caller_name || data.initiator_name || 'Caller');
+                    const url = apt ? `/communication/${apt}` : '/communication';
+                    showLocalNotification('Incoming call', `${callerName} is calling`, url);
+                });
+
+                window.socket.on('chat:message', (data) => {
+                    try {
+                        // data should include appointment_id and body
+                        const apt = data && data.appointment_id ? data.appointment_id : null;
+                        const body = data && (data.body || data.message || '') ;
+                        const title = data && data.sender_name ? data.sender_name : 'New message';
+                        const url = apt ? `/communication/${apt}` : '/communication';
+                        showLocalNotification(title, body, url);
+                    } catch (e) { console.warn('chat message handler failed', e); }
+                });
+            } catch (e) { console.warn('Global handlers attach failed', e); }
+
+            // Attempt to register a Service Worker to support notifications and future push
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register("{{ url_for('static', filename='js/sw.js') }}").then(reg => {
+                    console.log('Service worker registered', reg.scope);
+                }).catch(err => {
+                    console.warn('Service worker register failed', err);
+                });
+            }
+        })();
+
+        // Auto-attach CSRF headers for fetch() and XMLHttpRequest if not present
+        (function(){
+            try{
+                // Wrap fetch to include CSRF header and X-Requested-With for same-origin requests
+                if (window.fetch) {
+                    const _fetch = window.fetch.bind(window);
+                    window.fetch = function(resource, init){
+                        init = init || {};
+                        try{
+                            init.headers = init.headers || {};
+                            // If resource is cross-origin (starts with http and not same origin) skip
+                            const url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
+                            const isSameOrigin = !/^https?:\/\//i.test(url) || url.indexOf(location.origin) === 0;
+                            if (isSameOrigin) {
+                                if (init.headers instanceof Headers) {
+                                    init.headers.set('X-CSRFToken', csrf_token);
+                                    init.headers.set('X-Requested-With', 'XMLHttpRequest');
+                                } else if (typeof init.headers.append === 'function') {
+                                    init.headers.append('X-CSRFToken', csrf_token);
+                                    init.headers.append('X-Requested-With', 'XMLHttpRequest');
+                                } else {
+                                    init.headers['X-CSRFToken'] = csrf_token;
+                                    init.headers['X-Requested-With'] = 'XMLHttpRequest';
+                                }
+                            }
+                        }catch(e){ console.warn('csrf fetch wrapper error', e); }
+                        return _fetch(resource, init);
+                    };
+                }
+
+                // Patch XMLHttpRequest to include CSRF headers for same-origin requests
+                if (window.XMLHttpRequest) {
+                    const XHR = window.XMLHttpRequest;
+                    const origOpen = XHR.prototype.open;
+                    const origSend = XHR.prototype.send;
+                    XHR.prototype.open = function(method, url){
+                        this.__csrfUrl = url;
+                        return origOpen.apply(this, arguments);
+                    };
+                    XHR.prototype.send = function(body){
+                        try{
+                            const url = this.__csrfUrl || '';
+                            const isSameOrigin = !/^https?:\/\//i.test(url) || url.indexOf(location.origin) === 0;
+                            if (isSameOrigin) {
+                                try { this.setRequestHeader('X-CSRFToken', csrf_token); } catch(e){}
+                                try { this.setRequestHeader('X-Requested-With', 'XMLHttpRequest'); } catch(e){}
+                            }
+                        }catch(e){ /* ignore */ }
+                        return origSend.apply(this, arguments);
+                    };
+                }
+            }catch(e){ console.warn('Failed to install CSRF auto-attachment', e); }
+        })();
+
+        // Notifications: fetch unread and listen for real-time notifications
+        function _iconForType(t){
+            switch((t||'').toLowerCase()){
+                case 'message': return {icon:'fas fa-envelope', color:'text-primary'};
+                case 'missed_video_call':
+                case 'missed_voice_call': return {icon:'fas fa-phone-slash', color:'text-danger'};
+                case 'video_call_ended':
+                case 'voice_call_ended': return {icon:'fas fa-phone', color:'text-success'};
+                case 'video_call_rejected':
+                case 'voice_call_rejected': return {icon:'fas fa-ban', color:'text-warning'};
+                case 'incoming_call': return {icon:'fas fa-bell', color:'text-info'};
+                default: return {icon:'fas fa-info-circle', color:'text-secondary'};
+            }
+        }
+
+        function _groupForType(t){
+            // Normalize to simple groups for UX
+            const tt = (t||'').toLowerCase();
+            if (tt.indexOf('message') !== -1) return 'Messages';
+            if (tt.indexOf('call') !== -1 || tt.indexOf('incoming') !== -1 || tt.indexOf('missed') !== -1 || tt.indexOf('rejected') !== -1) return 'Calls';
+            return 'Other';
+        }
+
+        function timeAgo(iso){
+            try{
+                const d = new Date(iso);
+                const s = Math.floor((Date.now() - d.getTime())/1000);
+                if (s < 60) return s + 's';
+                if (s < 3600) return Math.floor(s/60) + 'm';
+                if (s < 86400) return Math.floor(s/3600) + 'h';
+                if (s < 172800) return 'Yesterday';
+                return Math.floor(s/86400) + 'd';
+            }catch(e){ return ''; }
+        }
+
+        function renderNotificationItem(n){
+            const meta = _iconForType(n.notification_type || n.type);
+            const el = document.createElement('div');
+            el.className = 'list-group-item d-flex align-items-start justify-content-between';
+            el.dataset.id = n.id;
+            el.innerHTML = `<div class="me-2"><i class="${meta.icon} ${meta.color}" style="width:28px;text-align:center;"></i></div><div class="flex-grow-1"><div class="d-flex w-100 justify-content-between"><strong class="mb-1">${n.title||'Notification'}</strong><small class="text-muted ms-2" title="${new Date(n.created_at).toLocaleString()}">${timeAgo(n.created_at)}</small></div><p class="mb-1 small text-muted">${n.body||''}</p></div><div class="ms-2 text-end"><button class="btn btn-sm btn-light mark-read-btn" data-id="${n.id}">Mark read</button></div>`;
+            const btn = el.querySelector('.mark-read-btn');
+            if (btn) btn.addEventListener('click', async function(ev){
+                ev.preventDefault(); ev.stopPropagation();
+                const id = this.dataset.id;
+                try{
+                    const r = await fetch(`/api/notifications/${id}/read`, { method: 'POST', headers: {'X-CSRFToken': csrf_token} });
+                    if (r.ok) {
+                        el.style.opacity = '0.55';
+                        el.classList.add('bg-light');
+                        const badge = document.getElementById('notifBadge');
+                        if (badge){ const current = parseInt(badge.textContent || '0'); const next = Math.max(0, current - 1); badge.textContent = next; if(next === 0) badge.style.display = 'none'; }
+                    }
+                }catch(e){ console.warn('Mark read failed', e); }
+            });
+            return el;
+        }
+
+        async function refreshNotifications(page=1, per_page=5){
+            try{
+                const resp = await fetch(`/api/notifications?include_read=false&page=${page}&per_page=${per_page}`);
+                if(!resp.ok) throw new Error('Failed to fetch');
+                const data = await resp.json();
+                if(!data.success) return;
+                const list = document.getElementById('notificationsList');
+                const badge = document.getElementById('notifBadge');
+                if (!list) return;
+                list.innerHTML = '';
+                const items = data.notifications || [];
+                if(items.length === 0){
+                    list.innerHTML = '<div class="text-muted small px-2">No new notifications</div>';
+                    badge.style.display = 'none';
+                    return;
+                }
+                // set badge to total unread count if provided, else use items length
+                const serverCount = (typeof data.unread_count !== 'undefined') ? data.unread_count : items.length;
+                badge.style.display = serverCount > 0 ? 'inline-block' : 'none';
+                badge.textContent = serverCount;
+
+                // Group items by simple buckets for readability
+                const groups = {};
+                items.forEach(n => {
+                    const g = _groupForType(n.notification_type || n.type);
+                    groups[g] = groups[g] || [];
+                    groups[g].push(n);
+                });
+                // Define display order
+                const order = ['Messages','Calls','Other'];
+                order.forEach(gk => {
+                    if (!groups[gk] || !groups[gk].length) return;
+                    const header = document.createElement('div');
+                    header.className = 'px-2 pt-2 small text-uppercase text-muted';
+                    header.textContent = gk;
+                    list.appendChild(header);
+                    groups[gk].forEach(n => list.appendChild(renderNotificationItem(n)));
+                });
+                // set dropdown pagination state
+                try{ document.getElementById('notifDropdownPage').value = page; }catch(e){}
+            }catch(e){
+                console.warn('Failed to refresh notifications', e);
+            }
+        }
+
+        // load next page and append to dropdown
+        async function loadMoreNotifications(){
+            try{
+                const pageInput = document.getElementById('notifDropdownPage');
+                const page = pageInput ? (parseInt(pageInput.value)||1) + 1 : 2;
+                const per_page = 5;
+                const resp = await fetch(`/api/notifications?include_read=false&page=${page}&per_page=${per_page}`);
+                if(!resp.ok) return;
+                const data = await resp.json();
+                if(!data.success) return;
+                const list = document.getElementById('notificationsList');
+                const items = data.notifications || [];
+                if(!items.length){
+                    // no more items
+                    const loadBtn = document.getElementById('notifLoadMore'); if(loadBtn) loadBtn.disabled = true;
+                    return;
+                }
+                // Append items grouped if needed; avoid duplicating group headers
+                items.forEach(n => {
+                    const group = _groupForType(n.notification_type || n.type);
+                    // find last header for this group
+                    let foundHeader = null;
+                    Array.from(list.querySelectorAll('.px-2.pt-2')).forEach(h => { if (h.textContent === group) foundHeader = h; });
+                    if (!foundHeader) {
+                        const header = document.createElement('div');
+                        header.className = 'px-2 pt-2 small text-uppercase text-muted';
+                        header.textContent = group;
+                        list.appendChild(header);
+                    }
+                    list.appendChild(renderNotificationItem(n));
+                });
+                try{ document.getElementById('notifDropdownPage').value = page; }catch(e){}
+            }catch(e){ console.warn('Failed to load more notifications', e); }
+        }
+
+        if (window.socket) {
+            window.socket.on('notification', function(data){
+                try{
+                    if (Notification && Notification.permission !== 'denied') {
+                        if (Notification.permission !== 'granted') Notification.requestPermission();
+                        else new Notification(data.title || 'Notification', { body: data.body || '' });
+                    }
+                }catch(e){}
+                // lightweight: increment badge by 1 and refresh list in background
+                try{
+                    const badge = document.getElementById('notifBadge');
+                    if (badge) {
+                        const current = parseInt(badge.textContent || '0') || 0;
+                        badge.textContent = current + 1;
+                        badge.style.display = 'inline-block';
+                    }
+                }catch(e){}
+                // refresh full list asynchronously
+                refreshNotifications();
+            });
+            // listen for server-emitted unread_count for lightweight updates
+            window.socket.on('unread_count', function(payload){
+                try{
+                    const badge = document.getElementById('notifBadge');
+                    if (!badge) return;
+                    const n = payload && typeof payload.unread_count !== 'undefined' ? payload.unread_count : null;
+                    if (n === null) return;
+                    if (n <= 0) {
+                        badge.style.display = 'none';
+                    } else {
+                        badge.style.display = 'inline-block';
+                        badge.textContent = n;
+                    }
+                }catch(e){ console.warn('Failed to handle unread_count', e); }
+            });
+        }
+
+        // Mark all read button
+        document.addEventListener('DOMContentLoaded', function(){
+            const markAll = document.getElementById('markAllReadBtn');
+            if(markAll){
+                markAll.addEventListener('click', async function(){
+                    try{
+                        await fetch('/api/notifications/read-all', { method: 'POST', headers: {'X-CSRFToken': csrf_token} });
+                        refreshNotifications();
+                    }catch(e){ console.warn('Failed to mark all read', e); }
+                });
+            }
+            // initial fetch (first page)
+            refreshNotifications(1, 5);
+            // wire load more button in dropdown
+            const loadMoreBtn = document.getElementById('notifLoadMore');
+            if (loadMoreBtn) {
+                loadMoreBtn.addEventListener('click', async function(){
+                    loadMoreBtn.disabled = true;
+                    await loadMoreNotifications();
+                    loadMoreBtn.disabled = false;
+                });
+            }
+            // Push toggle button wiring
+            const pushBtn = document.getElementById('pushToggleBtn');
+            async function updatePushBtn(){
+                try{
+                    if (!pushBtn) return;
+                    console.log('updatePushBtn: checking support...');
+                    if (!window.PushManagerHelper || !window.PushManagerHelper.isSupported()){
+                        console.log('updatePushBtn: not supported');
+                        pushBtn.textContent = 'Push N/A'; pushBtn.disabled = true; return;
+                    }
+                    // Check current subscription
+                    const reg = await navigator.serviceWorker.ready.catch(()=>null);
+                    if (!reg) { 
+                        console.log('updatePushBtn: no SW registration');
+                        pushBtn.textContent = 'Enable Push'; pushBtn.disabled = false; pushBtn.dataset.subscribed = '0'; return; 
+                    }
+                    const sub = await reg.pushManager.getSubscription();
+                    console.log('updatePushBtn: subscription=', sub ? 'active' : 'none');
+                    if (sub) {
+                        pushBtn.textContent = 'Push Enabled';
+                        pushBtn.classList.remove('btn-outline-light');
+                        pushBtn.classList.add('btn-success');
+                        pushBtn.dataset.subscribed = '1';
+                    } else {
+                        pushBtn.textContent = 'Enable Push';
+                        pushBtn.classList.remove('btn-success');
+                        pushBtn.classList.add('btn-outline-light');
+                        pushBtn.dataset.subscribed = '0';
+                    }
+                    pushBtn.disabled = false;
+                }catch(e){ console.warn('updatePushBtn failed', e); }
+            }
+            if (pushBtn){
+                pushBtn.addEventListener('click', async function(e){
+                    e.preventDefault();
+                    console.log('pushBtn clicked, subscribed=' + pushBtn.dataset.subscribed);
+                    try{
+                        pushBtn.disabled = true;
+                        const subscribed = pushBtn.dataset.subscribed === '1';
+                        if (subscribed){
+                            // Currently subscribed, so unsubscribe
+                            console.log('Unsubscribing...');
+                            const r = await window.PushManagerHelper.unsubscribeForPush(window.currentUserId);
+                            console.log('Unsubscribe result:', r);
+                            if (r && r.success !== false) {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Notifications disabled');
+                                pushBtn.textContent = 'Enable Push';
+                                pushBtn.classList.remove('btn-success');
+                                pushBtn.classList.add('btn-outline-light');
+                                pushBtn.dataset.subscribed = '0';
+                            } else {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Failed to disable');
+                            }
+                        } else {
+                            // Currently unsubscribed, so subscribe
+                            console.log('Subscribing...');
+                            const r = await window.PushManagerHelper.subscribeForPush(window.currentUserId);
+                            console.log('Subscribe result:', r);
+                            if (r && r.success) {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Push Enabled');
+                                pushBtn.textContent = 'Push Enabled';
+                                pushBtn.classList.remove('btn-outline-light');
+                                pushBtn.classList.add('btn-success');
+                                pushBtn.dataset.subscribed = '1';
+                            } else {
+                                window.InpageToasts && window.InpageToasts.show('Push', 'Subscription failed: ' + (r?.error || 'Unknown'));
+                            }
+                        }
+                    }catch(e){
+                        console.warn('push toggle failed', e);
+                        window.InpageToasts && window.InpageToasts.show('Push', 'Error: ' + (e.message || 'Unknown error'));
+                    }
+                    finally{
+                        try { await updatePushBtn(); } catch(e){}
+                        pushBtn.disabled = false;
+                    }
+                });
+                // initial state
+                setTimeout(updatePushBtn, 800);
+            }
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

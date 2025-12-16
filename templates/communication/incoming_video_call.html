@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incoming Video Call</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: #000;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2147483647;
+        }
+
+        .incoming-video-call-container {
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            z-index: 2147483647;
+        }
+
+        /* Animated background */
+        .call-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.15;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="white" stroke-width="2"/><path d="M30 50 L70 50 M50 30 L50 70" stroke="white" stroke-width="1"/></svg>');
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.15; }
+            50% { transform: scale(1.05); opacity: 0.2; }
+        }
+
+        /* Caller video preview or avatar */
+        .caller-video-section {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: auto;
+            flex: 1;
+        }
+
+        #callerVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        .caller-avatar-large {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 64px;
+            color: white;
+            box-shadow: 0 15px 50px rgba(102, 126, 234, 0.5);
+            animation: scale-in 0.6s ease-out;
+        }
+
+        @keyframes scale-in {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Caller info overlay */
+        .caller-info-overlay {
+            position: absolute;
+            bottom: 120px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 11;
+        }
+
+        .caller-name {
+            color: white;
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .caller-role {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .call-status {
+            color: #4ade80;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 12px;
+        }
+
+        .call-status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Status display for busy/offline */
+        .status-badge {
+            position: absolute;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 152, 0, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 14;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .status-badge.busy {
+            background: rgba(239, 68, 68, 0.9);
+        }
+
+        .status-badge.offline {
+            background: rgba(107, 114, 128, 0.9);
+        }
+
+        .status-badge.attempting {
+            background: rgba(59, 130, 246, 0.9);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        /* Ringtone indicator */
+        .ringtone-icon {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            font-size: 28px;
+            color: #f59e0b;
+            z-index: 15;
+            animation: ring 0.6s ease-in-out infinite;
+        }
+
+        @keyframes ring {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-15deg); }
+            75% { transform: rotate(15deg); }
+        }
+
+        /* Action buttons */
+        .call-actions {
+            position: relative;
+            z-index: 12;
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            padding-bottom: 40px;
+        }
+
+        .call-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        .call-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.5);
+        }
+
+        .call-btn:active {
+            transform: scale(0.95);
+        }
+
+        .accept-btn {
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            color: white;
+        }
+
+        .accept-btn:hover {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        }
+
+        .reject-btn {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }
+
+        .reject-btn:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        }
+
+        /* Call control buttons (mute, speaker, hold) */
+        .call-controls {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9;
+            display: flex;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px 20px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .control-btn.active {
+            background: #ef4444;
+        }
+
+        .control-btn.active:hover {
+            background: #dc2626;
+        }
+
+        /* Close button */
+        .close-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 15;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .incoming-video-call-container {
+                max-width: 100%;
+                border-radius: 0;
+            }
+
+            .caller-name {
+                font-size: 28px;
+            }
+
+            .call-actions {
+                gap: 30px;
+            }
+
+            .call-btn {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
+
+            .ringtone-icon {
+                top: 15px;
+                right: 15px;
+                font-size: 24px;
+            }
+
+            .close-btn {
+                top: 15px;
+                left: 15px;
+                width: 36px;
+                height: 36px;
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="incoming-video-call-container">
+        <div class="call-background"></div>
+
+        <button class="close-btn" id="closeBtn" onclick="window.close()">
+            <i class="fas fa-times"></i>
+        </button>
+
+        <div class="ringtone-icon">
+            <i class="fas fa-video"></i>
+        </div>
+
+        <!-- Status Badge for Busy/Offline -->
+        <div class="status-badge" id="statusBadge"></div>
+
+        <!-- Call Control Buttons (appear after call accepted) -->
+        <div class="call-controls" id="callControls" style="display: none;">
+            <button class="control-btn" id="muteBtn" title="Mute Microphone">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="control-btn" id="speakerBtn" title="Speaker">
+                <i class="fas fa-volume-up"></i>
+            </button>
+            <button class="control-btn" id="holdBtn" title="Hold Call">
+                <i class="fas fa-pause"></i>
+            </button>
+        </div>
+
+        <div class="caller-video-section">
+            <video id="callerVideo" playsinline autoplay muted></video>
+            <div class="caller-avatar-large" id="callerAvatarLarge">
+                <img id="callerProfilePic" src="" alt="Caller" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+                <span id="callerInitials" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">DR</span>
+            </div>
+
+            <div class="caller-info-overlay">
+                <div class="caller-name" id="callerName">Dr. John Doe</div>
+                <div class="caller-role" id="callerRole">Doctor</div>
+                <div class="call-status">
+                    <span class="dot"></span>
+                    <span id="statusText">Calling...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="call-actions">
+            <button class="call-btn reject-btn" id="rejectBtn" title="Reject Call">
+                <i class="fas fa-phone"></i>
+            </button>
+            <button class="call-btn accept-btn" id="acceptBtn" title="Accept Call">
+                <i class="fas fa-video"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // Safe storage utility to handle Tracking Prevention
+        const safeStorage = {
+            getItem: function(key) {
+                try {
+                    return sessionStorage.getItem(key);
+                } catch (e) {
+                    console.warn('sessionStorage blocked by tracking prevention, using fallback');
+                    return window[`__storage_${key}`] || null;
+                }
+            },
+            setItem: function(key, value) {
+                try {
+                    sessionStorage.setItem(key, value);
+                } catch (e) {
+                    console.warn('sessionStorage blocked, using fallback storage');
+                    window[`__storage_${key}`] = value;
+                }
+            },
+            removeItem: function(key) {
+                try {
+                    sessionStorage.removeItem(key);
+                } catch (e) {
+                    delete window[`__storage_${key}`];
+                }
+            }
+        };
+
+        // Get call data
+        const callData = JSON.parse(safeStorage.getItem('incomingCallData') || '{}');
+        const appointmentId = callData.appointment_id || new URLSearchParams(window.location.search).get('appointment_id');
+        const callerId = callData.caller_id;
+        const callerName = callData.caller_name || 'Unknown';
+        const callerRole = callData.caller_role || 'Doctor';
+        const callerProfilePic = callData.caller_profile_pic || null;
+
+        // Initialize Socket.IO (reuse global instance if present)
+        if (!window.socket) { try { window.socket = io(); } catch(e) { console.error('Socket init failed', e); window.socket = null; } }
+        var socket = window.socket;
+
+        // Socket event listeners
+        socket.on('connect', () => {
+            console.log('Connected to socket server');
+        });
+
+        // Handle busy notification
+        socket.on('call_failed_busy', (data) => {
+            clearInterval(ringtoneInterval);
+            showStatusBadge('busy', `⚠️ ${data.callee_name} is currently busy`);
+            statusText.textContent = 'User Busy';
+            
+            setTimeout(() => {
+                window.close();
+            }, 5000);
+        });
+
+        // Handle offline/attempting connection
+        socket.on('outgoing_video_call_started', (data) => {
+            if (data.status === 'offline_attempting') {
+                showStatusBadge('attempting', `⏳ Attempting to reach ${data.callee_name}...`);
+            }
+        });
+
+        // Handle connection failed
+        socket.on('video_call_connection_failed', (data) => {
+            clearInterval(ringtoneInterval);
+            statusText.textContent = 'Connection Failed';
+            statusBadge.className = 'status-badge';
+            statusBadge.innerHTML = '<i class="fas fa-exclamation-circle"></i> Unable to connect';
+            statusBadge.style.background = 'rgba(239, 68, 68, 0.9)';
+            statusBadge.style.display = 'flex';
+            
+            setTimeout(() => {
+                window.close();
+            }, 5000);
+        });
+
+        // DOM Elements
+        const callerVideo = document.getElementById('callerVideo');
+        const callerAvatarLarge = document.getElementById('callerAvatarLarge');
+        const callerNameEl = document.getElementById('callerName');
+        const callerRoleEl = document.getElementById('callerRole');
+        const acceptBtn = document.getElementById('acceptBtn');
+        const rejectBtn = document.getElementById('rejectBtn');
+        const statusText = document.getElementById('statusText');
+        const callerInitials = document.getElementById('callerInitials');
+        const callerProfilePicEl = document.getElementById('callerProfilePic');
+        const statusBadge = document.getElementById('statusBadge');
+
+        // Display status badge
+        function showStatusBadge(type, message) {
+            statusBadge.textContent = message;
+            statusBadge.className = `status-badge ${type}`;
+            statusBadge.style.display = 'flex';
+            
+            // Disable accept button if busy
+            if (type === 'busy') {
+                acceptBtn.disabled = true;
+                acceptBtn.style.opacity = '0.5';
+                acceptBtn.title = 'User is currently busy';
+            }
+        }
+
+        // Set caller info
+        callerNameEl.textContent = callerName;
+        callerRoleEl.textContent = callerRole;
+
+        // Display profile picture if available (with graceful fallback)
+        if (callerProfilePic) {
+            callerProfilePicEl.src = callerProfilePic;
+            callerProfilePicEl.style.display = 'block';
+            callerInitials.style.display = 'none';
+            callerProfilePicEl.onerror = function() {
+                this.style.display = 'none';
+                callerInitials.style.display = 'flex';
+            };
+        } else {
+            // Generate initials
+            const names = callerName.split(' ');
+            const initials = names.map(n => n.charAt(0)).join('').substring(0, 2).toUpperCase();
+            callerInitials.textContent = initials;
+        }
+
+        // Play ringtone using female voice and tones
+        let ringtoneInterval;
+        function playRingtone() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                function playTone(frequency, duration) {
+                    const oscillator = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    oscillator.connect(gain);
+                    gain.connect(audioContext.destination);
+                    
+                    oscillator.frequency.value = frequency;
+                    oscillator.type = 'sine';
+                    
+                    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+                    
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + duration);
+                }
+                
+                // Female voice-like ringtone pattern: higher frequencies
+                const playRingtonePattern = () => {
+                    const now = audioContext.currentTime;
+                    playTone(850, 0.3);  // Higher tone for female voice
+                    audioContext.createOscillator().frequency.setValueAtTime(850, now);
+                };
+                
+                ringtoneInterval = setInterval(() => {
+                    playTone(850, 0.4);   // First tone
+                    setTimeout(() => playTone(950, 0.4), 500);  // Second tone
+                }, 2000);
+                
+                playRingtonePattern();
+            } catch (e) {
+                console.log('Audio context error:', e);
+            }
+        }
+
+        // Start ringtone
+        playRingtone();
+
+        // Call control state variables
+        let isMuted = false;
+        let isSpeakerOn = false;
+        let isOnHold = false;
+        let localStream = null;
+
+        // Accept video call
+        acceptBtn.addEventListener('click', () => {
+            clearInterval(ringtoneInterval);
+            statusText.textContent = 'Accepted';
+            
+            // Show call control buttons
+            const callControls = document.getElementById('callControls');
+            if (callControls) {
+                callControls.style.display = 'flex';
+            }
+            
+            // Initialize call control handlers
+            initializeCallControls();
+            
+            // Signal acceptance to parent window via safeStorage
+            safeStorage.setItem('callResponse', 'accepted');
+            
+            // Store call state
+            safeStorage.setItem('activeVideoCall', JSON.stringify({
+                appointment_id: appointmentId,
+                caller_id: callerId,
+                callee_id: callerId
+            }));
+            
+            setTimeout(() => {
+                window.location.href = `/video-call/${appointmentId}`;
+            }, 1000);
+        });
+
+        // Initialize call controls
+        function initializeCallControls() {
+            const muteBtn = document.getElementById('muteBtn');
+            const speakerBtn = document.getElementById('speakerBtn');
+            const holdBtn = document.getElementById('holdBtn');
+
+            // Mute button
+            if (muteBtn) {
+                muteBtn.addEventListener('click', () => {
+                    isMuted = !isMuted;
+                    muteBtn.classList.toggle('active', isMuted);
+                    muteBtn.innerHTML = isMuted 
+                        ? '<i class="fas fa-microphone-slash"></i>' 
+                        : '<i class="fas fa-microphone"></i>';
+                    
+                    // Note: Audio control will be managed by the main video call page
+                });
+            }
+
+            // Speaker button
+            if (speakerBtn) {
+                speakerBtn.addEventListener('click', () => {
+                    isSpeakerOn = !isSpeakerOn;
+                    speakerBtn.classList.toggle('active', isSpeakerOn);
+                    speakerBtn.innerHTML = isSpeakerOn 
+                        ? '<i class="fas fa-volume-mute"></i>' 
+                        : '<i class="fas fa-volume-up"></i>';
+                    
+                    // Note: Speaker control will be managed by the main video call page
+                });
+            }
+
+            // Hold button
+            if (holdBtn) {
+                holdBtn.addEventListener('click', () => {
+                    isOnHold = !isOnHold;
+                    holdBtn.classList.toggle('active', isOnHold);
+                    holdBtn.innerHTML = isOnHold 
+                        ? '<i class="fas fa-play"></i>' 
+                        : '<i class="fas fa-pause"></i>';
+                    
+                    // Note: Hold control will be managed by the main video call page
+                });
+            }
+        }
+
+        // Reject video call
+        rejectBtn.addEventListener('click', () => {
+            clearInterval(ringtoneInterval);
+            statusText.textContent = 'Declined';
+            
+            // Signal rejection to parent window via safeStorage
+            safeStorage.setItem('callResponse', 'rejected');
+            
+            setTimeout(() => {
+                window.close();
+            }, 1000);
+        });
+
+        // Handle call timeout
+        setTimeout(() => {
+            if (statusText.textContent === 'Calling...') {
+                clearInterval(ringtoneInterval);
+                statusText.textContent = 'Missed Call';
+                
+                // Signal timeout to parent window
+                safeStorage.setItem('callResponse', 'timeout');
+                
+                setTimeout(() => {
+                    window.close();
+                }, 3000);
+            }
+        }, 60000); // 60 second timeout
+    </script>
+</body>
+</html>
+

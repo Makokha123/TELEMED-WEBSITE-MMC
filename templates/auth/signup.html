@@ -1,0 +1,736 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .signup-card {
+        border: none;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .signup-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+    }
+    .signup-header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 2rem;
+        text-align: center;
+    }
+    .social-signup {
+        border: 2px solid #e9ecef;
+        border-radius: 12px;
+        padding: 12px;
+        text-align: center;
+        text-decoration: none;
+        color: #333;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 10px;
+        background: white;
+    }
+    .social-signup:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+    .social-signup.google {
+        border-color: #db4437;
+        color: #db4437;
+    }
+    .social-signup.google:hover {
+        background-color: #db4437;
+        color: white;
+    }
+    .social-signup.facebook {
+        border-color: #4267B2;
+        color: #4267B2;
+    }
+    .social-signup.facebook:hover {
+        background-color: #4267B2;
+        color: white;
+    }
+    .social-icon {
+        margin-right: 10px;
+        font-size: 1.2em;
+    }
+    .divider {
+        display: flex;
+        align-items: center;
+        text-align: center;
+        margin: 20px 0;
+    }
+    .divider::before,
+    .divider::after {
+        content: '';
+        flex: 1;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .divider span {
+        padding: 0 15px;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    .password-strength {
+        height: 5px;
+        margin-top: 5px;
+        border-radius: 2px;
+        transition: all 0.3s ease;
+    }
+    .strength-weak { background-color: #dc3545; width: 25%; }
+    .strength-fair { background-color: #ffc107; width: 50%; }
+    .strength-good { background-color: #17a2b8; width: 75%; }
+    .strength-strong { background-color: #28a745; width: 100%; }
+    .benefits-list {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 15px;
+        padding: 25px;
+        margin-top: 30px;
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+    .benefit-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+        padding: 10px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    .benefit-item:hover {
+        background-color: rgba(255,255,255,0.7);
+        transform: translateX(5px);
+    }
+    .benefit-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        flex-shrink: 0;
+        transition: transform 0.3s ease;
+    }
+    .benefit-item:hover .benefit-icon {
+        transform: scale(1.1);
+    }
+    .form-control {
+        border-radius: 10px;
+        padding: 12px 15px;
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    .form-control:focus {
+        border-color: #28a745;
+        box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+    }
+    .input-group-text {
+        border-radius: 10px 0 0 10px;
+        background-color: #f8f9fa;
+        border: 2px solid #e9ecef;
+        border-right: none;
+    }
+    .password-toggle {
+        border-radius: 0 10px 10px 0;
+        border: 2px solid #e9ecef;
+        border-left: none;
+        background-color: #f8f9fa;
+        transition: all 0.3s ease;
+    }
+    .password-toggle:hover {
+        background-color: #e9ecef;
+        border-color: #28a745;
+    }
+    .btn-success {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border: none;
+        border-radius: 10px;
+        padding: 12px 30px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .btn-success:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+    }
+    .form-check-input:checked {
+        background-color: #28a745;
+        border-color: #28a745;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card signup-card">
+                <!-- Header -->
+                <div class="signup-header">
+                    <h2 class="mb-3"><i class="fas fa-user-plus me-2"></i>Join MAKOKHA MEDICAL CENTRE</h2>
+                    <p class="mb-0">Create your account to access quality telemedicine services</p>
+                </div>
+
+                <div class="card-body p-4">
+                    <div class="row">
+                        <!-- Left Column - Social Signup -->
+                        <div class="col-lg-5 border-end pe-lg-4">
+                            <div class="mb-4">
+                                <h5 class="text-center mb-3">Quick Sign Up</h5>
+                                <p class="text-muted text-center mb-4">Use your social account to get started instantly</p>
+                                
+                                <!-- Google Signup -->
+                                <a href="{{ url_for('google.login') }}" class="social-signup google">
+                                    <i class="fab fa-google social-icon"></i>
+                                    Sign up with Google
+                                </a>
+                                
+                                <!-- Facebook Signup -->
+                                <a href="{{ url_for('facebook.login') }}" class="social-signup facebook">
+                                    <i class="fab fa-facebook-f social-icon"></i>
+                                    Sign up with Facebook
+                                </a>
+                            </div>
+
+                            <!-- Benefits -->
+                            <div class="benefits-list">
+                                <h6 class="mb-3 text-center"><i class="fas fa-star me-2"></i>Why Sign Up?</h6>
+                                <div class="benefit-item">
+                                    <div class="benefit-icon">
+                                        <i class="fas fa-video"></i>
+                                    </div>
+                                    <div>
+                                        <strong>Video Consultations</strong>
+                                        <small class="text-muted d-block">Talk to doctors face-to-face</small>
+                                    </div>
+                                </div>
+                                <div class="benefit-item">
+                                    <div class="benefit-icon">
+                                        <i class="fas fa-file-prescription"></i>
+                                    </div>
+                                    <div>
+                                        <strong>Digital Prescriptions</strong>
+                                        <small class="text-muted d-block">Get prescriptions delivered</small>
+                                    </div>
+                                </div>
+                                <div class="benefit-item">
+                                    <div class="benefit-icon">
+                                        <i class="fas fa-shield-alt"></i>
+                                    </div>
+                                    <div>
+                                        <strong>Secure & Private</strong>
+                                        <small class="text-muted d-block">HIPAA compliant platform</small>
+                                    </div>
+                                </div>
+                                <div class="benefit-item">
+                                    <div class="benefit-icon">
+                                        <i class="fas fa-clock"></i>
+                                    </div>
+                                    <div>
+                                        <strong>24/7 Access</strong>
+                                        <small class="text-muted d-block">Healthcare when you need it</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column - Email Signup -->
+                        <div class="col-lg-7 ps-lg-4">
+                            <!-- Divider for mobile -->
+                            <div class="divider d-lg-none">
+                                <span>or sign up with email</span>
+                            </div>
+
+                            <h5 class="mb-3">Create Account with Email</h5>
+                            
+                            <form method="POST" id="signupForm">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <!-- Account Information -->
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="username" class="form-label">Username *</label>
+                                            <input type="text" class="form-control" id="username" name="username" 
+                                                   placeholder="Choose a username" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="email" class="form-label">Email *</label>
+                                            <input type="email" class="form-control" id="email" name="email" 
+                                                   placeholder="your@email.com" required>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="password" class="form-label">Password *</label>
+                                            <div class="input-group">
+                                                <input type="password" class="form-control password-field" id="password" name="password" 
+                                                       placeholder="Create password" required>
+                                                <button class="btn btn-outline-secondary password-toggle" type="button" data-target="password">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
+                                            <div class="password-strength" id="passwordStrength"></div>
+                                            <small class="form-text text-muted">
+                                                Must include: 8+ chars, uppercase, lowercase, number, symbol
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="confirm_password" class="form-label">Confirm Password *</label>
+                                            <div class="input-group">
+                                                <input type="password" class="form-control password-field" id="confirm_password" 
+                                                       name="confirm_password" placeholder="Confirm password" required>
+                                                <button class="btn btn-outline-secondary password-toggle" type="button" data-target="confirm_password">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
+                                            <div class="form-text" id="passwordMatchText"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Personal Information -->
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="first_name" class="form-label">First Name *</label>
+                                            <input type="text" class="form-control" id="first_name" name="first_name" 
+                                                   placeholder="Your first name" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="last_name" class="form-label">Last Name *</label>
+                                            <input type="text" class="form-control" id="last_name" name="last_name" 
+                                                   placeholder="Your last name" required>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="phone" class="form-label">Phone Number</label>
+                                            <input type="tel" class="form-control" id="phone" name="phone" 
+                                                   placeholder="+254 XXX XXX XXX">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="date_of_birth" class="form-label">Date of Birth</label>
+                                            <input type="date" class="form-control" id="date_of_birth" name="date_of_birth">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                    <!-- Optional Additional Patient Information -->
+                                    <div class="mb-3">
+                                        <a class="btn btn-link p-0" data-bs-toggle="collapse" href="#optionalInfo" role="button" aria-expanded="false" aria-controls="optionalInfo">
+                                            + Add more patient details (optional)
+                                        </a>
+                                    </div>
+
+                                    <div class="collapse" id="optionalInfo">
+                                        <div class="card card-body mb-3">
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="gender" class="form-label">Gender</label>
+                                                        <select id="gender" name="gender" class="form-select">
+                                                            <option value="">Prefer not to say</option>
+                                                            <option value="female">Female</option>
+                                                            <option value="male">Male</option>
+                                                            <option value="other">Other</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="blood_type" class="form-label">Blood Type</label>
+                                                        <select id="blood_type" name="blood_type" class="form-select">
+                                                            <option value="">Unknown</option>
+                                                            <option value="A+">A+</option>
+                                                            <option value="A-">A-</option>
+                                                            <option value="B+">B+</option>
+                                                            <option value="B-">B-</option>
+                                                            <option value="AB+">AB+</option>
+                                                            <option value="AB-">AB-</option>
+                                                            <option value="O+">O+</option>
+                                                            <option value="O-">O-</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="age_display" class="form-label">Age</label>
+                                                        <input type="text" id="age_display" class="form-control" readonly placeholder="Calculated from DOB">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="address" class="form-label">Address</label>
+                                                        <input type="text" class="form-control" id="address" name="address" placeholder="Street address">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="city" class="form-label">City</label>
+                                                        <input type="text" class="form-control" id="city" name="city" placeholder="City">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="country" class="form-label">Country</label>
+                                                        <input type="text" class="form-control" id="country" name="country" placeholder="Country">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="postal_code" class="form-label">Postal Code</label>
+                                                        <input type="text" class="form-control" id="postal_code" name="postal_code" placeholder="Postal / ZIP code">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="occupation" class="form-label">Occupation</label>
+                                                        <input type="text" class="form-control" id="occupation" name="occupation" placeholder="Occupation">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="nationality" class="form-label">Nationality</label>
+                                                        <input type="text" class="form-control" id="nationality" name="nationality" placeholder="Nationality">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="marital_status" class="form-label">Marital Status</label>
+                                                        <select id="marital_status" name="marital_status" class="form-select">
+                                                            <option value="">--</option>
+                                                            <option value="single">Single</option>
+                                                            <option value="married">Married</option>
+                                                            <option value="divorced">Divorced</option>
+                                                            <option value="widowed">Widowed</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3">
+                                                        <label for="preferred_language" class="form-label">Preferred Language</label>
+                                                        <input type="text" class="form-control" id="preferred_language" name="preferred_language" placeholder="e.g. English">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-3">
+                                                    <div class="mb-3">
+                                                        <label for="height_cm" class="form-label">Height (cm)</label>
+                                                        <input type="number" step="0.1" class="form-control" id="height_cm" name="height_cm" placeholder="e.g. 170">
+                                                        <div class="form-text text-danger" id="signupHeightWarning" style="display:none"></div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="mb-3">
+                                                        <label for="weight_kg" class="form-label">Weight (kg)</label>
+                                                        <input type="number" step="0.1" class="form-control" id="weight_kg" name="weight_kg" placeholder="e.g. 68">
+                                                        <div class="form-text text-danger" id="signupWeightWarning" style="display:none"></div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="id_number" class="form-label">ID / Passport #</label>
+                                                        <input type="text" class="form-control" id="id_number" name="id_number" placeholder="ID or passport number">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="emergency_contact" class="form-label">Emergency Contact</label>
+                                                        <input type="text" class="form-control" id="emergency_contact" name="emergency_contact" placeholder="Name and phone">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="insurance_provider" class="form-label">Insurance Provider</label>
+                                                        <input type="text" class="form-control" id="insurance_provider" name="insurance_provider" placeholder="Provider name">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="insurance_number" class="form-label">Insurance #</label>
+                                                        <input type="text" class="form-control" id="insurance_number" name="insurance_number" placeholder="Policy number">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="current_medications" class="form-label">Current Medications</label>
+                                                        <input type="text" class="form-control" id="current_medications" name="current_medications" placeholder="Comma-separated">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="medical_history" class="form-label">Medical History (optional)</label>
+                                                        <textarea id="medical_history" name="medical_history" class="form-control" rows="3" placeholder="Past illnesses, surgeries, chronic conditions"></textarea>
+                                                        <div class="form-text text-danger" id="signupDobWarning" style="display:none"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                <!-- Terms and Conditions -->
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="terms" required>
+                                        <label class="form-check-label" for="terms">
+                                            I agree to the <a href="#" class="text-decoration-none">Terms of Service</a> 
+                                            and <a href="#" class="text-decoration-none">Privacy Policy</a>
+                                        </label>
+                                    </div>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" id="newsletter">
+                                        <label class="form-check-label" for="newsletter">
+                                            Send me health tips and updates (optional)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-success btn-lg w-100 mb-3" id="submitBtn">
+                                    <i class="fas fa-user-plus me-2"></i>Create Account
+                                </button>
+                            </form>
+
+                            <!-- Login Link -->
+                            <div class="text-center">
+                                <p class="mb-0">
+                                    Already have an account? 
+                                    <a href="{{ url_for('login') }}" class="text-decoration-none fw-bold">
+                                        Sign in here
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        let passwordValid = false;
+        let passwordsMatch = false;
+
+        // Enhanced password toggle functionality
+        $('.password-toggle').click(function() {
+            const targetId = $(this).data('target');
+            const input = $('#' + targetId);
+            const icon = $(this).find('i');
+            
+            if (input.attr('type') === 'password') {
+                input.attr('type', 'text');
+                icon.removeClass('fa-eye').addClass('fa-eye-slash');
+                $(this).addClass('active');
+            } else {
+                input.attr('type', 'password');
+                icon.removeClass('fa-eye-slash').addClass('fa-eye');
+                $(this).removeClass('active');
+            }
+            
+            // Trigger input event to update strength and match indicators
+            input.trigger('input');
+        });
+
+        // Password strength checking
+        $('#password').on('input', function() {
+            const password = $(this).val();
+            updatePasswordStrength(password);
+            checkPasswordMatch();
+        });
+
+        // Password match checking
+        $('#confirm_password').on('input', function() {
+            checkPasswordMatch();
+        });
+
+        function updatePasswordStrength(password) {
+            const requirements = {
+                length: password.length >= 8,
+                uppercase: /[A-Z]/.test(password),
+                lowercase: /[a-z]/.test(password),
+                number: /[0-9]/.test(password),
+                special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+            };
+
+            const strengthBar = $('#passwordStrength');
+            const strength = Object.values(requirements).filter(Boolean).length;
+            
+            strengthBar.removeClass('strength-weak strength-fair strength-good strength-strong');
+            
+            if (password.length === 0) {
+                strengthBar.css('width', '0%').css('background-color', 'transparent');
+                passwordValid = false;
+            } else if (strength <= 2) {
+                strengthBar.addClass('strength-weak');
+                passwordValid = false;
+            } else if (strength === 3) {
+                strengthBar.addClass('strength-fair');
+                passwordValid = strength >= 3;
+            } else if (strength === 4) {
+                strengthBar.addClass('strength-good');
+                passwordValid = strength >= 4;
+            } else {
+                strengthBar.addClass('strength-strong');
+                passwordValid = true;
+            }
+
+            updateSubmitButton();
+        }
+
+        function checkPasswordMatch() {
+            const password = $('#password').val();
+            const confirmPassword = $('#confirm_password').val();
+            const matchText = $('#passwordMatchText');
+
+            if (confirmPassword.length === 0) {
+                matchText.text('').removeClass('text-success text-danger');
+                passwordsMatch = false;
+            } else if (password === confirmPassword) {
+                matchText.text('✓ Passwords match').removeClass('text-danger').addClass('text-success');
+                passwordsMatch = true;
+            } else {
+                matchText.text('✗ Passwords do not match').removeClass('text-success').addClass('text-danger');
+                passwordsMatch = false;
+            }
+
+            updateSubmitButton();
+        }
+
+        function updateSubmitButton() {
+            const submitBtn = $('#submitBtn');
+            const termsChecked = $('#terms').is(':checked');
+            
+            if (passwordValid && passwordsMatch && termsChecked) {
+                submitBtn.prop('disabled', false).removeClass('btn-secondary').addClass('btn-success');
+            } else {
+                submitBtn.prop('disabled', true).removeClass('btn-success').addClass('btn-secondary');
+            }
+        }
+
+        // Terms checkbox validation
+        $('#terms').change(function() {
+            updateSubmitButton();
+        });
+
+        // Form submission
+        $('#signupForm').on('submit', function(e) {
+            if (!passwordValid || !passwordsMatch || !$('#terms').is(':checked')) {
+                e.preventDefault();
+                alert('Please ensure your password meets all requirements, matches the confirmation, and you agree to the terms.');
+                return false;
+            }
+
+            const submitBtn = $('#submitBtn');
+            submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Creating Account...');
+        });
+
+        // Social signup loading states
+        $('.social-signup').click(function() {
+            const originalText = $(this).html();
+            $(this).html('<i class="fas fa-spinner fa-spin me-2"></i>Connecting...');
+            
+            setTimeout(() => {
+                if ($(this).is(':visible')) {
+                    $(this).html(originalText);
+                }
+            }, 3000);
+        });
+
+        // Initialize
+        updateSubmitButton();
+    });
+
+    // compute age live when DOB changes
+    function computeAgeFromInput(dobStr){
+        if(!dobStr) return '';
+        const dob = new Date(dobStr);
+        if(isNaN(dob)) return '';
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+            age--;
+        }
+        return age;
+    }
+
+    $(function(){
+        $('#date_of_birth').on('change input', function(){
+            const age = computeAgeFromInput($(this).val());
+            $('#age_display').val(age !== '' ? age : '');
+        });
+
+        // client-side validations for signup optional inputs
+        function s_validateHeight(){
+            const val = $('#height_cm').val();
+            if(!val){ $('#signupHeightWarning').hide(); return true; }
+            const n = parseFloat(val);
+            if(isNaN(n) || n < 30 || n > 272){ $('#signupHeightWarning').text('Height invalid (30cm - 272cm)').show(); return false; }
+            $('#signupHeightWarning').hide(); return true;
+        }
+        function s_validateWeight(){
+            const val = $('#weight_kg').val();
+            if(!val){ $('#signupWeightWarning').hide(); return true; }
+            const n = parseFloat(val);
+            if(isNaN(n) || n < 1 || n > 500){ $('#signupWeightWarning').text('Weight invalid (1kg - 500kg)').show(); return false; }
+            $('#signupWeightWarning').hide(); return true;
+        }
+        function s_validateDOB(){
+            const val = $('#date_of_birth').val();
+            if(!val){ $('#signupDobWarning').hide(); return true; }
+            const age = computeAgeFromInput(val);
+            if(age === '' || age < 0 || age > 130){ $('#signupDobWarning').text('DOB looks invalid').show(); return false; }
+            $('#signupDobWarning').hide(); return true;
+        }
+
+        $('#height_cm').on('input change', s_validateHeight);
+        $('#weight_kg').on('input change', s_validateWeight);
+        $('#date_of_birth').on('input change', s_validateDOB);
+    });
+</script>
+{% endblock %}

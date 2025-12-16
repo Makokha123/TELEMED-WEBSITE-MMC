@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Outgoing Call</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background:#000; color:#fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+        .container { height:100vh; display:flex; align-items:center; justify-content:center; }
+        .card { background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%); border:none; width:360px; text-align:center; padding:24px; border-radius:12px; }
+        .avatar { width:140px; height:140px; border-radius:50%; margin:0 auto 16px; overflow:hidden; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); display:flex; align-items:center; justify-content:center; font-size:48px; }
+        .name { font-size:20px; font-weight:700; margin-bottom:6px; }
+        .status { color:#9ca3af; margin-bottom:14px; }
+        .controls { display:flex; gap:16px; justify-content:center; }
+        .btn-circle { width:64px; height:64px; border-radius:50%; border:none; display:inline-flex; align-items:center; justify-content:center; font-size:20px; }
+        .btn-end { background:linear-gradient(135deg,#ef4444 0%,#dc2626 100%); color:#fff; }
+        .btn-cancel { background:rgba(255,255,255,0.12); color:#fff; }
+        .no-answer-section { display:none; text-align:center; }
+        .no-answer-section.active { display:block; }
+        .no-answer-icon { font-size:64px; margin:20px 0; color:#ef4444; }
+        .no-answer-text { font-size:18px; color:#ef4444; margin-bottom:12px; font-weight:600; }
+        .no-answer-sub { font-size:14px; color:#9ca3af; margin-bottom:24px; }
+        .button-group { display:flex; gap:12px; justify-content:center; }
+        .btn-retry { background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:#fff; border:none; padding:10px 24px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
+        .btn-retry:hover { opacity:0.9; }
+        .btn-close-call { background:linear-gradient(135deg,#ef4444 0%,#dc2626 100%); color:#fff; border:none; padding:10px 24px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
+        .btn-close-call:hover { opacity:0.9; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <!-- Ringing/Calling Section -->
+        <div class="ringing-section">
+            <div class="avatar" id="calleeAvatar">
+                <span id="calleeInitials">CP</span>
+                <img id="calleePic" src="" alt="" onerror="this.style.display='none'; document.getElementById('calleeInitials').style.display='flex';" style="display:none;width:100%;height:100%;object-fit:cover;">
+            </div>
+            <div class="name" id="calleeName">Callee</div>
+            <div class="status" id="callStatus">Ringing...</div>
+            <div class="controls">
+                <button class="btn btn-circle btn-cancel" id="cancelBtn" title="Cancel"><i class="fas fa-times"></i></button>
+                <button class="btn btn-circle btn-end" id="endBtn" title="End"><i class="fas fa-phone"></i></button>
+            </div>
+        </div>
+
+        <!-- No Answer Section -->
+        <div class="no-answer-section" id="noAnswerSection">
+            <div class="no-answer-icon">
+                <i class="fas fa-phone-slash"></i>
+            </div>
+            <div class="no-answer-text">No Answer</div>
+            <div class="no-answer-sub" id="noAnswerName">Dr. Callee did not answer</div>
+            <div class="button-group">
+                <button class="btn-retry" id="retryBtn">
+                    <i class="fas fa-redo me-2"></i>Try Again
+                </button>
+                <button class="btn-close-call" id="closeNoAnswerBtn">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="appointmentId" value="{{ request.args.get('appointment_id') }}">
+<input type="hidden" id="callType" value="{{ request.args.get('type', 'video') }}">
+<input type="hidden" id="currentUserId" value="{{ current_user.id if current_user else '' }}">
+<input type="hidden" id="appointmentDoctorUserId" value="{{ request.args.get('doctor_user_id', '') }}">
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script>
+    if (!window.socket) { try { window.socket = io(); } catch(e){ console.error('Socket init failed', e); window.socket = null; } }
+    var socket = window.socket;
+    const params = new URLSearchParams(window.location.search);
+    const appointmentId = params.get('appointment_id') || document.getElementById('appointmentId').value;
+    // Prefer callee (user being called) info for outgoing window; fall back to caller info if not provided
+    const calleeName = params.get('callee_name') || params.get('caller_name') || '';
+    const calleePic = params.get('callee_profile_pic') || params.get('caller_profile_pic') || '';
+    const callType = params.get('type') || document.getElementById('callType').value || 'video';
+
+    const calleeNameEl = document.getElementById('calleeName');
+    const calleePicEl = document.getElementById('calleePic');
+    const calleeInitialsEl = document.getElementById('calleeInitials');
+    const callStatusEl = document.getElementById('callStatus');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const endBtn = document.getElementById('endBtn');
+    const ringingSection = document.querySelector('.ringing-section');
+    const noAnswerSection = document.getElementById('noAnswerSection');
+    const noAnswerName = document.getElementById('noAnswerName');
+    const retryBtn = document.getElementById('retryBtn');
+    const closeNoAnswerBtn = document.getElementById('closeNoAnswerBtn');
+
+    // Populate UI with callee's profile (the user being called)
+    if (calleeName) calleeNameEl.textContent = calleeName;
+    if (calleePic) {
+        calleePicEl.src = calleePic; calleePicEl.style.display = 'block'; calleeInitialsEl.style.display = 'none';
+    } else if (calleeName) {
+        const initials = calleeName.split(' ').map(n=>n.charAt(0)).join('').substring(0,2).toUpperCase();
+        calleeInitialsEl.textContent = initials;
+    }
+
+    // Helper function to hide ringing and show no answer
+    function showNoAnswerScreen() {
+        if (ringingSection) ringingSection.style.display = 'none';
+        if (noAnswerSection) {
+            noAnswerSection.classList.add('active');
+            noAnswerName.textContent = `${calleeName || 'User'} did not answer`;
+        }
+    }
+
+    // Event handlers
+    cancelBtn.addEventListener('click', () => {
+        const currentUserId = document.getElementById('currentUserId')?.value || '';
+        const doctorUserId = document.getElementById('appointmentDoctorUserId')?.value || '';
+        // If caller is doctor and ending, enforce doctor behavior; otherwise just cancel locally
+        if (String(currentUserId) === String(doctorUserId)) {
+            if (callType === 'video') socket.emit('end_video_call', { appointment_id: appointmentId });
+            else socket.emit('end_voice_call', { appointment_id: appointmentId });
+        } else {
+            if (socket && socket.connected) socket.emit('leave_appointment', { appointment_id: appointmentId });
+        }
+        callStatusEl.textContent = 'Cancelled';
+        setTimeout(()=>window.close(), 800);
+    });
+
+    endBtn.addEventListener('click', () => {
+        const currentUserId = document.getElementById('currentUserId')?.value || '';
+        const doctorUserId = document.getElementById('appointmentDoctorUserId')?.value || '';
+        if (String(currentUserId) === String(doctorUserId)) {
+            if (callType === 'video') socket.emit('end_video_call', { appointment_id: appointmentId });
+            else socket.emit('end_voice_call', { appointment_id: appointmentId });
+        } else {
+            if (socket && socket.connected) socket.emit('leave_appointment', { appointment_id: appointmentId });
+        }
+        callStatusEl.textContent = 'Call ended';
+        setTimeout(()=>window.close(), 800);
+    });
+
+    // Retry button - redial
+    retryBtn.addEventListener('click', () => {
+        noAnswerSection.classList.remove('active');
+        ringingSection.style.display = 'block';
+        callStatusEl.textContent = 'Ringing...';
+        
+        // Re-initiate the call
+        const currentUserId = document.getElementById('currentUserId')?.value || '';
+        const doctorUserId = document.getElementById('appointmentDoctorUserId')?.value || '';
+        
+        if (socket && socket.connected) {
+            if (callType === 'video') {
+                socket.emit('initiate_video_call', {
+                    caller_id: currentUserId,
+                    callee_id: doctorUserId,
+                    appointment_id: appointmentId
+                });
+            } else {
+                socket.emit('initiate_voice_call', {
+                    caller_id: currentUserId,
+                    callee_id: doctorUserId,
+                    appointment_id: appointmentId
+                });
+            }
+        }
+    });
+
+    // Close no answer screen button
+    closeNoAnswerBtn.addEventListener('click', () => {
+        window.close();
+    });
+
+    // Listen for acceptance or rejection
+    socket.on('video_call_accepted', (data) => {
+        if (parseInt(data.appointment_id) === parseInt(appointmentId)) {
+            callStatusEl.textContent = 'Connected';
+            // Open the main call page
+            window.location.href = `/video-call/${appointmentId}`;
+        }
+    });
+
+    socket.on('voice_call_accepted', (data) => {
+        if (parseInt(data.appointment_id) === parseInt(appointmentId)) {
+            callStatusEl.textContent = 'Connected';
+            window.location.href = `/voice-call/${appointmentId}`;
+        }
+    });
+
+    socket.on('video_call_rejected', (data) => {
+        if (parseInt(data.appointment_id) === parseInt(appointmentId)) {
+            callStatusEl.textContent = 'Declined';
+            setTimeout(()=>window.close(), 1200);
+        }
+    });
+
+    socket.on('voice_call_ended', (data) => {
+        if (parseInt(data.appointment_id) === parseInt(appointmentId)) {
+            callStatusEl.textContent = 'Ended';
+            setTimeout(()=>window.close(), 1200);
+        }
+    });
+
+    // Handle no answer/timeout
+    socket.on('video_call_unanswered', (data) => {
+        if (parseInt(data.appointment_id) === parseInt(appointmentId)) {
+            showNoAnswerScreen();
+        }
+    });
+
+    socket.on('voice_call_unanswered', (data) => {
+        if (parseInt(data.appointment_id) === parseInt(appointmentId)) {
+            showNoAnswerScreen();
+        }
+    });
+
+    socket.on('call_timeout', (data) => {
+        if (parseInt(data.appointment_id) === parseInt(appointmentId)) {
+            showNoAnswerScreen();
+        }
+    });
+
+    // Ensure window closes if main app navigates to call
+    window.addEventListener('message', (ev) => {
+        if (ev.data === 'close_outgoing') window.close();
+    });
+
+</script>
+</body>
+</html>

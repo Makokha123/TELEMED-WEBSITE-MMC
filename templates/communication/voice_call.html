@@ -1,0 +1,790 @@
+{% extends "base.html" %}
+
+{% block title %}Voice Call - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .voice-call-container {
+        height: 85vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 15px;
+        overflow: hidden;
+        position: relative;
+    }
+    .call-header {
+        background: rgba(0, 0, 0, 0.3);
+        color: white;
+        padding: 20px;
+        text-align: center;
+    }
+    .call-main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 60%;
+        color: white;
+    }
+    .caller-avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+    }
+    .caller-avatar i {
+        font-size: 3em;
+    }
+    .call-status {
+        font-size: 1.2em;
+        margin-bottom: 10px;
+    }
+    .call-timer {
+        font-size: 2em;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+    .call-controls {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        padding: 30px 20px;
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+    }
+    .control-btn {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5em;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    .control-btn:hover {
+        transform: scale(1.1);
+    }
+    .control-btn:active {
+        transform: scale(0.95);
+    }
+    .end-call {
+        background: #dc3545;
+        color: white;
+    }
+    .mute-audio {
+        background: #6c757d;
+        color: white;
+    }
+    .mute-audio.active {
+        background: #dc3545;
+    }
+    .speaker {
+        background: #17a2b8;
+        color: white;
+    }
+    .speaker.active {
+        background: #28a745;
+    }
+    .hold-call {
+        background: #ffc107;
+        color: black;
+    }
+    .hold-call.active {
+        background: #fd7e14;
+    }
+    .call-notes {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .participants-list {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        padding: 15px;
+        margin: 20px;
+    }
+    .participant-item {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    .participant-item:last-child {
+        border-bottom: none;
+    }
+    .participant-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #007bff;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 10px;
+    }
+    .call-quality {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 20px;
+        font-size: 0.9em;
+    }
+    .recording-indicator {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: #dc3545;
+        color: white;
+        padding: 10px 15px;
+        border-radius: 20px;
+        font-size: 0.9em;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="voice-call-container">
+                <!-- Call Quality Indicator -->
+                <div class="call-quality">
+                    <i class="fas fa-signal me-1"></i> Excellent
+                </div>
+
+                <!-- Recording Indicator -->
+                <div class="recording-indicator">
+                    <i class="fas fa-circle me-1"></i> Recording
+                </div>
+
+                <!-- Call Header -->
+                <div class="call-header">
+                    <h4 class="mb-1">Voice Call</h4>
+                    <p class="mb-0">Secure Medical Consultation</p>
+                </div>
+
+                <!-- Call Main Area -->
+                <div class="call-main">
+                    <div class="caller-avatar" id="remoteAvatar">
+                        <img id="remoteProfilePic" src="" alt="Remote" style="display:none;width:100%;height:100%;object-fit:cover;position:relative;" />
+                        <span id="remoteInitials" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;">SJ</span>
+                    </div>
+                    <div class="call-status" id="callStatus">Connected</div>
+                    <div class="call-timer" id="callTimer">00:00:00</div>
+                    <div class="caller-name" id="remoteName">Dr. Sarah Johnson</div>
+                    <div class="caller-specialty" id="remoteSpecialty">Cardiologist</div>
+                </div>
+
+                <!-- Call Notes -->
+                <div class="call-notes">
+                    <h6><i class="fas fa-sticky-note me-2"></i>Call Notes</h6>
+                    <textarea class="form-control border-0" rows="3" placeholder="Take notes during the call..."></textarea>
+                </div>
+
+                <!-- Participants List -->
+                <div class="participants-list">
+                    <h6><i class="fas fa-users me-2"></i>Participants (2)</h6>
+                    <div class="participant-item">
+                        <div class="participant-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">You</div>
+                            <small class="text-muted">Caller</small>
+                        </div>
+                        <div class="text-success">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                    </div>
+                    <div class="participant-item">
+                        <div class="participant-avatar">
+                            SJ
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">Dr. Sarah Johnson</div>
+                            <small class="text-muted">Cardiologist</small>
+                        </div>
+                        <div class="text-success">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Call Controls -->
+                <div class="call-controls">
+                    <button class="control-btn mute-audio" id="muteBtn" title="Mute">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <button class="control-btn speaker" id="speakerBtn" title="Speaker">
+                        <i class="fas fa-volume-up"></i>
+                    </button>
+                    <button class="control-btn hold-call" id="holdBtn" title="Hold Call">
+                        <i class="fas fa-pause"></i>
+                    </button>
+                    {% if appointment and appointment.doctor and appointment.doctor.user_id == current_user.id %}
+                    <button class="control-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background:#06b6d4; color:#fff;">
+                        <i class="fas fa-check"></i>
+                    </button>
+                    {% endif %}
+                    <button class="control-btn end-call" id="endCallBtn" title="End Call">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call Information Card -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Call Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <small class="text-muted">Call Type</small>
+                            <div class="fw-bold">Medical Consultation</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Appointment</small>
+                            <div class="fw-bold">#APT-2024-0015</div>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Connection</small>
+                            <div class="fw-bold text-success">Secure</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Encryption</small>
+                            <div class="fw-bold">AES-256</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-tools me-2"></i>Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group w-100">
+                        <button class="btn btn-outline-primary btn-sm" onclick="shareScreen()">
+                            <i class="fas fa-desktop me-1"></i>Share Screen
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" onclick="sendFile()">
+                            <i class="fas fa-file me-1"></i>Send File
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="toggleRecording()">
+                            <i class="fas fa-record-vinyl me-1"></i>Record
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    <input type="hidden" id="consultationMarkedCompleteFlag" value="{{ '1' if appointment and appointment.status == 'completed' else '0' }}">
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script>
+    let callStartTime;
+    let callTimer;
+    let isMuted = false;
+    let isSpeakerOn = false;
+    let isOnHold = false;
+    let isRecording = true;
+    let localStream = null;
+    let peerConnection = null;
+    if (!window.socket) {
+        try { window.socket = io(); } catch (e) { console.error('Socket init failed', e); window.socket = null; }
+    }
+    var socket = window.socket;
+
+    // Get appointment ID from URL
+    const appointmentId = window.location.pathname.split('/').pop();
+    // Expose appointment doctor user id
+    const appointmentDoctorUserId = '{{ appointment.doctor.user_id if appointment and appointment.doctor else "" }}';
+
+    // Remote participant info (prefer URL params / safe storage)
+    const params = new URLSearchParams(window.location.search);
+    const remoteNameParam = params.get('remote_name') || '';
+    const remoteProfilePicParam = params.get('remote_profile_pic') || '';
+    const remoteSpecialtyParam = params.get('remote_specialty') || '';
+
+    // Populate remote UI elements if passed in URL
+    const remoteNameEl = document.getElementById('remoteName');
+    const remoteSpecialtyEl = document.getElementById('remoteSpecialty');
+    const remotePicEl = document.getElementById('remoteProfilePic');
+    const remoteInitialsEl = document.getElementById('remoteInitials');
+
+    if (remoteNameParam) {
+        remoteNameEl.textContent = remoteNameParam;
+    }
+    if (remoteSpecialtyParam) {
+        remoteSpecialtyEl.textContent = remoteSpecialtyParam;
+    }
+    if (remoteProfilePicParam) {
+        remotePicEl.src = remoteProfilePicParam;
+        remotePicEl.style.display = 'block';
+        remoteInitialsEl.style.display = 'none';
+        remotePicEl.onerror = function() {
+            // Hide broken image and show initials
+            this.style.display = 'none';
+            remoteInitialsEl.style.display = 'flex';
+        };
+    } else if (remoteNameParam) {
+        // generate initials from provided name
+        const names = remoteNameParam.split(' ');
+        const initials = names.map(n => n.charAt(0)).join('').substring(0,2).toUpperCase();
+        remoteInitialsEl.textContent = initials;
+    }
+
+    $(document).ready(function() {
+        // Initialize audio connection
+        initializeAudioCall();
+
+        // Start call timer
+        startCallTimer();
+
+        // Initialize call controls
+        initCallControls();
+    });
+
+    // Consultation complete state (read from hidden flag set by server-side template)
+    let consultationMarkedComplete = document.getElementById('consultationMarkedCompleteFlag')?.value === '1';
+
+    // Add modal markup for marking consultation complete (doctor-only)
+    const modalHtml = `
+    <div id="markCompleteModal" style="display:none; position:fixed; inset:0; z-index:2000; align-items:center; justify-content:center; background:rgba(0,0,0,0.6)">
+        <div style="background:#fff; color:#111; padding:20px; border-radius:10px; width:480px; max-width:95%;">
+            <h5>Mark Consultation Complete</h5>
+            <p class="text-muted">Leave brief notes and confirm marking this consultation complete. This will allow you to end the call for all participants.</p>
+            <div class="mb-2">
+                <textarea id="completeNotes" class="form-control" rows="4" placeholder="Summary notes for the appointment (optional)"></textarea>
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+                <button id="cancelMarkComplete" class="btn btn-secondary">Cancel</button>
+                <button id="saveMarkComplete" class="btn btn-primary">Mark Complete</button>
+            </div>
+        </div>
+    </div>`;
+
+    $(document.body).append(modalHtml);
+
+    function openMarkCompleteModal() {
+        if (!document.getElementById('markCompleteModal')) return;
+        $('#markCompleteModal').show();
+        if (consultationMarkedComplete) $('#saveMarkComplete').prop('disabled', true).text('Marked Complete');
+    }
+
+    function closeMarkCompleteModal() {
+        $('#markCompleteModal').hide();
+    }
+
+    // Autosave debounce
+    let autosaveTimer = null;
+    $('#markCompleteModal').on('input', '#completeNotes', function() {
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(() => {
+            saveMarkComplete(true);
+        }, 1500);
+    });
+
+    async function saveMarkComplete(isAutosave=false) {
+        const notes = $('#completeNotes').val();
+        try {
+            const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+                body: JSON.stringify({ notes })
+            });
+            if (resp.ok) {
+                consultationMarkedComplete = true;
+                $('#saveMarkComplete').prop('disabled', true).text('Marked Complete');
+                if (!isAutosave) {
+                    alert('Consultation marked complete. You may now hang up.');
+                    closeMarkCompleteModal();
+                }
+            } else {
+                if (!isAutosave) alert('Failed to mark consultation complete.');
+            }
+        } catch (err) {
+            console.error('Error saving mark complete', err);
+            if (!isAutosave) alert('Error marking consultation complete.');
+        }
+    }
+
+    // Wire modal buttons
+    $(document).on('click', '#cancelMarkComplete', function(e){ e.preventDefault(); closeMarkCompleteModal(); });
+    $(document).on('click', '#saveMarkComplete', function(e){ e.preventDefault(); saveMarkComplete(false); });
+
+    // Open modal when doctor clicks mark button
+    $(document).on('click', '#markConsultationCompleteBtn', function(e){ e.preventDefault(); openMarkCompleteModal(); });
+
+    // Intercept end call to enforce doctor-only hangup
+    $('#endCallBtn').on('click', function(e){
+        e.preventDefault();
+        const currentUserId = '{{ current_user.id }}';
+        if (String(currentUserId) === String(appointmentDoctorUserId)) {
+            if (!consultationMarkedComplete) {
+                const ok = confirm('Consultation has not been marked complete. Hanging up will record the appointment as incomplete. Continue?');
+                if (!ok) return;
+            }
+            // Doctor ends for everyone
+            if (socket && socket.connected) socket.emit('end_voice_call', { appointment_id: appointmentId });
+            // close UI and allow server-driven event to handle redirects; fallback to doctor communication
+            setTimeout(() => { window.location.href = '/doctor/communication'; }, 400);
+        } else {
+            // Non-doctor leaves locally
+            if (socket && socket.connected) socket.emit('leave_appointment', { appointment_id: appointmentId });
+            // redirect patient to testimonial page for this appointment
+            setTimeout(() => { window.location.href = `/appointments/${appointmentId}/testimonial`; }, 300);
+        }
+    });
+
+    async function initializeAudioCall() {
+        try {
+            // Check browser compatibility
+            const mediaDevices = navigator.mediaDevices || (navigator.getUserMedia && {
+                getUserMedia: (constraints) => {
+                    return new Promise((resolve, reject) => {
+                        navigator.getUserMedia(constraints, resolve, reject);
+                    });
+                }
+            });
+
+            if (!mediaDevices || !mediaDevices.getUserMedia) {
+                $('#callStatus').text('WebRTC not supported on this browser');
+                return;
+            }
+
+            // Enhanced audio constraints with fallback
+            const constraints = {
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            };
+
+            // Get local audio stream with fallback strategy
+            try {
+                localStream = await mediaDevices.getUserMedia(constraints);
+            } catch (error) {
+                console.warn('Enhanced audio constraints failed, trying basic:', error);
+                // Fallback: try with minimal constraints
+                try {
+                    localStream = await mediaDevices.getUserMedia({ audio: true });
+                } catch (fallbackError) {
+                    console.error('All audio access attempts failed:', fallbackError);
+                    
+                    // Detailed error messages
+                    if (fallbackError.name === 'NotAllowedError') {
+                        $('#callStatus').text('Permission denied. Allow microphone access in browser settings.');
+                    } else if (fallbackError.name === 'NotFoundError') {
+                        $('#callStatus').text('No microphone found. Check device connections.');
+                    } else if (fallbackError.name === 'NotReadableError') {
+                        $('#callStatus').text('Microphone in use. Close other apps using it.');
+                    } else {
+                        $('#callStatus').text('Failed to access microphone: ' + fallbackError.name);
+                    }
+                    return;
+                }
+            }
+
+            console.log('Local audio stream initialized');
+
+            // Create peer connection
+            const rtcConfig = {
+                iceServers: [
+                    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+                ]
+            };
+
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            // Monitor connection state to update UI on failures
+            peerConnection.onconnectionstatechange = function() {
+                try {
+                    const state = peerConnection.connectionState;
+                    if (state === 'failed' || state === 'disconnected') {
+                        $('#callStatus').text('Connection failed');
+                        // stop timer and cleanup
+                        if (callTimer) clearInterval(callTimer);
+                    } else if (state === 'connected' || state === 'completed') {
+                        $('#callStatus').text('Connected');
+                    }
+                } catch (e) {
+                    console.warn('Error reading connection state', e);
+                }
+            };
+
+            // Add local audio track
+            localStream.getTracks().forEach(track => {
+                if (track.kind === 'audio') {
+                    track.enabled = true;
+                    console.log('Local audio track enabled:', track.label);
+                }
+                peerConnection.addTrack(track, localStream);
+            });
+
+            // Handle remote audio stream
+            peerConnection.ontrack = (event) => {
+                console.log('Remote track received:', event.track.kind);
+                if (event.track.kind === 'audio') {
+                    let remoteAudio = document.getElementById('remoteAudio');
+                    if (!remoteAudio) {
+                        remoteAudio = document.createElement('audio');
+                        remoteAudio.id = 'remoteAudio';
+                        remoteAudio.autoplay = true;
+                        remoteAudio.playsinline = true;
+                        document.body.appendChild(remoteAudio);
+                    }
+                    remoteAudio.srcObject = event.streams[0];
+                    remoteAudio.volume = 1;
+                    console.log('Remote audio track connected:', event.track.label);
+                }
+            };
+
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('webrtc_ice_candidate', {
+                        appointment_id: appointmentId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // Join voice room
+            socket.emit('join_voice_room', { appointment_id: appointmentId });
+
+            // Create and send offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            socket.emit('webrtc_offer', {
+                appointment_id: appointmentId,
+                offer: offer
+            });
+
+            // Update status
+            $('#callStatus').text('Connected');
+
+            // Start connection monitor only when peerConnection exists
+            if (peerConnection) {
+                simulateCallConnection();
+            }
+
+        } catch (error) {
+            console.error('Error initializing audio call:', error);
+            $('#callStatus').text('Connection failed');
+        }
+    }
+
+    // Socket.IO handlers
+    socket.on('webrtc_answer', async (data) => {
+        try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        } catch (error) {
+            console.error('Error setting remote description:', error);
+        }
+    });
+
+    socket.on('webrtc_ice_candidate', async (data) => {
+        try {
+            if (data.candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        } catch (error) {
+            console.error('Error adding ICE candidate:', error);
+        }
+    });
+
+    function startCallTimer() {
+        callStartTime = new Date();
+        callTimer = setInterval(updateCallTimer, 1000);
+    }
+
+    function updateCallTimer() {
+        const now = new Date();
+        const diff = now - callStartTime;
+        
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        
+        $('#callTimer').text(
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+    }
+
+    function initCallControls() {
+        // Mute button
+        $('#muteBtn').click(function() {
+            isMuted = !isMuted;
+            $(this).toggleClass('active', isMuted);
+            $(this).html(isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>');
+            
+            // Mute/unmute local audio tracks
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = !isMuted;
+                });
+            }
+            
+            updateCallStatus(isMuted ? 'You are muted' : 'Connected');
+        });
+
+        // Speaker button
+        $('#speakerBtn').click(function() {
+            isSpeakerOn = !isSpeakerOn;
+            $(this).toggleClass('active', isSpeakerOn);
+            $(this).html(isSpeakerOn ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>');
+            
+            // Control remote audio playback
+            const remoteAudio = document.getElementById('remoteAudio');
+            if (remoteAudio) {
+                remoteAudio.volume = isSpeakerOn ? 1 : 0;
+            }
+        });
+
+        // Hold button
+        $('#holdBtn').click(function() {
+            isOnHold = !isOnHold;
+            $(this).toggleClass('active', isOnHold);
+            
+            // Pause/resume audio tracks
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = !isOnHold;
+                });
+            }
+            
+            updateCallStatus(isOnHold ? 'Call on hold' : 'Connected');
+        });
+
+        // End call button
+        $('#endCallBtn').click(function() {
+            endCall();
+        });
+    }
+
+    function updateCallStatus(status) {
+        $('#callStatus').text(status);
+    }
+
+    function simulateCallConnection() {
+        // Monitor connection quality
+        setInterval(() => {
+            if (peerConnection) {
+                const state = peerConnection.connectionState;
+                let quality = 'Excellent';
+                
+                if (state === 'connected' || state === 'completed') {
+                    quality = 'Excellent';
+                } else if (state === 'connecting') {
+                    quality = 'Connecting';
+                } else if (state === 'disconnected') {
+                    quality = 'Poor';
+                } else if (state === 'failed') {
+                    quality = 'Failed';
+                }
+                
+                $('.call-quality').html(`<i class="fas fa-signal me-1"></i> ${quality}`);
+            }
+        }, 5000);
+    }
+
+    function endCall() {
+        if (confirm('Are you sure you want to end the call?')) {
+            clearInterval(callTimer);
+            
+            // Close peer connection
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            
+            // Stop audio tracks
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Show call ended screen
+            $('.voice-call-container').html(`
+                <div class="call-main">
+                    <div class="caller-avatar" style="background: #6c757d;">
+                        <i class="fas fa-phone-slash"></i>
+                    </div>
+                    <div class="call-status">Call Ended</div>
+                    <div class="call-timer">${$('#callTimer').text()}</div>
+                    <div class="mt-4">
+                        <button class="btn btn-primary me-2" onclick="window.location.href='/communication/${appointmentId}'">
+                            <i class="fas fa-comments me-1"></i>Send Message
+                        </button>
+                        <button class="btn btn-success" onclick="scheduleFollowUp()">
+                            <i class="fas fa-calendar-plus me-1"></i>Schedule Follow-up
+                        </button>
+                    </div>
+                </div>
+            `);
+        }
+    }
+
+    function shareScreen() {
+        alert('Screen sharing functionality would be implemented here');
+    }
+
+    function sendFile() {
+        alert('File sharing functionality would be implemented here');
+    }
+
+    function toggleRecording() {
+        isRecording = !isRecording;
+        $('.recording-indicator').toggle(isRecording);
+        alert(isRecording ? 'Recording started' : 'Recording stopped');
+    }
+
+    function scheduleFollowUp() {
+        alert('Schedule follow-up appointment functionality');
+    }
+
+    // Handle page unload
+    $(window).on('beforeunload', function() {
+        if (callTimer) {
+            return 'Are you sure you want to leave? The call will be ended.';
+        }
+    });
+</script>
+{% endblock %}

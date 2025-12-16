@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Profile - Patient{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Edit Profile</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="editProfileForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Username</label>
+                                <input class="form-control" value="{{ user.username }}" readonly>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Email</label>
+                                <input class="form-control" value="{{ user.email }}" readonly>
+                            </div>
+                        </div>
+
+                        <!-- Profile Picture Section -->
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title mb-3">Profile Picture</h6>
+                                        <div class="row align-items-center">
+                                            <div class="col-md-3 text-center">
+                                                <img id="profilePreview" src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Profile" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:2px solid #ddd;">
+                                            </div>
+                                            <div class="col-md-9">
+                                                <label for="profile_picture" class="form-label">Upload New Picture</label>
+                                                <input type="file" id="profile_picture" class="form-control" accept="image/*">
+                                                <div class="form-text">Accepted formats: JPG, PNG, GIF (max 5MB)</div>
+                                                <div id="uploadStatus" class="mt-2"></div>
+                                                <button type="button" id="uploadProfileBtn" class="btn btn-sm btn-primary mt-2" style="display:none;">Upload Picture</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="first_name" class="form-label">First name</label>
+                                <input id="first_name" name="first_name" class="form-control" value="{{ user.first_name }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="last_name" class="form-label">Last name</label>
+                                <input id="last_name" name="last_name" class="form-control" value="{{ user.last_name }}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="phone" class="form-label">Phone</label>
+                                <input id="phone" name="phone" class="form-control" value="{{ user.phone }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="date_of_birth" class="form-label">Date of birth</label>
+                                <input id="date_of_birth" name="date_of_birth" type="date" class="form-control" value="{{ user.date_of_birth }}">
+                                <div class="form-text text-danger" id="dobWarning" style="display:none;"></div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="gender" class="form-label">Gender</label>
+                                <select id="gender" name="gender" class="form-select">
+                                    <option value="" {% if not patient.gender %}selected{% endif %}>Prefer not to say</option>
+                                    <option value="female" {% if patient.gender=='female' %}selected{% endif %}>Female</option>
+                                    <option value="male" {% if patient.gender=='male' %}selected{% endif %}>Male</option>
+                                    <option value="other" {% if patient.gender=='other' %}selected{% endif %}>Other</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="blood_type" class="form-label">Blood Type</label>
+                                <select id="blood_type" name="blood_type" class="form-select">
+                                    <option value="" {% if not patient.blood_type %}selected{% endif %}>Unknown</option>
+                                    {% for bt in ['A+','A-','B+','B-','AB+','AB-','O+','O-'] %}
+                                    <option value="{{ bt }}" {% if patient.blood_type==bt %}selected{% endif %}>{{ bt }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="age_display" class="form-label">Age</label>
+                                <input type="text" id="age_display" class="form-control" readonly placeholder="Calculated from DOB" value="{% if user.age is not none %}{{ user.age }}{% endif %}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="address" class="form-label">Address</label>
+                                <input id="address" name="address" class="form-control" value="{{ patient.address }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="city" class="form-label">City</label>
+                                <input id="city" name="city" class="form-control" value="{{ patient.city }}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="country" class="form-label">Country</label>
+                                <input id="country" name="country" class="form-control" value="{{ patient.country }}">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="postal_code" class="form-label">Postal code</label>
+                                <input id="postal_code" name="postal_code" class="form-control" value="{{ patient.postal_code }}">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="occupation" class="form-label">Occupation</label>
+                                <input id="occupation" name="occupation" class="form-control" value="{{ patient.occupation }}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="nationality" class="form-label">Nationality</label>
+                                <input id="nationality" name="nationality" class="form-control" value="{{ patient.nationality }}">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="marital_status" class="form-label">Marital status</label>
+                                <select id="marital_status" name="marital_status" class="form-select">
+                                    <option value="" {% if not patient.marital_status %}selected{% endif %}>--</option>
+                                    <option value="single" {% if patient.marital_status=='single' %}selected{% endif %}>Single</option>
+                                    <option value="married" {% if patient.marital_status=='married' %}selected{% endif %}>Married</option>
+                                    <option value="divorced" {% if patient.marital_status=='divorced' %}selected{% endif %}>Divorced</option>
+                                    <option value="widowed" {% if patient.marital_status=='widowed' %}selected{% endif %}>Widowed</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="preferred_language" class="form-label">Preferred language</label>
+                                <input id="preferred_language" name="preferred_language" class="form-control" value="{{ patient.preferred_language }}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label for="height_cm" class="form-label">Height (cm)</label>
+                                <input id="height_cm" name="height_cm" type="number" step="0.1" class="form-control" value="{{ patient.height_cm }}">
+                                <div class="form-text text-danger" id="heightWarning" style="display:none;"></div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="weight_kg" class="form-label">Weight (kg)</label>
+                                <input id="weight_kg" name="weight_kg" type="number" step="0.1" class="form-control" value="{{ patient.weight_kg }}">
+                                <div class="form-text text-danger" id="weightWarning" style="display:none;"></div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="id_number" class="form-label">ID / Passport #</label>
+                                <input id="id_number" name="id_number" class="form-control" value="{{ patient.id_number }}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="emergency_contact" class="form-label">Emergency contact</label>
+                                <input id="emergency_contact" name="emergency_contact" class="form-control" value="{{ patient.emergency_contact }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="insurance_provider" class="form-label">Insurance provider</label>
+                                <input id="insurance_provider" name="insurance_provider" class="form-control" value="{{ patient.insurance_provider }}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="insurance_number" class="form-label">Insurance #</label>
+                                <input id="insurance_number" name="insurance_number" class="form-control" value="{{ patient.insurance_number }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="current_medications" class="form-label">Current medications</label>
+                                <input id="current_medications" name="current_medications" class="form-control" value="{{ patient.current_medications }}">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="medical_history" class="form-label">Medical history</label>
+                            <textarea id="medical_history" name="medical_history" class="form-control" rows="4">{{ patient.medical_history }}</textarea>
+                        </div>
+
+                        <button class="btn btn-primary" type="submit">Save changes</button>
+                        <a href="{{ url_for('patient_dashboard') }}" class="btn btn-secondary ms-2">Cancel</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // compute age when DOB changes
+    function computeAgeFromInput(dobStr){
+        if(!dobStr) return '';
+        const dob = new Date(dobStr);
+        if(isNaN(dob)) return '';
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+            age--;
+        }
+        return age;
+    }
+
+    $(function(){
+        $('#date_of_birth').on('change input', function(){
+            const age = computeAgeFromInput($(this).val());
+            $('#age_display').val(age !== '' ? age : '');
+        });
+
+        // Client-side validation warnings
+        function validateHeight(){
+            const val = $('#height_cm').val();
+            if(!val) { $('#heightWarning').hide(); return true; }
+            const n = parseFloat(val);
+            if(isNaN(n) || n < 30 || n > 272){
+                $('#heightWarning').text('Height looks invalid (30cm - 272cm)').show();
+                return false;
+            }
+            $('#heightWarning').hide(); return true;
+        }
+        function validateWeight(){
+            const val = $('#weight_kg').val();
+            if(!val) { $('#weightWarning').hide(); return true; }
+            const n = parseFloat(val);
+            if(isNaN(n) || n < 1 || n > 500){
+                $('#weightWarning').text('Weight looks invalid (1kg - 500kg)').show();
+                return false;
+            }
+            $('#weightWarning').hide(); return true;
+        }
+        function validateDOB(){
+            const val = $('#date_of_birth').val();
+            if(!val) { $('#dobWarning').hide(); return true; }
+            const age = computeAgeFromInput(val);
+            if(age === '' || age < 0 || age > 130){
+                $('#dobWarning').text('Date of birth looks invalid').show();
+                return false;
+            }
+            $('#dobWarning').hide(); return true;
+        }
+
+        $('#height_cm').on('input change', validateHeight);
+        $('#weight_kg').on('input change', validateWeight);
+        $('#date_of_birth').on('input change', validateDOB);
+
+        // Profile picture upload
+        $('#profile_picture').on('change', function(){
+            if($(this).val()){
+                $('#uploadProfileBtn').show();
+            } else {
+                $('#uploadProfileBtn').hide();
+            }
+        });
+
+        $('#uploadProfileBtn').on('click', async function(){
+            const file = $('#profile_picture')[0].files[0];
+            if(!file) return;
+
+            const form = new FormData();
+            form.append('file', file);
+
+            try {
+                const res = await fetch('/upload_profile_picture', {
+                    method: 'POST',
+                    body: form
+                });
+                const data = await res.json();
+                if(data.success){
+                    $('#uploadStatus').html('<div class="alert alert-success">Profile picture uploaded successfully!</div>');
+                    // Reload preview after 1 second
+                    setTimeout(() => {
+                        $('#profilePreview').attr('src', '{{ url_for("profile_picture", user_id=user.id) }}?' + new Date().getTime());
+                        $('#profile_picture').val('');
+                        $('#uploadProfileBtn').hide();
+                        $('#uploadStatus').html('');
+                    }, 1000);
+                } else {
+                    $('#uploadStatus').html('<div class="alert alert-danger">Error: ' + (data.error || 'Upload failed') + '</div>');
+                }
+            } catch(err){
+                $('#uploadStatus').html('<div class="alert alert-danger">Error: ' + err.message + '</div>');
+            }
+        });
+    });
+</script>
+{% endblock %}

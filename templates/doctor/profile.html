@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Dr. {{ user.first_name }} {{ user.last_name }} - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .doctor-profile-container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .profile-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 8px;
+        padding: 30px;
+        margin-bottom: 30px;
+        display: flex;
+        gap: 30px;
+        align-items: start;
+    }
+
+    .profile-avatar {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 60px;
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+
+    .profile-info {
+        flex: 1;
+    }
+
+    .profile-info h2 {
+        margin: 0 0 5px 0;
+        font-size: 28px;
+    }
+
+    .profile-info .specialization {
+        font-size: 16px;
+        opacity: 0.9;
+        margin-bottom: 15px;
+    }
+
+    .profile-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .profile-actions button {
+        background: white;
+        color: #667eea;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: transform 0.2s;
+    }
+
+    .profile-actions button:hover {
+        transform: scale(1.05);
+    }
+
+    .info-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .info-card h3 {
+        margin-top: 0;
+        color: #333;
+        font-size: 18px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 10px;
+    }
+
+    .info-card p {
+        margin: 10px 0;
+        color: #666;
+    }
+
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+    }
+
+    .info-item:last-child {
+        border-bottom: none;
+    }
+
+    .info-label {
+        font-weight: 600;
+        color: #333;
+    }
+
+    .info-value {
+        color: #666;
+    }
+
+    .badge {
+        display: inline-block;
+        background: #e7f3ff;
+        color: #667eea;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .online-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        background: #31a24c;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="doctor-profile-container">
+    <!-- Profile Header -->
+    <div class="profile-header">
+        <div class="profile-avatar">
+            {% if user.profile_picture %}
+                <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="{{ user.get_display_name() }}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;" />
+            {% else %}
+                {{ user.first_name[0] }}{{ user.last_name[0] }}
+            {% endif %}
+        </div>
+        <div class="profile-info">
+            <h2>Dr. {{ user.first_name }} {{ user.last_name }}</h2>
+            <div class="specialization">{{ doctor.specialization }}</div>
+            <div style="margin-bottom:8px;">
+                <span class="text-warning">
+                    {% set avg = doctor.average_rating if doctor and doctor.average_rating else 0 %}
+                    {% for i in range(avg|int) %}
+                        <i class="fas fa-star"></i>
+                    {% endfor %}
+                    {% if avg and (avg - (avg|int)) >= 0.5 %}
+                        <i class="fas fa-star-half-alt"></i>
+                    {% endif %}
+                </span>
+                <small class="text-muted">{{ '%.2f'|format(avg) if avg else 'No ratings yet' }}</small>
+            </div>
+            <p style="margin-bottom: 20px;">
+                <span class="online-indicator"></span>
+                Available for consultations
+            </p>
+            <div class="profile-actions">
+                <button onclick="initiateVideoCall()" title="Start video call">
+                    <i class="fas fa-video me-2"></i> Video Call
+                </button>
+                <button onclick="initiateVoiceCall()" title="Start voice call">
+                    <i class="fas fa-phone me-2"></i> Voice Call
+                </button>
+                <button onclick="sendMessage()" title="Send message">
+                    <i class="fas fa-comment me-2"></i> Message
+                </button>
+            </div>
+            {% if current_user.is_authenticated and (current_user.id == user.id or current_user.role == 'admin') %}
+            <div class="ms-3">
+                <form id="uploadPictureForm" enctype="multipart/form-data">
+                    {{ csrf_token() }}
+                    <input type="file" name="file" id="profileFileInput" accept="image/*" style="display:none;" />
+                    <input type="hidden" name="user_id" value="{% if current_user.role == 'admin' %}{{ user.id }}{% endif %}">
+                    <button type="button" class="btn btn-outline-light" id="uploadPictureBtn"><i class="fas fa-upload"></i> Upload Photo</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Qualifications Card -->
+    <div class="info-card">
+        <h3><i class="fas fa-certificate me-2"></i>Qualifications</h3>
+        <p>{{ doctor.qualifications }}</p>
+    </div>
+
+    <!-- Details Card -->
+    <div class="info-card">
+        <h3><i class="fas fa-info-circle me-2"></i>Professional Details</h3>
+        <div class="info-item">
+            <span class="info-label">License Number:</span>
+            <span class="info-value">{{ doctor.license_number }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Years of Experience:</span>
+            <span class="info-value">{{ doctor.experience_years }} years</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Consultation Fee:</span>
+            <span class="info-value">KES {{ doctor.consultation_fee }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Availability:</span>
+            <span class="info-value">
+                <span class="badge">Available</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Contact Card -->
+    <div class="info-card">
+        <h3><i class="fas fa-phone me-2"></i>Contact Information</h3>
+        <div class="info-item">
+            <span class="info-label">Email:</span>
+            <span class="info-value">{{ user.email }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Phone:</span>
+            <span class="info-value">{{ user.phone or 'Not provided' }}</span>
+        </div>
+        {% if user.role == 'patient' %}
+        <div class="info-item">
+            <span class="info-label">Emergency Contact:</span>
+            <span class="info-value">{{ user.patient_profile.emergency_contact if user.patient_profile else 'Not provided' }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<script>
+    const doctorId = "{{ doctor.id }}";
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    function initiateVideoCall() {
+        window.location.href = `/video-call/doctor/${doctorId}`;
+    }
+
+    function initiateVoiceCall() {
+        window.location.href = `/voice-call/doctor/${doctorId}`;
+    }
+
+    function sendMessage() {
+        window.location.href = `/patient/communication#doctor-${doctorId}`;
+    }
+
+    // Upload profile picture
+    document.getElementById('uploadPictureBtn')?.addEventListener('click', function() {
+        document.getElementById('profileFileInput').click();
+    });
+
+    document.getElementById('profileFileInput')?.addEventListener('change', async function(e) {
+        const f = e.target.files[0];
+        if (!f) return;
+        const form = new FormData(document.getElementById('uploadPictureForm'));
+        form.append('file', f);
+
+        try {
+            const res = await fetch('/upload_profile_picture', {
+                method: 'POST',
+                body: form
+            });
+            if (res.ok) {
+                location.reload();
+            } else {
+                const data = await res.json();
+                alert('Upload failed: ' + (data.error || 'unknown'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Upload failed');
+        }
+    });
+</script>
+{% endblock %}

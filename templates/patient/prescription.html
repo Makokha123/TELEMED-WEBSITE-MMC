@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Prescription</h2>
+  {% if prescription %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">{{ prescription.medication }}</h5>
+        <p class="card-text"><strong>Dosage:</strong> {{ prescription.dosage }}</p>
+        <p class="card-text"><strong>Instructions:</strong> {{ prescription.instructions }}</p>
+        <p class="card-text"><strong>Prescribed by:</strong> Dr. {{ prescription.doctor.user.first_name }} {{ prescription.doctor.user.last_name }}</p>
+        <p class="card-text"><strong>Date:</strong> {{ prescription.created_at.strftime('%Y-%m-%d') }}</p>
+        {% if prescription_expired %}
+          <span class="badge bg-danger">Expired</span>
+        {% else %}
+          <span class="badge bg-success">Valid</span>
+        {% endif %}
+      </div>
+    </div>
+    <a href="{{ url_for('download_prescription_pdf', prescription_id=prescription.id) }}" class="btn btn-secondary">Download PDF</a>
+    {% if print_mode %}
+    <script>
+      // Auto-print mode
+      window.addEventListener('load', function() {
+        setTimeout(function(){ window.print(); }, 300);
+      });
+    </script>
+    {% endif %}
+  {% else %}
+    <p>No prescription found.</p>
+  {% endif %}
+</div>
+{% endblock %}

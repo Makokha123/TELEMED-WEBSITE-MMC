@@ -1,0 +1,512 @@
+{% extends "base.html" %}
+
+{% block title %}Voice Notes - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .recording-card {
+        border: 2px solid #e9ecef;
+        border-radius: 15px;
+        padding: 30px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        margin-bottom: 30px;
+    }
+
+    .recording-icon {
+        font-size: 3em;
+        margin-bottom: 15px;
+    }
+
+    .recording-button-group {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-top: 20px;
+        flex-wrap: wrap;
+    }
+
+    .recording-button-group button {
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        color: white;
+    }
+
+    .recording-button-group button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .recording-button-group button.btn-danger {
+        background-color: #e74c3c;
+    }
+
+    .recording-button-group button.btn-danger:hover:not(:disabled) {
+        background-color: #c0392b;
+        transform: scale(1.1);
+    }
+
+    .recording-button-group button.btn-warning {
+        background-color: #f39c12;
+    }
+
+    .recording-button-group button.btn-warning:hover:not(:disabled) {
+        background-color: #e67e22;
+        transform: scale(1.1);
+    }
+
+    .recording-button-group button.btn-info {
+        background-color: #3498db;
+    }
+
+    .recording-button-group button.btn-info:hover:not(:disabled) {
+        background-color: #2980b9;
+        transform: scale(1.1);
+    }
+
+    .recording-button-group button.btn-success {
+        background-color: #27ae60;
+    }
+
+    .recording-button-group button.btn-success:hover:not(:disabled) {
+        background-color: #229954;
+        transform: scale(1.1);
+    }
+
+    .recording-button-group button.btn-secondary {
+        background-color: #95a5a6;
+    }
+
+    .recording-button-group button.btn-secondary:hover:not(:disabled) {
+        background-color: #7f8c8d;
+        transform: scale(1.1);
+    }
+
+    .timer {
+        font-size: 2.5em;
+        font-weight: bold;
+        text-align: center;
+        margin: 20px 0;
+        font-family: 'Courier New', monospace;
+    }
+
+    .audioVisualizer {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 4px;
+        height: 60px;
+        margin: 20px 0;
+    }
+
+    .visualizer-bar {
+        width: 4px;
+        height: 10%;
+        background-color: rgba(255, 255, 255, 0.7);
+        border-radius: 2px;
+        transition: height 0.1s ease;
+    }
+
+    .recording-controls {
+        display: none;
+        margin-top: 15px;
+    }
+
+    #recordingControls {
+        display: none;
+    }
+
+    .note-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 15px;
+    }
+
+    .note-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+
+    .note-title {
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .note-meta {
+        font-size: 0.85em;
+        color: #6c757d;
+    }
+
+    .playback-progress {
+        background-color: #e9ecef;
+        height: 6px;
+        border-radius: 3px;
+        margin: 10px 0;
+        overflow: hidden;
+    }
+
+    .playback-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea, #764ba2);
+        width: 0%;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+    }
+
+    .action-buttons button {
+        padding: 0.25rem 0.75rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-2"><i class="fas fa-microphone me-2"></i>Voice Notes</h1>
+                    <p class="text-muted">Record, save, and manage your voice notes</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recording Card -->
+    <div class="row mb-4">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="recording-card">
+                <div class="text-center">
+                    <div class="recording-icon">
+                        <i class="fas fa-microphone"></i>
+                    </div>
+                    <h4>Record a Voice Note</h4>
+                    <p class="mb-0">Click the microphone button to start recording</p>
+                </div>
+
+                <div class="timer" id="recordingTimer">00:00</div>
+
+                <div class="audioVisualizer" id="audioVisualizer"></div>
+
+                <div class="recording-button-group">
+                    <button class="btn btn-danger" id="recordButton" title="Start Recording">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <button class="btn btn-info" id="pauseButton" style="display: none;" title="Pause">
+                        <i class="fas fa-pause"></i>
+                    </button>
+                    <button class="btn btn-info" id="resumeButton" style="display: none;" title="Resume">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button class="btn btn-success" id="saveButton" style="display: none;" title="Save">
+                        <i class="fas fa-check"></i>
+                    </button>
+                    <button class="btn btn-secondary" id="cancelButton" style="display: none;" title="Cancel">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div id="recordingControls" class="recording-controls">
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-info-circle me-2"></i>Recording in progress...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Saved Voice Notes -->
+    <div class="row">
+        <div class="col-12">
+            <h4 class="mb-4">Saved Voice Notes</h4>
+
+            <div class="row" id="voiceNotesContainer">
+                <!-- Voice notes will be dynamically loaded here -->
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No saved voice notes yet. Start recording!
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save Voice Note Modal -->
+<div class="modal fade" id="saveNoteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Save Voice Note</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="saveNoteForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label class="form-label">Note Title</label>
+                        <input type="text" class="form-control" placeholder="Enter a descriptive title..." required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" required>
+                            <option value="">Select Category</option>
+                            <option value="consultation">Consultation Notes</option>
+                            <option value="symptoms">Symptom Descriptions</option>
+                            <option value="treatment">Treatment Plans</option>
+                            <option value="followup">Follow-up Instructions</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" rows="3" placeholder="Add any additional context..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Sharing</label>
+                        <select class="form-select">
+                            <option value="private">Private (Only Me)</option>
+                            <option value="doctor">Share with My Doctor</option>
+                            <option value="careteam">Share with Care Team</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveVoiceNote()">Save Voice Note</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let mediaRecorder;
+    let recordedChunks = [];
+    let recordingStartTime;
+    let recordingTimer;
+    let isRecording = false;
+    let stream = null;
+
+    $(document).ready(function() {
+        initRecordingControls();
+        generateVisualizerBars();
+    });
+
+    function initRecordingControls() {
+        const recordBtn = $('#recordButton');
+        const pauseBtn = $('#pauseButton');
+        const resumeBtn = $('#resumeButton');
+        const saveBtn = $('#saveButton');
+        const cancelBtn = $('#cancelButton');
+
+        recordBtn.click(function() {
+            if (!isRecording) {
+                startRecording();
+            }
+        });
+
+        pauseBtn.click(function() {
+            if (isRecording && mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.pause();
+                $('#pauseButton').hide();
+                $('#resumeButton').show();
+                clearInterval(recordingTimer);
+                stopVisualizer();
+                console.log('Recording paused...');
+            }
+        });
+
+        resumeBtn.click(function() {
+            if (isRecording && mediaRecorder && mediaRecorder.state === 'paused') {
+                mediaRecorder.resume();
+                $('#pauseButton').show();
+                $('#resumeButton').hide();
+                recordingTimer = setInterval(updateRecordingTimer, 1000);
+                startVisualizer();
+                console.log('Recording resumed...');
+            }
+        });
+
+        saveBtn.click(function() {
+            if (isRecording) {
+                stopRecording();
+                $('#saveNoteModal').modal('show');
+            }
+        });
+
+        cancelBtn.click(function() {
+            if (isRecording) {
+                stopRecording();
+                resetRecordingUI();
+            }
+        });
+    }
+
+    function startRecording() {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(mediaStream => {
+                stream = mediaStream;
+                mediaRecorder = new MediaRecorder(stream);
+                recordedChunks = [];
+                recordingStartTime = new Date();
+                isRecording = true;
+
+                mediaRecorder.addEventListener('dataavailable', event => {
+                    recordedChunks.push(event.data);
+                });
+
+                mediaRecorder.start();
+                $('#recordButton').addClass('recording').html('<i class="fas fa-stop"></i>');
+                $('#recordingControls').show();
+                $('#pauseButton').show();
+                $('#resumeButton').hide();
+
+                recordingTimer = setInterval(updateRecordingTimer, 1000);
+                startVisualizer();
+                console.log('Recording started...');
+            })
+            .catch(error => {
+                console.error('Error accessing microphone:', error);
+                alert('Unable to access microphone. Please check permissions.');
+            });
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+            mediaRecorder.stop();
+            isRecording = false;
+            clearInterval(recordingTimer);
+            stopVisualizer();
+            
+            // Stop all tracks
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            console.log('Recording stopped...');
+        }
+    }
+
+    function updateRecordingTimer() {
+        if (!recordingStartTime) return;
+        const now = new Date();
+        const diff = Math.floor((now - recordingStartTime) / 1000);
+        const minutes = Math.floor(diff / 60);
+        const seconds = diff % 60;
+        $('#recordingTimer').text(
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+    }
+
+    function resetRecordingUI() {
+        $('#recordButton').removeClass('recording').html('<i class="fas fa-microphone"></i>');
+        $('#recordingControls').hide();
+        $('#recordingTimer').text('00:00');
+    }
+
+    function generateVisualizerBars() {
+        const visualizer = $('#audioVisualizer');
+        visualizer.empty();
+        for (let i = 0; i < 50; i++) {
+            visualizer.append('<div class="visualizer-bar"></div>');
+        }
+    }
+
+    function startVisualizer() {
+        const bars = $('.visualizer-bar');
+        const visualizerInterval = setInterval(() => {
+            if (isRecording) {
+                bars.each(function() {
+                    const randomHeight = Math.random() * 80 + 10;
+                    $(this).css('height', randomHeight + '%');
+                });
+            } else {
+                clearInterval(visualizerInterval);
+            }
+        }, 100);
+        window._visualizerInterval = visualizerInterval;
+    }
+
+    function stopVisualizer() {
+        if (window._visualizerInterval) {
+            clearInterval(window._visualizerInterval);
+        }
+        $('.visualizer-bar').css('height', '10%');
+    }
+
+    function saveVoiceNote() {
+        const form = document.getElementById('saveNoteForm');
+        if (form.checkValidity()) {
+            if (recordedChunks.length > 0) {
+                // Upload the recorded voice note
+                const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+                const formData = new FormData();
+                formData.append('file', blob, 'voice-note.webm');
+                
+                // Note: appointment_id should come from context if available
+                const appointmentId = new URLSearchParams(window.location.search).get('appointment_id')
+                    || sessionStorage.getItem('current_appointment_id');
+                
+                if (appointmentId) {
+                    formData.append('appointment_id', appointmentId);
+                    
+                    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
+                    if (csrfToken) {
+                        formData.append('csrf_token', csrfToken);
+                    }
+                    
+                    fetch('/api/upload-file', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('Voice note saved and uploaded successfully!');
+                            $('#saveNoteModal').modal('hide');
+                            form.reset();
+                            resetRecordingUI();
+                            recordedChunks = [];
+                        } else {
+                            alert('Error uploading voice note: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Upload error:', error);
+                        alert('Error uploading voice note: ' + error.message);
+                    });
+                } else {
+                    alert('Voice note saved successfully!');
+                    $('#saveNoteModal').modal('hide');
+                    form.reset();
+                    resetRecordingUI();
+                    recordedChunks = [];
+                }
+            } else {
+                alert('No recording to save');
+            }
+        } else {
+            form.reportValidity();
+        }
+    }
+</script>
+{% endblock %}

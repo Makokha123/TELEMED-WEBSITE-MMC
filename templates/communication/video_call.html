@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: #000;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .video-call-container {
+            width: 100%;
+            height: 100vh;
+            background: #000;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 0;
+            position: relative;
+        }
+
+        /* Remote video (large) */
+        .remote-video-section {
+            position: relative;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #remoteVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .remote-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .placeholder-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .placeholder-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Local video (small PiP) */
+        .local-video-section {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            z-index: 20;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        .local-video-section:active {
+            cursor: grabbing;
+        }
+
+        #localVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .local-video-placeholder {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: white;
+        }
+
+        /* Chat sidebar */
+        .chat-sidebar {
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #333;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 15px;
+            border-bottom: 1px solid #333;
+            color: white;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .chat-message {
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            word-wrap: break-word;
+            max-width: 95%;
+        }
+
+        .chat-message.sent {
+            background: #667eea;
+            color: white;
+            align-self: flex-end;
+        }
+
+        .chat-message.received {
+            background: #333;
+            color: #e5e5e5;
+            align-self: flex-start;
+        }
+
+        .chat-input-area {
+            padding: 12px;
+            border-top: 1px solid #333;
+            display: flex;
+            gap: 8px;
+        }
+
+        .chat-input-area input {
+            flex: 1;
+            background: #333;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .chat-input-area input::placeholder {
+            color: #999;
+        }
+
+        .chat-input-area input:focus {
+            outline: none;
+            background: #444;
+        }
+
+        .chat-input-area button {
+            background: #667eea;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .chat-input-area button:hover {
+            background: #764ba2;
+        }
+
+        #chatInput {
+            width: 100%;
+        }
+
+        /* Caller info overlay */
+        .call-info-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            z-index: 10;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .caller-name-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .caller-avatar-small {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .caller-avatar-small img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .caller-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .call-duration {
+            color: #4ade80;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .call-duration .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Call controls */
+        .call-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 25;
+            display: flex;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 20px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .control-btn.active {
+            background: #4ade80;
+        }
+
+        .control-btn.disabled {
+            background: rgba(255, 255, 255, 0.1);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .end-call-btn {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+        }
+
+        .end-call-btn:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+            transform: scale(1.08);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4) !important;
+        }
+
+        /* Enhanced mark complete button */
+        .mark-complete-btn {
+            position: relative;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .mark-complete-btn:hover {
+            transform: scale(1.12);
+            box-shadow: 0 8px 25px rgba(6, 182, 212, 0.5) !important;
+            filter: brightness(1.1);
+        }
+
+        .mark-complete-btn:active {
+            transform: scale(0.95);
+        }
+
+        .mark-complete-btn.disabled {
+            background: rgba(100, 116, 139, 0.6) !important;
+            box-shadow: none !important;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .mark-complete-btn.disabled:hover {
+            transform: scale(1);
+        }
+        
+
+        /* Responsive - mobile view */
+        @media (max-width: 768px) {
+            .video-call-container {
+                grid-template-columns: 1fr;
+            }
+
+            .local-video-section {
+                width: 150px;
+                height: 100px;
+            }
+
+            .call-controls {
+                gap: 10px;
+                padding: 12px 15px;
+            }
+
+            .control-btn {
+                width: 45px;
+                height: 45px;
+                font-size: 16px;
+            }
+        }
+
+        /* Screen share indicator */
+        .screen-share-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: white;
+            font-size: 12px;
+            z-index: 15;
+            display: none;
+        }
+
+        .screen-share-indicator.active {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(59, 130, 246, 0.6);
+        }
+
+        .connection-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: #4ade80;
+            font-size: 12px;
+            z-index: 15;
+        }
+    </style>
+    <style>
+        /* Tap-to-enable prompt (mobile autoplay fallback) */
+        .enable-media-prompt {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 60;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            padding: 20px;
+        }
+
+        .enable-media-card {
+            background: rgba(255,255,255,0.06);
+            color: #fff;
+            padding: 18px 22px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 320px;
+            width: 100%;
+        }
+
+        .enable-media-card p { margin-bottom: 12px; font-size: 15px; }
+
+        .enable-media-btn {
+            background: #667eea;
+            border: none;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        /* Further narrow-screen tweaks: hide chat for compact mobile view */
+        @media (max-width: 600px) {
+            .chat-sidebar { display: none; }
+            .local-video-section { width: 140px; height: 100px; bottom: 14px; right: 14px; }
+            .call-controls { left: 8px; right: 8px; transform: none; width: auto; justify-content: center; }
+            #remoteVideo { object-fit: contain; }
+            .enable-media-prompt { display: flex; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Hidden CSRF token for API requests -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    
+    <div class="video-call-container">
+        <!-- Remote video -->
+        <div class="remote-video-section">
+            <video id="remoteVideo" playsinline autoplay></video>
+            <div class="remote-placeholder" id="remotePlaceholder" style="display: none;">
+                <div class="placeholder-avatar" id="remoteAvatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div>Waiting for video...</div>
+            </div>
+        </div>
+
+        <!-- Call info and controls overlay -->
+        <div class="call-info-overlay">
+            <div class="caller-avatar-small" id="remoteAvatarSmall">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="caller-name-info">
+                <div class="caller-name" id="remoteNameInfo">Caller</div>
+                <div class="call-duration">
+                    <span class="dot"></span>
+                    <span id="callDuration">00:00</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="connection-status" id="connectionStatus">
+            Connecting...
+        </div>
+
+        <div class="screen-share-indicator" id="screenShareIndicator">
+            <i class="fas fa-share-square"></i>
+            <span>Screen sharing</span>
+        </div>
+
+        <!-- Local video (PiP) -->
+        <div class="local-video-section" id="localVideoSection" draggable="true">
+            <video id="localVideo" playsinline autoplay muted></video>
+            <div class="local-video-placeholder" id="localPlaceholder" style="display: none;">
+                <i class="fas fa-video"></i>
+            </div>
+        </div>
+
+        <!-- Chat sidebar -->
+        <div class="chat-sidebar">
+            <div class="chat-header">Chat</div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Type a message...">
+                <button id="sendChatBtn" title="Send">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+                <button id="attachFileBtn" title="Attach file">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <input type="file" id="fileInput" style="display: none;">
+            </div>
+        </div>
+
+        <!-- Call controls -->
+        <div class="call-controls">
+            <button class="control-btn" id="callSettingsBtn" title="Call Settings">
+                <i class="fas fa-cog"></i>
+            </button>
+            <button class="control-btn" id="toggleMicBtn" title="Toggle Microphone">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="control-btn" id="toggleVideoBtn" title="Toggle Camera">
+                <i class="fas fa-video"></i>
+            </button>
+            <button class="control-btn" id="screenshareBtn" title="Share Screen">
+                <i class="fas fa-share-square"></i>
+            </button>
+            {% if appointment and appointment.doctor and appointment.doctor.user_id == current_user.id %}
+            <button class="control-btn mark-complete-btn" id="markConsultationCompleteBtn" title="Mark Consultation Complete" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); box-shadow: 0 4px 8px rgba(6, 182, 212, 0.3);">
+                <i class="fas fa-check"></i>
+            </button>
+            {% endif %}
+            <button class="control-btn end-call-btn" id="endCallBtn" title="End Call">
+                <i class="fas fa-phone"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Hidden user data -->
+    <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
+    <input type="hidden" id="currentUserFirstName" value="{{ current_user.first_name }}">
+    <input type="hidden" id="currentUserLastName" value="{{ current_user.last_name }}">
+    <input type="hidden" id="currentUserProfilePic" value="{{ current_user.profile_picture_url or '' }}">
+    <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
+    <input type="hidden" id="appointmentDoctorUserId" value="{{ appointment.doctor.user_id if appointment and appointment.doctor else '' }}">
+    <input type="hidden" id="consultationMarkedCompleteFlag" value="{{ '1' if appointment and appointment.status == 'completed' else '0' }}">
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // Get appointment ID from URL
+        const appointmentId = window.location.pathname.split('/').pop();
+        
+        // Get CSRF token from hidden input or meta tag (or fallback)
+        const csrf_token = (() => {
+            // Try to get from hidden input first
+            const tokenInput = document.querySelector('input[name="csrf_token"]');
+            if (tokenInput) return tokenInput.value;
+            
+            // Try to get from meta tag
+            const metaTag = document.querySelector('meta[name="csrf-token"]');
+            if (metaTag) return metaTag.getAttribute('content');
+            
+            // Fallback: empty string (server will use same-origin credentials)
+            return '';
+        })();
+        
+        // DOM Elements
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const localPlaceholder = document.getElementById('localPlaceholder');
+        const remotePlaceholder = document.getElementById('remotePlaceholder');
+        const toggleMicBtn = document.getElementById('toggleMicBtn');
+        const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+        const screenshareBtn = document.getElementById('screenshareBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+        const callDuration = document.getElementById('callDuration');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const screenShareIndicator = document.getElementById('screenShareIndicator');
+        const localVideoSection = document.getElementById('localVideoSection');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendChatBtn = document.getElementById('sendChatBtn');
+        const attachFileBtn = document.getElementById('attachFileBtn');
+        const fileInput = document.getElementById('fileInput');
+        const remoteNameInfo = document.getElementById('remoteNameInfo');
+        const remoteAvatarSmall = document.getElementById('remoteAvatarSmall');
+        const remoteAvatar = document.getElementById('remoteAvatar');
+
+        // State
+        let localStream = null;
+        let peerConnection = null;
+        let remoteStream = null;
+        let micEnabled = true;
+        let videoEnabled = true;
+        let isScreenSharing = false;
+        let callStartTime = null;
+        // Explicit Socket.IO options for more robust reconnection and transport fallbacks
+        if (!window.socket) {
+            try {
+                window.socket = io({
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: 10,
+                    reconnectionDelay: 1000,
+                    timeout: 20000
+                });
+            } catch (e) {
+                console.error('Socket.IO initialization failed', e);
+                window.socket = null;
+            }
+        }
+        var socket = window.socket;
+        if (socket) {
+            socket.on('connect', () => console.log('Socket.IO connected', socket.id));
+            socket.on('connect_error', (err) => {
+                console.error('Socket.IO connect_error', err);
+                connectionStatus.textContent = 'Socket connection error';
+                connectionStatus.style.color = '#ef4444';
+            });
+            socket.on('reconnect_attempt', (attempt) => console.log('Socket.IO reconnect attempt', attempt));
+        }
+        let remoteUserName = 'Caller';
+        let remoteUserAvatar = null;
+
+        // Chat functions
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Add message to UI (sent)
+            addChatMessageToUI(message, 'sent');
+            
+            // Emit via Socket.IO
+            socket.emit('call_chat_message', {
+                appointment_id: appointmentId,
+                message: message
+            });
+
+            chatInput.value = '';
+            chatInput.focus();
+        }
+
+        function addChatMessageToUI(message, type) {
+            const msgElement = document.createElement('div');
+            msgElement.className = `chat-message ${type}`;
+            msgElement.textContent = message;
+            chatMessages.appendChild(msgElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                socket.emit('call_file_share', {
+                    appointment_id: appointmentId,
+                    file_name: file.name,
+                    file_data: event.target.result,
+                    file_size: file.size
+                });
+
+                // Add notification to chat
+                addChatMessageToUI(`📎 Shared file: ${file.name}`, 'sent');
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = '';
+        }
+
+        // Chat event listeners
+        sendChatBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+        attachFileBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileUpload);
+
+        // WebRTC Configuration
+        const rtcConfig = {
+            iceServers: [
+                { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+            ]
+        };
+
+        // Initialize WebRTC
+        async function initializeCall() {
+            try {
+                // Check browser compatibility
+                const mediaDevices = navigator.mediaDevices || (navigator.getUserMedia && {
+                    getUserMedia: (constraints) => {
+                        return new Promise((resolve, reject) => {
+                            navigator.getUserMedia(constraints, resolve, reject);
+                        });
+                    }
+                });
+
+                if (!mediaDevices || !mediaDevices.getUserMedia) {
+                    connectionStatus.textContent = 'WebRTC not supported';
+                    connectionStatus.style.color = '#ef4444';
+                    return;
+                }
+
+                // Enhanced audio/video constraints with fallbacks for all devices
+                const constraints = {
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                };
+
+                // Get local media stream with fallback strategy
+                try {
+                    localStream = await mediaDevices.getUserMedia(constraints);
+                } catch (error) {
+                    console.warn('High quality constraints failed, trying standard:', error);
+                    // Fallback: try with minimal constraints
+                    const fallbackConstraints = {
+                        video: true,
+                        audio: true
+                    };
+                    try {
+                        localStream = await mediaDevices.getUserMedia(fallbackConstraints);
+                    } catch (fallbackError) {
+                        console.error('All media access attempts failed:', fallbackError);
+                        
+                        // Detailed error messages for users
+                        if (fallbackError.name === 'NotAllowedError') {
+                            connectionStatus.textContent = 'Permission denied. Please allow camera/microphone access in browser settings.';
+                        } else if (fallbackError.name === 'NotFoundError') {
+                            connectionStatus.textContent = 'No camera/microphone found. Check device connections.';
+                        } else if (fallbackError.name === 'NotReadableError') {
+                            connectionStatus.textContent = 'Camera/microphone in use. Close other apps using them.';
+                        } else {
+                            connectionStatus.textContent = 'Failed to access camera/microphone: ' + fallbackError.name;
+                        }
+                        connectionStatus.style.color = '#ef4444';
+                        return;
+                    }
+                }
+
+                localVideo.srcObject = localStream;
+                localPlaceholder.style.display = 'none';
+
+                // Create peer connection
+                peerConnection = new RTCPeerConnection(rtcConfig);
+
+                // Add local stream tracks with audio gain control
+                localStream.getTracks().forEach(track => {
+                    if (track.kind === 'audio') {
+                        // Ensure audio track is enabled and set constraints
+                        track.enabled = true;
+                        console.log('Local audio track added:', track.label);
+                    }
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle remote stream
+                peerConnection.ontrack = (event) => {
+                    console.log('Remote track received:', event.track.kind);
+                    if (event.track.kind === 'audio') {
+                        // Create audio element for remote audio with proper playback
+                        let remoteAudio = document.getElementById('remoteAudio');
+                        if (!remoteAudio) {
+                            remoteAudio = document.createElement('audio');
+                            remoteAudio.id = 'remoteAudio';
+                            remoteAudio.autoplay = true;
+                            remoteAudio.playsinline = true;
+                            document.body.appendChild(remoteAudio);
+                        }
+                        remoteAudio.srcObject = event.streams[0];
+                        remoteAudio.volume = 1;
+                        // Try to start playback; if blocked, show tap-to-enable prompt
+                        try {
+                            remoteAudio.play().catch((e) => {
+                                console.warn('Remote audio autoplay blocked:', e);
+                                showEnableMediaPrompt();
+                            });
+                        } catch (err) {
+                            console.warn('Error attempting remote audio play:', err);
+                            showEnableMediaPrompt();
+                        }
+                        console.log('Remote audio track connected:', event.track.label);
+                    } else {
+                        remoteStream = event.streams[0];
+                        remoteVideo.srcObject = remoteStream;
+                        remotePlaceholder.style.display = 'none';
+                        // Try to play remote video (may be blocked on mobile)
+                        try {
+                            remoteVideo.play().catch((e) => {
+                                console.warn('Remote video autoplay blocked:', e);
+                                showEnableMediaPrompt();
+                            });
+                        } catch (err) {
+                            console.warn('Error attempting remote video play:', err);
+                            showEnableMediaPrompt();
+                        }
+                    }
+                };
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('webrtc_ice_candidate', {
+                            appointment_id: appointmentId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+
+                // Handle connection state changes
+                peerConnection.onconnectionstatechange = () => {
+                    const state = peerConnection.connectionState;
+                    updateConnectionStatus(state);
+                    if (state === 'connected' && !callStartTime) {
+                        callStartTime = Date.now();
+                        updateCallDuration();
+                    }
+                };
+
+                // Join video room
+                socket.emit('join_video_room', { appointment_id: appointmentId });
+
+                // Emit current user info
+                socket.emit('call_user_info', {
+                    appointment_id: appointmentId,
+                    user_id: document.getElementById('currentUserId')?.value || 'unknown',
+                    first_name: document.getElementById('currentUserFirstName')?.value || 'User',
+                    last_name: document.getElementById('currentUserLastName')?.value || '',
+                    profile_picture_url: document.getElementById('currentUserProfilePic')?.value || null
+                });
+
+                // Do not create an offer here. The server will notify existing participants
+                // via `user_joined_video_room` and those participants will create the offer.
+                // Start call duration timer when the connection is established (ontrack/onconnectionstatechange).
+                connectionStatus.textContent = 'Ready';
+                connectionStatus.style.color = '#f59e0b';
+
+            } catch (error) {
+                console.error('Error initializing call:', error);
+                connectionStatus.textContent = 'Connection failed';
+                connectionStatus.style.color = '#ef4444';
+            }
+        }
+
+        // Update call duration
+        function updateCallDuration() {
+            if (!callStartTime) return;
+            
+            const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            
+            callDuration.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            
+            setTimeout(updateCallDuration, 1000);
+        }
+
+        // Update connection status
+        function updateConnectionStatus(state) {
+            const statusMap = {
+                'new': 'Connecting...',
+                'connecting': 'Connecting...',
+                'connected': 'Connected',
+                'disconnected': 'Disconnected',
+                'failed': 'Connection failed',
+                'closed': 'Call ended'
+            };
+            
+            connectionStatus.textContent = statusMap[state] || state;
+            connectionStatus.style.color = state === 'connected' ? '#4ade80' : '#ef4444';
+        }
+
+        // Toggle microphone
+        toggleMicBtn.addEventListener('click', () => {
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = !track.enabled;
+                    micEnabled = track.enabled;
+                });
+
+                toggleMicBtn.classList.toggle('active', micEnabled);
+                toggleMicBtn.innerHTML = micEnabled 
+                    ? '<i class="fas fa-microphone"></i>' 
+                    : '<i class="fas fa-microphone-slash"></i>';
+            }
+        });
+
+        // Toggle video
+        toggleVideoBtn.addEventListener('click', () => {
+            if (localStream) {
+                localStream.getVideoTracks().forEach(track => {
+                    track.enabled = !track.enabled;
+                    videoEnabled = track.enabled;
+                });
+
+                toggleVideoBtn.classList.toggle('active', videoEnabled);
+                localVideo.style.opacity = videoEnabled ? '1' : '0.3';
+            }
+        });
+
+        // Screen share
+        screenshareBtn.addEventListener('click', async () => {
+            try {
+                if (!peerConnection) {
+                    alert('Not connected to the call');
+                    return;
+                }
+                if (!isScreenSharing) {
+                    const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: { cursor: 'always' },
+                        audio: false
+                    });
+
+                    const videoTrack = screenStream.getVideoTracks()[0];
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+
+                    if (sender) {
+                        await sender.replaceTrack(videoTrack);
+                    }
+
+                    isScreenSharing = true;
+                    screenshareBtn.classList.add('active');
+                    screenShareIndicator.classList.add('active');
+
+                    videoTrack.onended = async () => {
+                        const userStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        const userVideoTrack = userStream.getVideoTracks()[0];
+                        await sender.replaceTrack(userVideoTrack);
+                        
+                        isScreenSharing = false;
+                        screenshareBtn.classList.remove('active');
+                        screenShareIndicator.classList.remove('active');
+                    };
+                } else {
+                    const userStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    const userVideoTrack = userStream.getVideoTracks()[0];
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+
+                    if (sender) {
+                        await sender.replaceTrack(userVideoTrack);
+                    }
+
+                    isScreenSharing = false;
+                    screenshareBtn.classList.remove('active');
+                    screenShareIndicator.classList.remove('active');
+                }
+            } catch (error) {
+                console.error('Error with screen sharing:', error);
+            }
+        });
+
+        // Consultation complete state (initialize from server-side appointment status)
+        let consultationMarkedComplete = document.getElementById('consultationMarkedCompleteFlag')?.value === '1';
+
+        // Doctor-only: mark consultation complete (modal with notes + autosave)
+        const markCompleteBtn = document.getElementById('markConsultationCompleteBtn');
+        if (markCompleteBtn) {
+            // Create modal
+            const modal = document.createElement('div');
+            modal.id = 'markCompleteModalVideo';
+            modal.style.display = 'none';
+            modal.style.position = 'fixed';
+            modal.style.inset = '0';
+            modal.style.zIndex = '2000';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            modal.style.background = 'rgba(0,0,0,0.6)';
+            modal.innerHTML = `
+                <div style="background:#fff; color:#111; padding:20px; border-radius:12px; width:520px; max-width:95%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <h5 style="font-weight: 600; margin-bottom: 12px;">Mark Consultation Complete</h5>
+                    <p class="text-muted" style="font-size: 14px; margin-bottom: 16px;">Add brief notes for the appointment (optional). Notes autosave while typing.</p>
+                    <div style="margin-bottom:16px;"><textarea id="completeNotesVideo" class="form-control" rows="5" placeholder="Summary notes..." style="border: 1px solid #ddd; border-radius: 6px;"></textarea></div>
+                    <div style="display:flex; gap:12px; justify-content:flex-end;">
+                        <button id="cancelMarkCompleteVideo" class="btn btn-secondary" style="padding: 8px 20px; border-radius: 6px; font-weight: 500;">Cancel</button>
+                        <button id="saveMarkCompleteVideo" class="btn btn-primary" style="padding: 8px 20px; border-radius: 6px; font-weight: 500; background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); border: none; box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);">Mark Complete</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            // Reflect already-completed state
+            if (consultationMarkedComplete) {
+                markCompleteBtn.classList.add('disabled');
+                markCompleteBtn.textContent = 'Marked Complete';
+            }
+
+            function openModalVideo() { modal.style.display = 'flex'; if (consultationMarkedComplete) document.getElementById('saveMarkCompleteVideo').disabled = true; }
+            function closeModalVideo() { modal.style.display = 'none'; }
+
+            // Autosave debounce
+            let autosaveTimerVideo = null;
+            const notesEl = document.getElementById('completeNotesVideo');
+            notesEl.addEventListener('input', () => {
+                if (autosaveTimerVideo) clearTimeout(autosaveTimerVideo);
+                autosaveTimerVideo = setTimeout(() => saveMarkCompleteVideo(true), 1500);
+            });
+
+            async function saveMarkCompleteVideo(isAutosave=false) {
+                const notes = document.getElementById('completeNotesVideo').value;
+                try {
+                            // Ensure csrf_token is available (from base.html)
+                            const token = typeof csrf_token !== 'undefined' ? csrf_token : (document.querySelector('input[name="csrf_token"]')?.value || '');
+                            if (!token) {
+                                console.error('CSRF token not found');
+                                if (!isAutosave) alert('Security token missing. Please refresh and try again.');
+                                return;
+                            }
+
+                            const resp = await fetch(`/api/appointments/${appointmentId}/complete`, {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
+                                body: JSON.stringify({ notes })
+                            });
+                    if (resp.ok) {
+                        consultationMarkedComplete = true;
+                        markCompleteBtn.classList.add('disabled');
+                        markCompleteBtn.textContent = 'Marked Complete';
+                        if (!isAutosave) { alert('Consultation marked complete. You may now hang up.'); closeModalVideo(); }
+                    } else {
+                        if (!isAutosave) alert('Failed to mark consultation complete.');
+                    }
+                } catch (err) {
+                    console.error('Error marking consultation complete', err);
+                    if (!isAutosave) alert('Error marking consultation complete.');
+                }
+            }
+
+            document.getElementById('cancelMarkCompleteVideo').addEventListener('click', (e) => { e.preventDefault(); closeModalVideo(); });
+            document.getElementById('saveMarkCompleteVideo').addEventListener('click', (e) => { e.preventDefault(); saveMarkCompleteVideo(false); });
+
+            markCompleteBtn.addEventListener('click', (e) => { e.preventDefault(); openModalVideo(); });
+        }
+
+        // End call (doctor may end for both after marking complete; patients only leave locally)
+        endCallBtn.addEventListener('click', () => {
+            const currentUserId = document.getElementById('currentUserId')?.value || '';
+            const doctorUserId = document.getElementById('appointmentDoctorUserId')?.value || '';
+
+            // If current user is the doctor
+            if (String(currentUserId) === String(doctorUserId)) {
+                // If not marked complete, confirm that doctor wants to hangup and record incomplete
+                if (!consultationMarkedComplete) {
+                    const ok = confirm('Consultation has not been marked complete. Hanging up will record the appointment as incomplete. Continue?');
+                    if (!ok) return;
+                }
+
+                socket.emit('end_video_call', { appointment_id: appointmentId });
+                // Perform cleanup but let the server-driven `video_call_ended` event perform redirects
+                closeCall(true, false);
+                return;
+            }
+
+            // Non-doctor: leave locally
+            socket.emit('leave_video_room', { appointment_id: appointmentId });
+            // Clean up locally but skip emitting leave again; then redirect patient to testimonial
+            closeCall(true, false);
+            setTimeout(() => {
+                window.location.href = `/appointments/${appointmentId}/testimonial`;
+            }, 400);
+        });
+
+        // Close call
+        function closeCall(skipRedirect = false, emitLeave = true) {
+            if (peerConnection) {
+                try { peerConnection.close(); } catch(e) {}
+                peerConnection = null;
+            }
+
+            if (localStream) {
+                try { localStream.getTracks().forEach(track => track.stop()); } catch(e) {}
+                localStream = null;
+            }
+
+            if (emitLeave) {
+                try { socket.emit('leave_video_room', { appointment_id: appointmentId }); } catch(e) {}
+            }
+
+            if (skipRedirect) return;
+
+            setTimeout(() => {
+                window.location.href = `/communication/${appointmentId}`;
+            }, 500);
+        }
+
+        // Socket.IO event handlers
+        // When another user joins, initiate offer (so only the joiner/other side creates the offer)
+        socket.on('user_joined_video_room', async (data) => {
+            try {
+                // Avoid creating multiple offers
+                if (!peerConnection) return;
+                if (peerConnection.signalingState === 'stable') {
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    socket.emit('webrtc_offer', {
+                        appointment_id: appointmentId,
+                        offer: offer
+                    });
+                } else {
+                    console.log('Skipping offer creation due to signalingState=', peerConnection.signalingState);
+                }
+            } catch (err) {
+                console.error('Error creating offer on user_joined_video_room:', err);
+            }
+        });
+
+        // Handle incoming WebRTC offer from remote and reply with an answer
+        socket.on('webrtc_offer', async (data) => {
+            try {
+                if (!peerConnection) return;
+                const remoteDesc = new RTCSessionDescription(data.offer);
+                await peerConnection.setRemoteDescription(remoteDesc);
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                socket.emit('webrtc_answer', {
+                    appointment_id: appointmentId,
+                    answer: answer
+                });
+            } catch (error) {
+                console.error('Error handling incoming offer:', error);
+            }
+        });
+
+        socket.on('webrtc_answer', async (data) => {
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            } catch (error) {
+                console.error('Error setting remote description:', error);
+            }
+        });
+
+        socket.on('webrtc_ice_candidate', async (data) => {
+            try {
+                if (data.candidate) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        });
+
+        socket.on('video_call_ended', (data) => {
+            try {
+                // perform local cleanup but skip emitting leave (server already ended)
+                closeCall(true, false);
+
+                // role-aware redirect: doctor -> communication page, patient -> testimonial page
+                const role = document.getElementById('currentUserRole')?.value || '';
+                const appointment_id = data?.appointment_id || appointmentId;
+
+                // small delay to ensure socket leave and cleanup finished
+                setTimeout(() => {
+                    if (role === 'doctor') {
+                        window.location.href = '/doctor/communication';
+                    } else if (role === 'patient') {
+                        // Redirect patient to testimonial submission page for this appointment
+                        window.location.href = `/appointments/${appointment_id}/testimonial`;
+                    } else {
+                        // Fallback to communication page
+                        window.location.href = `/communication/${appointment_id}`;
+                    }
+                }, 400);
+            } catch (err) {
+                console.error('Error handling video_call_ended redirect:', err);
+                closeCall();
+            }
+        });
+
+        // Chat message handler
+        socket.on('call_chat_message', (data) => {
+            addChatMessageToUI(data.message, 'received');
+        });
+
+        // File share handler
+        socket.on('call_file_share', (data) => {
+            addChatMessageToUI(`📎 ${data.sender_name} shared: ${data.file_name}`, 'received');
+            const link = document.createElement('a');
+            link.href = data.file_data;
+            link.download = data.file_name;
+            link.click();
+        });
+
+        // User info handler
+        socket.on('call_user_info', (data) => {
+            remoteUserName = `${data.first_name} ${data.last_name}`;
+            remoteUserAvatar = data.profile_picture_url;
+            remoteNameInfo.textContent = remoteUserName;
+            
+            if (remoteUserAvatar) {
+                remoteAvatarSmall.innerHTML = `<img src="${remoteUserAvatar}" alt="${remoteUserName}">`;
+                remoteAvatar.innerHTML = `<img src="${remoteUserAvatar}" alt="${remoteUserName}">`;
+            } else {
+                const initials = `${data.first_name[0]}${data.last_name[0]}`;
+                remoteAvatarSmall.textContent = initials;
+                remoteAvatar.textContent = initials;
+            }
+        });
+
+        // Tap-to-enable prompt helpers
+        function showEnableMediaPrompt() {
+            let prompt = document.getElementById('enableMediaPrompt');
+            if (!prompt) return;
+            prompt.style.display = 'flex';
+        }
+
+        function hideEnableMediaPrompt() {
+            let prompt = document.getElementById('enableMediaPrompt');
+            if (!prompt) return;
+            prompt.style.display = 'none';
+        }
+
+        function enableMediaPlayback() {
+            // Try to play remote video/audio elements
+            const remoteAudio = document.getElementById('remoteAudio');
+            if (remoteAudio) {
+                remoteAudio.play().catch(e => console.warn('Play rejected after tap (audio):', e));
+            }
+            if (remoteVideo && remoteVideo.srcObject) {
+                remoteVideo.play().catch(e => console.warn('Play rejected after tap (video):', e));
+            }
+            hideEnableMediaPrompt();
+        }
+
+        // Make local video draggable (PiP)
+        let isDragging = false;
+        let currentX = 0;
+        let currentY = 0;
+        let initialX = 0;
+        let initialY = 0;
+
+        localVideoSection.addEventListener('dragstart', (e) => {
+            isDragging = true;
+            initialX = e.clientX - currentX;
+            initialY = e.clientY - currentY;
+        });
+
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (isDragging) {
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
+                localVideoSection.style.transform = `translate(${currentX}px, ${currentY}px)`;
+            }
+        });
+
+        document.addEventListener('dragend', () => {
+            isDragging = false;
+        });
+
+        // Ensure permissions before initializing call
+        async function ensureCallPermissions() {
+            try {
+                const resp = await fetch('/api/user/permissions', { credentials: 'same-origin' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.call_permissions_granted) {
+                        // Permissions already granted previously
+                        initializeCall();
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not fetch user permissions:', err);
+            }
+
+            // Show modal prompting for permissions (one-time)
+            const modal = document.getElementById('permissionsModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        // Request media, geolocation and timezone, then POST to server
+        async function grantCallPermissions() {
+            try {
+                // Resolve CSRF token safely: prefer template-provided `csrf_token`, else read hidden input
+                const token = (typeof csrf_token !== 'undefined') ? csrf_token : (document.querySelector('input[name="csrf_token"]')?.value || '');
+                if (!token) {
+                    console.warn('CSRF token not found; proceeding with same-origin credentials. Server may reject the request.');
+                }
+
+                // Request camera and microphone
+                const constraints = { video: true, audio: true };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                // Immediately stop tracks (we'll re-acquire in initializeCall)
+                stream.getTracks().forEach(t => t.stop());
+
+                // Request geolocation (wrap in promise)
+                const pos = await new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) return resolve(null);
+                    const ok = (p) => resolve(p);
+                    const err = (e) => resolve(null);
+                    navigator.geolocation.getCurrentPosition(ok, err, { maximumAge: 60000, timeout: 8000 });
+                });
+
+                const tz = (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : null;
+
+                const payload = {
+                    call_permissions_granted: true,
+                    last_known_lat: pos ? pos.coords.latitude : null,
+                    last_known_lng: pos ? pos.coords.longitude : null,
+                    last_known_timezone: tz || null
+                };
+
+                const resp = await fetch('/api/user/permissions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    console.error('Failed to save permissions', err);
+                    alert('Failed to save permissions. Please try again.');
+                    return;
+                }
+
+                // Hide modal and initialize call
+                const modalEl = document.getElementById('permissionsModal');
+                if (modalEl) modalEl.style.display = 'none';
+
+                initializeCall();
+            } catch (error) {
+                console.error('Permission request failed:', error);
+                alert('Unable to get permissions. Please allow camera/microphone and location access.');
+            }
+        }
+
+        // Wire settings button to allow users to update permissions while in call
+        document.getElementById('callSettingsBtn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = document.getElementById('permissionsModal');
+            if (modal) modal.style.display = 'flex';
+        });
+
+        // Initialize permission modal buttons
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('grantPermissionsBtn')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                grantCallPermissions();
+            });
+            document.getElementById('permissionsModalClose')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                const modal = document.getElementById('permissionsModal');
+                if (modal) modal.style.display = 'none';
+            });
+        });
+
+        // Start by ensuring permissions
+        window.addEventListener('load', ensureCallPermissions);
+    </script>
+    <!-- Tap-to-enable prompt markup -->
+    <div id="enableMediaPrompt" class="enable-media-prompt" style="display:none;">
+        <div class="enable-media-card">
+            <p>Tap to enable audio/video for this call.</p>
+            <button class="enable-media-btn" id="enableMediaBtn">Enable</button>
+        </div>
+    </div>
+    
+    <!-- Permissions modal (one-time before first call) -->
+    <div id="permissionsModal" style="display:none; position:fixed; inset:0; z-index:90; align-items:center; justify-content:center; background:rgba(0,0,0,0.6)">
+        <div style="background:#0b1220; padding:20px; border-radius:12px; width:360px; color:#fff; text-align:center;">
+            <h4 style="margin-bottom:8px">Allow Camera, Microphone & Location</h4>
+            <p style="color:#cbd5e1; font-size:14px; margin-bottom:12px">To join this call we need access to your camera, microphone and your current location/timezone for accurate timestamps. This is a one-time permission which you can change in call settings.</p>
+            <div style="display:flex; gap:8px; justify-content:center; margin-top:12px">
+                <button id="grantPermissionsBtn" class="enable-media-btn" style="background:#10b981;">Grant Permissions</button>
+                <button id="permissionsModalClose" class="enable-media-btn" style="background:#6b7280;">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Wire up enable button after DOM is ready
+        document.getElementById('enableMediaBtn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            enableMediaPlayback();
+        });
+        // If user interacts elsewhere (tap), also try to enable playback
+        document.addEventListener('click', function onFirstTap() {
+            enableMediaPlayback();
+            document.removeEventListener('click', onFirstTap);
+        }, { once: true });
+    </script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Services - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block content %}
+<div class="container section-padding">
+    <div class="row mb-4">
+        <div class="col-12 text-center">
+            <h2 class="section-title">Our Services</h2>
+            <p class="section-subtitle">We offer both remote telemedicine services and in-facility care for patients who can visit us.</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card p-4">
+                <h4>Telemedicine Services</h4>
+                <ul>
+                    {% for s in telemedicine_services %}
+                    <li>{{ s }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card p-4">
+                <h4>In-Facility Services</h4>
+                <ul>
+                    {% for s in facility_services %}
+                    <li>{{ s }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

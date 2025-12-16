@@ -1,0 +1,907 @@
+{% extends "base.html" %}
+
+{% block title %}Communication Monitoring - MAKOKHA MEDICAL CENTRE ADMIN{% endblock %}
+
+{% block extra_css %}
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        background: #f5f7fa;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .admin-communication-container {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 24px;
+        max-width: 1600px;
+        margin: 0 auto;
+    }
+
+    .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .header-section h1 {
+        font-size: 28px;
+        font-weight: 700;
+        color: #111b21;
+        margin: 0;
+    }
+
+    .header-controls {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn {
+        padding: 10px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+        background: #00a884;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #008066;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 168, 132, 0.3);
+    }
+
+    .btn-secondary {
+        background: #f0f2f5;
+        color: #111b21;
+    }
+
+    .btn-secondary:hover {
+        background: #e5e5e5;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        transform: translateY(-2px);
+    }
+
+    .stat-label {
+        font-size: 13px;
+        color: #65676b;
+        font-weight: 500;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+        font-size: 32px;
+        font-weight: 700;
+        color: #111b21;
+        margin-bottom: 8px;
+    }
+
+    .stat-change {
+        font-size: 12px;
+        color: #00a884;
+    }
+
+    .stat-change.negative {
+        color: #e74c3c;
+    }
+
+    .section {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .section-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #111b21;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #e5e5e5;
+    }
+
+    .filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .filter-group label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #65676b;
+        margin-bottom: 6px;
+    }
+
+    .filter-group input,
+    .filter-group select {
+        padding: 8px 12px;
+        border: 1px solid #e5e5e5;
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: inherit;
+    }
+
+    .filter-group input:focus,
+    .filter-group select:focus {
+        outline: none;
+        border-color: #00a884;
+        box-shadow: 0 0 0 3px rgba(0, 168, 132, 0.1);
+    }
+
+    .table-container {
+        overflow-x: auto;
+        margin-top: 16px;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+
+    thead {
+        background: #f0f2f5;
+        border-bottom: 2px solid #e5e5e5;
+    }
+
+    th {
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        color: #65676b;
+        text-transform: uppercase;
+        font-size: 12px;
+        letter-spacing: 0.5px;
+    }
+
+    td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #f0f2f5;
+        color: #111b21;
+    }
+
+    tbody tr:hover {
+        background: #f9f9f9;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .badge-success {
+        background: #d4f5e8;
+        color: #008066;
+    }
+
+    .badge-warning {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .badge-danger {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .badge-info {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .user-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 12px;
+        flex-shrink: 0;
+    }
+
+    .presence-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+
+    .presence-dot.online {
+        background: #31a24c;
+    }
+
+    .presence-dot.away {
+        background: #ffc400;
+    }
+
+    .presence-dot.offline {
+        background: #ccc;
+    }
+
+    .presence-dot.busy {
+        background: #e74c3c;
+    }
+
+    .quality-bar {
+        width: 100px;
+        height: 6px;
+        background: #f0f2f5;
+        border-radius: 3px;
+        overflow: hidden;
+        display: inline-block;
+    }
+
+    .quality-fill {
+        height: 100%;
+        background: #00a884;
+        transition: all 0.3s ease;
+    }
+
+    .quality-fill.excellent {
+        width: 100%;
+        background: #31a24c;
+    }
+
+    .quality-fill.good {
+        width: 75%;
+        background: #00a884;
+    }
+
+    .quality-fill.fair {
+        width: 50%;
+        background: #ffc400;
+    }
+
+    .quality-fill.poor {
+        width: 25%;
+        background: #e74c3c;
+    }
+
+    .grid-2col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+        .grid-2col {
+            grid-template-columns: 1fr;
+        }
+
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .admin-communication-container {
+            padding: 16px;
+        }
+
+        .header-section {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .header-section h1 {
+            font-size: 20px;
+        }
+
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .filters {
+            grid-template-columns: 1fr;
+        }
+
+        .table-container {
+            font-size: 12px;
+        }
+
+        th, td {
+            padding: 8px;
+        }
+    }
+
+    .live-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background: #e74c3c;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.5;
+        }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: #65676b;
+    }
+
+    .empty-state-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .action-buttons button {
+        padding: 6px 12px;
+        font-size: 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-view {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .btn-view:hover {
+        background: #bfdbfe;
+    }
+
+    .btn-block {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-block:hover {
+        background: #fecaca;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-communication-container">
+    <!-- Header Section -->
+    <div class="header-section">
+        <div>
+            <h1>Communication Monitoring</h1>
+            <p style="color: #65676b; margin-top: 4px;">Real-time call metrics and user presence tracking</p>
+        </div>
+        <div class="header-controls">
+            <button class="btn btn-primary" onclick="refreshMetrics()">
+                <span style="margin-right: 6px;">🔄</span>Refresh
+            </button>
+            <button class="btn btn-secondary" onclick="exportReport()">
+                <span style="margin-right: 6px;">📥</span>Export
+            </button>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Active Calls</div>
+            <div class="stat-value" id="activeCalls">0</div>
+            <div class="stat-change" id="activeCallsChange">+0 in last 24h</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Online Users</div>
+            <div class="stat-value" id="onlineUsers">0</div>
+            <div class="stat-change" id="onlineUsersChange">+0 from last hour</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg Call Duration</div>
+            <div class="stat-value" id="avgDuration">--</div>
+            <div class="stat-change">Last 24 hours</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">System Health</div>
+            <div class="stat-value" id="systemHealth">--</div>
+            <div class="stat-change" id="healthStatus">Good</div>
+        </div>
+    </div>
+
+    <div class="grid-2col">
+        <!-- Active Calls Section -->
+        <div class="section">
+            <h2 class="section-title">
+                <span class="live-indicator" style="margin-right: 8px;"></span>
+                Active Calls
+            </h2>
+            
+            <div class="table-container">
+                <table id="activeCallsTable">
+                    <thead>
+                        <tr>
+                            <th>Call ID</th>
+                            <th>Caller</th>
+                            <th>Callee</th>
+                            <th>Type</th>
+                            <th>Duration</th>
+                            <th>Quality</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activeCallsBody">
+                        <tr><td colspan="6" class="empty-state">No active calls</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Online Users Section -->
+        <div class="section">
+            <h2 class="section-title">Online Users</h2>
+            
+            <div class="filters">
+                <div class="filter-group">
+                    <label>Filter by Role</label>
+                    <select id="userRoleFilter" onchange="filterOnlineUsers()">
+                        <option value="">All Roles</option>
+                        <option value="doctor">Doctors</option>
+                        <option value="patient">Patients</option>
+                        <option value="admin">Admins</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table id="onlineUsersTable">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Last Seen</th>
+                            <th>Device</th>
+                        </tr>
+                    </thead>
+                    <tbody id="onlineUsersBody">
+                        <tr><td colspan="5" class="empty-state">Loading users...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call History Section -->
+    <div class="section">
+        <h2 class="section-title">Call History</h2>
+        
+        <div class="filters">
+            <div class="filter-group">
+                <label>Call Type</label>
+                <select id="callTypeFilter" onchange="filterCallHistory()">
+                    <option value="">All Types</option>
+                    <option value="video">Video</option>
+                    <option value="voice">Voice</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Status</label>
+                <select id="callStatusFilter" onchange="filterCallHistory()">
+                    <option value="">All Status</option>
+                    <option value="completed">Completed</option>
+                    <option value="missed">Missed</option>
+                    <option value="failed">Failed</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>From Date</label>
+                <input type="date" id="dateFromFilter" onchange="filterCallHistory()">
+            </div>
+            <div class="filter-group">
+                <label>To Date</label>
+                <input type="date" id="dateToFilter" onchange="filterCallHistory()">
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table id="callHistoryTable">
+                <thead>
+                    <tr>
+                        <th>Call ID</th>
+                        <th>Caller</th>
+                        <th>Callee</th>
+                        <th>Type</th>
+                        <th>Duration</th>
+                        <th>Date/Time</th>
+                        <th>Status</th>
+                        <th>Quality</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="callHistoryBody">
+                    <tr><td colspan="9" class="empty-state">Loading call history...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Quality Metrics Section -->
+    <div class="section">
+        <h2 class="section-title">Network Quality Metrics</h2>
+        
+        <div class="filters">
+            <div class="filter-group">
+                <label>Quality Level</label>
+                <select id="qualityFilter" onchange="filterQualityMetrics()">
+                    <option value="">All Levels</option>
+                    <option value="excellent">Excellent</option>
+                    <option value="good">Good</option>
+                    <option value="fair">Fair</option>
+                    <option value="poor">Poor</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Min Packet Loss %</label>
+                <input type="number" id="packetLossFilter" min="0" max="100" placeholder="0" onchange="filterQualityMetrics()">
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table id="qualityMetricsTable">
+                <thead>
+                    <tr>
+                        <th>Call ID</th>
+                        <th>User</th>
+                        <th>RTT (ms)</th>
+                        <th>Packet Loss %</th>
+                        <th>Jitter (ms)</th>
+                        <th>Audio Bitrate</th>
+                        <th>Video Bitrate</th>
+                        <th>Quality</th>
+                    </tr>
+                </thead>
+                <tbody id="qualityMetricsBody">
+                    <tr><td colspan="8" class="empty-state">Loading quality metrics...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript Section -->
+<script>
+const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+
+// Load data on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadActiveMetrics();
+    loadOnlineUsers();
+    loadCallHistory();
+    loadQualityMetrics();
+    
+    // Refresh every 10 seconds
+    setInterval(loadActiveMetrics, 10000);
+    setInterval(loadOnlineUsers, 15000);
+});
+
+// Load active calls and statistics
+async function loadActiveMetrics() {
+    try {
+        const response = await fetch('/api/call-history?per_page=10', {
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            updateActiveCallsUI(data.data.calls || []);
+            updateStats(data.data);
+        }
+    } catch (error) {
+        console.error('Error loading active metrics:', error);
+    }
+}
+
+// Load online users
+async function loadOnlineUsers() {
+    try {
+        const response = await fetch('/api/presence/online-users', {
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            updateOnlineUsersUI(data.data);
+        }
+    } catch (error) {
+        console.error('Error loading online users:', error);
+    }
+}
+
+// Load call history
+async function loadCallHistory() {
+    try {
+        const callType = document.getElementById('callTypeFilter').value;
+        const status = document.getElementById('callStatusFilter').value;
+        const dateFrom = document.getElementById('dateFromFilter').value;
+        const dateTo = document.getElementById('dateToFilter').value;
+        
+        let url = '/api/call-history?page=1&per_page=50';
+        if (callType) url += `&call_type=${callType}`;
+        if (status) url += `&status=${status}`;
+        if (dateFrom) url += `&date_from=${dateFrom}`;
+        if (dateTo) url += `&date_to=${dateTo}`;
+        
+        const response = await fetch(url, {
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            updateCallHistoryUI(data.data.calls || []);
+        }
+    } catch (error) {
+        console.error('Error loading call history:', error);
+    }
+}
+
+// Load quality metrics
+async function loadQualityMetrics() {
+    try {
+        const qualityLevel = document.getElementById('qualityFilter').value;
+        const packetLoss = document.getElementById('packetLossFilter').value;
+        
+        let url = '/api/calls/quality-metrics?limit=50';
+        if (qualityLevel) url += `&quality=${qualityLevel}`;
+        if (packetLoss) url += `&min_packet_loss=${packetLoss}`;
+        
+        const response = await fetch(url, {
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            updateQualityMetricsUI(data.data || []);
+        }
+    } catch (error) {
+        console.error('Error loading quality metrics:', error);
+    }
+}
+
+// Update UI for active calls
+function updateActiveCallsUI(calls) {
+    const tbody = document.getElementById('activeCallsBody');
+    
+    if (!calls || calls.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No active calls</td></tr>';
+        document.getElementById('activeCalls').textContent = '0';
+        return;
+    }
+    
+    document.getElementById('activeCalls').textContent = calls.length;
+    
+    tbody.innerHTML = calls.map(call => `
+        <tr>
+            <td><code style="font-size: 11px; background: #f0f2f5; padding: 4px 8px; border-radius: 4px;">${call.call_id.substring(0, 12)}</code></td>
+            <td><div class="user-info"><div class="user-avatar">${(call.caller_name || 'U').charAt(0).toUpperCase()}</div><div>${call.caller_name || 'Unknown'}</div></div></td>
+            <td><div class="user-info"><div class="user-avatar">${(call.callee_name || 'U').charAt(0).toUpperCase()}</div><div>${call.callee_name || 'Unknown'}</div></div></td>
+            <td><span class="badge ${call.call_type === 'video' ? 'badge-info' : 'badge-success'}">${call.call_type}</span></td>
+            <td>${formatDuration(call.duration || 0)}</td>
+            <td><div class="quality-bar"><div class="quality-fill ${getQualityClass(call.quality_assessment || 'good')}"></div></div></td>
+        </tr>
+    `).join('');
+}
+
+// Update UI for online users
+function updateOnlineUsersUI(users) {
+    const tbody = document.getElementById('onlineUsersBody');
+    
+    if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No users online</td></tr>';
+        document.getElementById('onlineUsers').textContent = '0';
+        return;
+    }
+    
+    document.getElementById('onlineUsers').textContent = users.length;
+    
+    tbody.innerHTML = users.map(user => `
+        <tr>
+            <td><div class="user-info"><div class="user-avatar">${(user.name || 'U').charAt(0).toUpperCase()}</div><div>${user.name || 'Unknown'}</div></div></td>
+            <td><span class="badge badge-info">${user.role}</span></td>
+            <td><span class="presence-dot ${user.status || 'online'}"></span>${(user.status || 'online').charAt(0).toUpperCase() + (user.status || 'online').slice(1)}</td>
+            <td>${user.last_seen ? formatTime(new Date(user.last_seen)) : 'N/A'}</td>
+            <td>${user.device_type || 'web'}</td>
+        </tr>
+    `).join('');
+}
+
+// Update UI for call history
+function updateCallHistoryUI(calls) {
+    const tbody = document.getElementById('callHistoryBody');
+    
+    if (!calls || calls.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No call history found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = calls.map(call => `
+        <tr>
+            <td><code style="font-size: 11px; background: #f0f2f5; padding: 4px 8px; border-radius: 4px;">${call.call_id.substring(0, 12)}</code></td>
+            <td>${call.caller_name || 'Unknown'}</td>
+            <td>${call.callee_name || 'Unknown'}</td>
+            <td><span class="badge ${call.call_type === 'video' ? 'badge-info' : 'badge-success'}">${call.call_type}</span></td>
+            <td>${formatDuration(call.duration || 0)}</td>
+            <td>${call.initiated_at ? formatDateTime(new Date(call.initiated_at)) : 'N/A'}</td>
+            <td><span class="badge ${getStatusBadgeClass(call.status)}">${call.status}</span></td>
+            <td><div class="quality-bar"><div class="quality-fill ${getQualityClass(call.quality_assessment || 'good')}"></div></div></td>
+            <td><div class="action-buttons"><button class="btn-view" onclick="viewCallDetails('${call.call_id}')">View</button></div></td>
+        </tr>
+    `).join('');
+}
+
+// Update UI for quality metrics
+function updateQualityMetricsUI(metrics) {
+    const tbody = document.getElementById('qualityMetricsBody');
+    
+    if (!metrics || metrics.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No quality metrics available</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = metrics.map(metric => `
+        <tr>
+            <td><code style="font-size: 11px;">${metric.call_id.substring(0, 12)}</code></td>
+            <td>${metric.user_name || 'Unknown'}</td>
+            <td>${metric.rtt || 0}</td>
+            <td>${metric.packet_loss || 0}%</td>
+            <td>${metric.jitter || 0}</td>
+            <td>${metric.audio_bitrate || 0} kbps</td>
+            <td>${metric.video_bitrate || 0} kbps</td>
+            <td><span class="badge ${metric.audio_quality === 'poor' || metric.video_quality === 'poor' ? 'badge-danger' : 'badge-success'}">${metric.audio_quality || 'unknown'}</span></td>
+        </tr>
+    `).join('');
+}
+
+// Update statistics
+function updateStats(data) {
+    if (data.total_calls !== undefined) {
+        document.getElementById('avgDuration').textContent = formatDuration(data.avg_duration || 0);
+    }
+}
+
+// Helper functions
+function formatDuration(seconds) {
+    if (!seconds) return '00:00';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatTime(date) {
+    const now = new Date();
+    const diff = now - date;
+    const seconds = Math.floor(diff / 1000);
+    
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return date.toLocaleDateString();
+}
+
+function formatDateTime(date) {
+    return date.toLocaleString();
+}
+
+function getQualityClass(quality) {
+    const q = (quality || 'good').toLowerCase();
+    return q === 'excellent' ? 'excellent' : q === 'good' ? 'good' : q === 'fair' ? 'fair' : 'poor';
+}
+
+function getStatusBadgeClass(status) {
+    const s = (status || '').toLowerCase();
+    if (s === 'completed' || s === 'ended') return 'badge-success';
+    if (s === 'missed' || s === 'failed') return 'badge-danger';
+    if (s === 'ongoing' || s === 'connected') return 'badge-info';
+    return 'badge-warning';
+}
+
+// Filter functions
+function filterOnlineUsers() { loadOnlineUsers(); }
+function filterCallHistory() { loadCallHistory(); }
+function filterQualityMetrics() { loadQualityMetrics(); }
+
+// Utility functions
+function refreshMetrics() {
+    loadActiveMetrics();
+    loadOnlineUsers();
+    loadCallHistory();
+    loadQualityMetrics();
+}
+
+async function exportReport() {
+    alert('Export feature coming soon');
+}
+
+async function viewCallDetails(callId) {
+    try {
+        const response = await fetch(`/api/call-history/${callId}`, {
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            showCallDetailsModal(data.data);
+        }
+    } catch (error) {
+        console.error('Error loading call details:', error);
+        alert('Failed to load call details');
+    }
+}
+
+function showCallDetailsModal(call) {
+    const details = JSON.stringify(call, null, 2);
+    alert('Call Details:\n\n' + details.substring(0, 500) + '...');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% block title %}Patient Medical Records - Doctor{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Medical Records for {{ patient.user.get_display_name() }}</h3>
+    <div>
+      <button class="btn btn-primary" id="newRecordBtn">Add Record</button>
+    </div>
+  </div>
+
+  <div id="recordsList">
+    {% for r in medical_records %}
+      <div class="card mb-2">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <div>
+              <h5 class="card-title">{{ r.record_type }}</h5>
+              <p class="mb-1 small text-muted">By user #{{ r.created_by }} on <span data-timestamp="{{ r.created_at.isoformat() }}" data-timestamp-format="datetime">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</span></p>
+              <p>{{ r.description or '-' }}</p>
+            </div>
+            <div class="text-end">
+              {% if r.file_path %}
+                <a href="{{ url_for('download_medical_record', record_id=r.id) }}" class="btn btn-sm btn-outline-secondary">Download</a>
+              {% endif %}
+              <button class="btn btn-sm btn-outline-primary ms-1 edit-record-btn" data-id="{{ r.id }}">Edit</button>
+              <button class="btn btn-sm btn-danger ms-1 delete-record-btn" data-id="{{ r.id }}">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <p>No medical records found.</p>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Modal for add/edit -->
+<div class="modal fade" id="recordModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Medical Record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="recordForm" enctype="multipart/form-data">
+          <input type="hidden" name="patient_id" value="{{ patient.id }}">
+          <input type="hidden" name="record_id" id="record_id" value="">
+          <div class="mb-3">
+            <label class="form-label">Type</label>
+            <input class="form-control" name="record_type" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" name="description" rows="4"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">File (optional)</label>
+            <input type="file" name="file" class="form-control">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="saveRecordBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.getElementById('newRecordBtn').addEventListener('click', function(){
+  var modal = new bootstrap.Modal(document.getElementById('recordModal'));
+  document.getElementById('recordForm').reset();
+  modal.show();
+});
+
+// Save record
+document.getElementById('saveRecordBtn').addEventListener('click', async function(){
+  const btn = this;
+  const form = document.getElementById('recordForm');
+  const fd = new FormData(form);
+  const recordId = document.getElementById('record_id').value;
+  try{
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Saving...';
+    let url = '/api/medical_record/add';
+    if (recordId) url = `/api/medical_record/${recordId}/update`;
+    const res = await fetch(url, { method:'POST', body: fd, headers: {'X-CSRFToken': csrf_token}});
+    const json = await res.json();
+    if (json.success) {
+      await refreshRecords();
+      const modalEl = document.getElementById('recordModal');
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.hide();
+    } else {
+      alert('Error: ' + (json.error||'unknown'));
+    }
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }catch(e){ btn.disabled = false; btn.textContent = 'Save'; alert('Request failed') }
+});
+
+async function refreshRecords(){
+  try{
+    const patientId = document.querySelector('#recordForm [name="patient_id"]').value;
+    const res = await fetch(`/api/medical_records/patient/${patientId}`);
+    if (!res.ok) throw new Error('Failed to fetch records');
+    const data = await res.json();
+    renderRecordsList(data.medical_records || []);
+  }catch(err){ console.error('Refresh failed', err); }
+}
+
+function renderRecordsList(records){
+  const container = document.getElementById('recordsList');
+  if (!records || records.length === 0){
+    container.innerHTML = '<p>No medical records found.</p>';
+    return;
+  }
+  let html = '';
+  for (const r of records){
+    // Format date using LocalTime utility if available, otherwise use toLocaleString
+    const dateStr = r.created_at ? (window.LocalTime ? window.LocalTime.formatToLocalTime(r.created_at, 'datetime') : new Date(r.created_at).toLocaleString()) : '';
+    html += `
+      <div class="card mb-2">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <div>
+              <h5 class="card-title">${r.record_type}</h5>
+              <p class="mb-1 small text-muted">By user #${r.created_by} on <span data-timestamp="${r.created_at}" data-timestamp-format="datetime">${dateStr}</span></p>
+              <p>${r.description || '-'}</p>
+            </div>
+            <div class="text-end">
+              ${r.has_file ? `<a href="/download/medical_record/${r.id}" class="btn btn-sm btn-outline-secondary">Download</a>` : ''}
+              <button class="btn btn-sm btn-outline-primary ms-1 edit-record-btn" data-id="${r.id}">Edit</button>
+              <button class="btn btn-sm btn-danger ms-1 delete-record-btn" data-id="${r.id}">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+}
+
+// Edit / Delete handlers
+document.addEventListener('click', async function(e){
+  if (e.target.classList.contains('delete-record-btn')){
+    const id = e.target.dataset.id; if (!confirm('Delete record?')) return;
+    const res = await fetch(`/api/medical_record/${id}/delete`, { method:'POST', headers: {'X-CSRFToken': csrf_token}});
+    const j = await res.json(); if (j.success) location.reload(); else alert('Error');
+  }
+  if (e.target.classList.contains('edit-record-btn')){
+    const id = e.target.dataset.id;
+    // Fetch record JSON and pre-fill modal
+    try{
+      const res = await fetch(`/api/medical_record/${id}`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      document.getElementById('recordForm').record_type.value = data.record_type || '';
+      document.getElementById('recordForm').description.value = data.description || '';
+      document.getElementById('record_id').value = data.id;
+      var modal = new bootstrap.Modal(document.getElementById('recordModal'));
+      modal.show();
+    }catch(err){ alert('Unable to load record for editing'); }
+  }
+});
+</script>
+{% endblock %}
+{% endblock %}

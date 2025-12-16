@@ -1,0 +1,1145 @@
+{% extends "base.html" %}
+
+{% block title %}Patient Dashboard - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .welcome-card {
+        background: linear-gradient(135deg, #28a745, #20c997);
+        color: white;
+        border: none;
+        border-radius: 15px;
+    }
+    .quick-action-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+        text-align: center;
+        padding: 1.5rem;
+        height: 100%;
+    }
+    .quick-action-card:hover {
+        transform: translateY(-5px);
+    }
+    .appointment-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .doctor-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.2em;
+    }
+    .health-metric {
+        text-align: center;
+        padding: 1rem;
+    }
+    .metric-value {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #007bff;
+    }
+    .metric-label {
+        font-size: 0.9em;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Hidden patient ID for JavaScript access -->
+    <input type="hidden" id="patientIdInput" value="{{ patient.id }}">
+    
+    <!-- Welcome Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card welcome-card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h3 class="card-title mb-2">Hello, {{ current_user.first_name }}!</h3>
+                            <p class="card-text mb-0">
+                                {% if appointments %}
+                                    You have {{ appointments|length }} upcoming appointment{% if appointments|length > 1 %}s{% endif %}.
+                                {% else %}
+                                    You have no upcoming appointments. Book one now!
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+                                {% if current_user.profile_picture %}
+                                    <img src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile" style="width:64px;height:64px;border-radius:50%;object-fit:cover;" />
+                                {% else %}
+                                    <i class="fas fa-heartbeat fa-4x opacity-50"></i>
+                                {% endif %}
+                                <div>
+                                    <form id="uploadPicFormPatient" enctype="multipart/form-data">
+                                        <input type="file" name="file" id="patientProfileFile" accept="image/*" style="display:none;" />
+                                        <button type="button" class="btn btn-light btn-sm" id="uploadPicBtnPatient">Upload Photo</button>
+                                    </form>
+                                </div>
+                                <div>
+                                    <a href="{{ url_for('edit_patient_profile') }}" class="btn btn-outline-primary btn-sm">Edit Profile</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="{{ url_for('patient_appointment') }}" class="text-decoration-none">
+                <div class="card quick-action-card border-left-primary">
+                    <div class="card-body">
+                        <i class="fas fa-calendar-plus fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Book Appointment</h5>
+                        <p class="card-text text-muted">Schedule a new consultation with a doctor</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <a href="{{ url_for('patient_communication') }}" class="text-decoration-none">
+                <div class="card quick-action-card border-left-success">
+                    <div class="card-body">
+                        <i class="fas fa-comments fa-3x text-success mb-3"></i>
+                        <h5 class="card-title">My Messages</h5>
+                        <p class="card-text text-muted">Chat with your healthcare providers</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card quick-action-card border-left-info" onclick="viewMedicalRecords()">
+                <div class="card-body">
+                    <i class="fas fa-file-medical fa-3x text-info mb-3"></i>
+                    <h5 class="card-title">Medical Records</h5>
+                    <p class="card-text text-muted">Access your health history and reports</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card quick-action-card border-left-info" data-bs-toggle="modal" data-bs-target="#findDoctorsModal" style="cursor: pointer;">
+                <div class="card-body">
+                    <i class="fas fa-user-md fa-3x text-warning mb-3"></i>
+                    <h5 class="card-title">Find Doctors</h5>
+                    <p class="card-text text-muted">Discover specialists for your needs</p>
+                </div>
+            </div>
+        </div>
+    </div>
+<script>
+    document.getElementById('uploadPicBtnPatient')?.addEventListener('click', function(){
+        document.getElementById('patientProfileFile').click();
+    });
+
+    document.getElementById('patientProfileFile')?.addEventListener('change', async function(e){
+        const f = e.target.files[0];
+        if (!f) return;
+        const form = new FormData();
+        form.append('file', f);
+        try {
+            const res = await fetch('/upload_profile_picture', { method: 'POST', body: form });
+            if (res.ok) {
+                location.reload();
+            } else {
+                const data = await res.json();
+                alert('Upload failed: ' + (data.error || 'unknown'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Upload failed');
+        }
+    });
+</script>
+
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-lg-8">
+            <!-- Upcoming Appointments -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Upcoming Appointments</h5>
+                    <a href="{{ url_for('patient_appointment') }}" class="btn btn-sm btn-outline-primary">
+                        View All
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if appointments and appointments|length > 0 %}
+                    <div class="list-group list-group-flush">
+                        {% for appointment in appointments %}
+                        <div class="list-group-item">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    {% if appointment.doctor and appointment.doctor.user %}
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                                    {% else %}
+                                        <div class="doctor-avatar">DR</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col">
+                                    <h6 class="mb-1">
+                                        {% if appointment.doctor and appointment.doctor.user %}
+                                            Dr. {{ appointment.doctor.user.first_name }} {{ appointment.doctor.user.last_name }}
+                                        {% else %}
+                                            Doctor
+                                        {% endif %}
+                                    </h6>
+                                    <p class="mb-1 text-muted">
+                                        <i class="fas fa-stethoscope me-1"></i>
+                                        {% if appointment.doctor and appointment.doctor.specialization %}
+                                            {{ appointment.doctor.specialization }}
+                                        {% else %}
+                                            General Practitioner
+                                        {% endif %}
+                                    </p>
+                                    <p class="mb-1 text-muted">
+                                        <i class="fas fa-calendar me-1"></i>
+                                        {% if appointment.appointment_date %}
+                                            {{ appointment.appointment_date.strftime('%A, %B %d, %Y') }}
+                                        {% else %}
+                                            Date not set
+                                        {% endif %}
+                                    </p>
+                                    <p class="mb-1 text-muted">
+                                        <i class="fas fa-clock me-1"></i>
+                                        {% if appointment.appointment_date %}
+                                            {{ appointment.appointment_date.strftime('%H:%M') }}
+                                        {% endif %}
+                                        •
+                                        <i class="fas fa-{{ 'video' if appointment.consultation_type == 'video' else 'phone' if appointment.consultation_type == 'voice' else 'comments' }} me-1"></i>
+                                        {% if appointment.consultation_type %}
+                                            {{ appointment.consultation_type|title }}
+                                        {% else %}
+                                            Consultation
+                                        {% endif %}
+                                    </p>
+                                    {% if appointment.symptoms %}
+                                    <small class="text-muted">Reason: {{ appointment.symptoms|truncate(50) }}</small>
+                                    {% endif %}
+                                </div>
+                                <div class="col-auto">
+                                    <div class="btn-group">
+                                        {% if appointment.status == 'confirmed' %}
+                                        <button class="btn btn-sm btn-outline-primary" 
+                                                onclick="joinConsultation('{{ appointment.id }}')">
+                                            <i class="fas fa-{{ 'video' if appointment.consultation_type == 'video' else 'phone' if appointment.consultation_type == 'voice' else 'comments' }} me-1"></i>
+                                            Join
+                                        </button>
+                                        {% endif %}
+                                        <button class="btn btn-sm btn-outline-info" 
+                                                onclick="sendMessage('{{ appointment.id }}')">
+                                            <i class="fas fa-comment me-1"></i>Message
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
+                        <h5>No upcoming appointments</h5>
+                        <p class="text-muted">Schedule your first consultation to get started.</p>
+                        <a href="{{ url_for('patient_appointment') }}" class="btn btn-primary">
+                            <i class="fas fa-calendar-plus me-2"></i>Book Appointment
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Health Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Health Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ vitals.blood_pressure if vitals and vitals.blood_pressure else (patient.blood_type if false else ("N/A")) }}</div>
+                            <div class="metric-label">Blood Pressure</div>
+                            {% if vitals and vitals.blood_pressure %}
+                                <small class="text-success">Latest</small>
+                            {% else %}
+                                <small class="text-muted">No data</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ vitals.heart_rate if vitals and vitals.heart_rate else 'N/A' }}</div>
+                            <div class="metric-label">Heart Rate</div>
+                            {% if vitals and vitals.heart_rate %}
+                                <small class="text-success">Latest</small>
+                            {% else %}
+                                <small class="text-muted">No data</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ vitals.temperature if vitals and vitals.temperature else 'N/A' }}{% if vitals and vitals.temperature %}°F{% endif %}</div>
+                            <div class="metric-label">Temperature</div>
+                            {% if vitals and vitals.temperature %}
+                                <small class="text-success">Latest</small>
+                            {% else %}
+                                <small class="text-muted">No data</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{{ patient.blood_type or 'N/A' }}</div>
+                            <div class="metric-label">Blood Type</div>
+                        </div>
+                        <div class="col-md-3 health-metric">
+                            <div class="metric-value">{% if bmi %}{{ bmi }}{% else %}N/A{% endif %}</div>
+                            <div class="metric-label">BMI</div>
+                            {% if bmi_category %}
+                                {% set badge_class = 'bg-info' %}
+                                {% if bmi_category == 'Normal' %}
+                                    {% set badge_class = 'bg-success' %}
+                                {% elif bmi_category == 'Overweight' %}
+                                    {% set badge_class = 'bg-warning text-dark' %}
+                                {% elif bmi_category == 'Obese' %}
+                                    {% set badge_class = 'bg-danger' %}
+                                {% elif bmi_category == 'Underweight' %}
+                                    {% set badge_class = 'bg-info' %}
+                                {% endif %}
+                                <div class="mt-1">
+                                    <span class="badge {{ badge_class }}" data-bs-toggle="popover" data-bs-trigger="hover focus" title="BMI ranges" data-bs-content="Underweight: &lt;18.5; Normal: 18.5–24.9; Overweight: 25–29.9; Obese: ≥30">{{ bmi_category }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Recent Medications</h6>
+                            <ul class="list-unstyled">
+                                {% if medications %}
+                                    {% for m in medications %}
+                                        <li><i class="fas fa-pills text-primary me-2"></i>{{ m }}</li>
+                                    {% endfor %}
+                                {% else %}
+                                    <li class="text-muted">No medications listed</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Allergies</h6>
+                            <div>
+                                {% if allergies %}
+                                    {% for a in allergies %}
+                                        <span class="badge bg-warning me-2">{{ a }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted">No allergies listed</span>
+                                {% endif %}
+                            </div>
+                            <h6 class="mt-3">Conditions</h6>
+                            <div>
+                                {% if patient.medical_history %}
+                                    <span class="badge bg-info me-2">Medical history available</span>
+                                {% else %}
+                                    <span class="text-muted">No recorded conditions</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-lg-4">
+            <!-- Recent Activity -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        {% if recent_activity %}
+                            {% for act in recent_activity %}
+                                <div class="list-group-item px-0">
+                                    <div class="d-flex">
+                                        <div class="flex-shrink-0">
+                                            {% if act.type == 'record' %}
+                                                <i class="fas fa-file-medical text-info"></i>
+                                            {% else %}
+                                                <i class="fas fa-comment text-warning"></i>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex-grow-1 ms-3">
+                                            <small class="text-muted">{{ act.time.strftime('%b %d, %Y %I:%M %p') if act.time else '' }}</small>
+                                            <p class="mb-1">{{ act.text }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="list-group-item px-0 text-muted">No recent activity</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Contacts -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-phone-alt me-2"></i>Emergency Contacts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">Emergency Medical Services</h6>
+                                    <small class="text-muted">24/7 Emergency Line</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#emergencyModalPatient">
+                                    <i class="fas fa-phone"></i> Call
+                                </button>
+                            </div>
+                        </div>
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">MAKOKHA Medical Centre</h6>
+                                    <small class="text-muted">Main Hospital Line</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="callNumber('+254712345678')">
+                                    <i class="fas fa-phone"></i> Call
+                                </button>
+                            </div>
+                        </div>
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">Pharmacy</h6>
+                                    <small class="text-muted">Prescription Refills</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-success" onclick="callNumber('+254712345679')">
+                                    <i class="fas fa-phone"></i> Call
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- My Contact Information -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-address-book me-2"></i>My Contacts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="info-item">
+                        <span class="info-label">Email:</span>
+                        <span class="info-value">{{ current_user.email }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Phone:</span>
+                        <span class="info-value">{{ current_user.phone or 'Not provided' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Age:</span>
+                        <span class="info-value">{% if current_user.age is not none %}{{ current_user.age }}{% else %}Not provided{% endif %}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Emergency Contact:</span>
+                        <span class="info-value">{{ patient.emergency_contact if patient and patient.emergency_contact else 'Not provided' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Health Tips from Doctors -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Health Tips from Your Doctors</h5>
+                    <span class="badge bg-primary" id="healthTipsCount">0</span>
+                </div>
+                <div class="card-body" id="healthTipsContainer">
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-inbox fa-2x mb-3 opacity-50"></i>
+                        <p>No health tips yet. Your doctors will share personalized health tips here.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Find Doctors Modal -->
+<div class="modal fade" id="findDoctorsModal" tabindex="-1" aria-labelledby="findDoctorsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #007bff, #0056b3); color: white;">
+                <h5 class="modal-title" id="findDoctorsModalLabel">
+                    <i class="fas fa-user-md me-2"></i>Find Doctors
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Search and Filter Section -->
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-2">
+                        <input type="text" class="form-control" id="doctorSearchInput" placeholder="Search by name or specialization..." 
+                               style="border-radius: 25px; padding: 10px 15px;">
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <select class="form-control" id="specialtyFilter" style="border-radius: 25px;">
+                            <option value="">All Specialties</option>
+                            <option value="cardiology">Cardiology</option>
+                            <option value="neurology">Neurology</option>
+                            <option value="pediatrics">Pediatrics</option>
+                            <option value="dermatology">Dermatology</option>
+                            <option value="orthopedics">Orthopedics</option>
+                            <option value="general">General Practice</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <select class="form-control" id="ratingFilter" style="border-radius: 25px;">
+                            <option value="">All Ratings</option>
+                            <option value="5">⭐⭐⭐⭐⭐ 5 Stars</option>
+                            <option value="4">⭐⭐⭐⭐ 4+ Stars</option>
+                            <option value="3">⭐⭐⭐ 3+ Stars</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Doctors List -->
+                <div id="doctorsListContainer">
+                    <div class="text-center py-5">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-muted mt-2">Loading doctors...</p>
+                    </div>
+                </div>
+
+                <!-- Load More Button -->
+                <div class="text-center mt-3" id="loadMoreDocsContainer" style="display: none;">
+                    <button class="btn btn-outline-primary" id="loadMoreDoctorsBtn">Load More Doctors</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Emergency Services Modal -->
+<div class="modal fade" id="emergencyModalPatient" tabindex="-1" aria-labelledby="emergencyModalLabelPatient" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content border-danger">
+            <div class="modal-header" style="background-color: #dc3545; color: white;">
+                <h5 class="modal-title" id="emergencyModalLabelPatient">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Emergency Services
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger mb-3">
+                    <i class="fas fa-ambulance me-2"></i>
+                    <strong>Emergency Alert</strong><br>
+                    You are about to contact Emergency Medical Services. This action will be logged and monitored.
+                </div>
+
+                <!-- Current Location -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>Your Current Location</strong></label>
+                    <input type="text" class="form-control" id="patientEmergencyLocation" placeholder="Enter or confirm your location..." required>
+                </div>
+
+                <!-- Severity Level -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>Symptom Severity</strong></label>
+                    <select class="form-control" id="patientEmergencySeverity" required>
+                        <option value="">Select severity level...</option>
+                        <option value="critical">🔴 Critical - Life Threatening</option>
+                        <option value="high">🟠 High - Severe Pain/Injury</option>
+                        <option value="medium">🟡 Medium - Urgent Care Needed</option>
+                    </select>
+                </div>
+
+                <!-- Symptoms Description -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>Describe Your Symptoms</strong></label>
+                    <textarea class="form-control" id="patientEmergencyDescription" rows="3" 
+                              placeholder="Describe what you're experiencing..." required></textarea>
+                </div>
+
+                <!-- Contact Method -->
+                <div class="mb-3">
+                    <label class="form-label"><strong>How Should We Reach You?</strong></label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="patientEmergencyContact" id="callEmergencyPatient" value="call" checked>
+                        <label class="btn btn-outline-danger" for="callEmergencyPatient">
+                            <i class="fas fa-phone me-1"></i>Call Me
+                        </label>
+                        <input type="radio" class="btn-check" name="patientEmergencyContact" id="smsEmergencyPatient" value="sms">
+                        <label class="btn btn-outline-danger" for="smsEmergencyPatient">
+                            <i class="fas fa-sms me-1"></i>Send SMS
+                        </label>
+                        <input type="radio" class="btn-check" name="patientEmergencyContact" id="whatsappEmergencyPatient" value="whatsapp">
+                        <label class="btn btn-outline-danger" for="whatsappEmergencyPatient">
+                            <i class="fab fa-whatsapp me-1"></i>WhatsApp
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Emergency Info Box -->
+                <div class="alert alert-warning py-2 small">
+                    <strong>📱 Emergency Services:</strong><br>
+                    <i class="fas fa-phone me-1"></i> <strong>999</strong> - Ambulance & Emergency<br>
+                    <i class="fas fa-map-marker me-1"></i> Dispatch will pinpoint your location<br>
+                    <i class="fas fa-clock me-1"></i> Average response: 8-10 minutes<br>
+                    <i class="fas fa-heartbeat me-1"></i> Stay calm and follow dispatcher instructions
+                </div>
+
+                <!-- Confirmation -->
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="patientEmergencyConfirm" required>
+                    <label class="form-check-label" for="patientEmergencyConfirm">
+                        I confirm this is a genuine emergency and the information above is accurate
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="callEmergencyServicesPatientBtn">
+                    <i class="fas fa-exclamation-circle me-1"></i>Call Emergency Services
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ===== STATE MANAGEMENT =====
+    const healthTipsState = {
+        cached: [],
+        lastFetchTime: 0,
+        cacheExpiry: 30000, // 30 seconds
+        isLoading: false
+    };
+
+    const doctorState = {
+        allDoctors: [],
+        currentPage: 1,
+        pageSize: 6,
+        totalDoctors: 0,
+        isLoading: false,
+        lastFetchTime: 0,
+        cacheExpiry: 60000 // 60 seconds
+    };
+
+    // ===== HEALTH TIPS MANAGEMENT =====
+    function loadHealthTips(force = false) {
+        // Check cache
+        if (!force && healthTipsState.cached.length > 0 && (Date.now() - healthTipsState.lastFetchTime) < healthTipsState.cacheExpiry) {
+            displayHealthTips(healthTipsState.cached);
+            return;
+        }
+
+        if (healthTipsState.isLoading) return;
+        healthTipsState.isLoading = true;
+
+        // Get patient ID from hidden input (most reliable)
+        let patientId = document.getElementById('patientIdInput')?.value || '';
+        patientId = patientId.trim();
+        
+        // Fallback to template variable
+        if (!patientId || patientId === 'None') {
+            patientId = '{{ patient.id if patient and patient.id else "" }}';
+            patientId = patientId.trim();
+        }
+        
+        // Final fallback: parse as integer and ensure it's valid
+        patientId = parseInt(patientId) || 0;
+        
+        if (patientId === 0) {
+            console.warn('Patient ID is 0 or invalid');
+        }
+        
+        fetch(`/api/health-tips/patient/${patientId}`)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                healthTipsState.cached = data.health_tips || [];
+                healthTipsState.lastFetchTime = Date.now();
+                displayHealthTips(healthTipsState.cached);
+            })
+            .catch(error => {
+                console.error('Error loading health tips:', error);
+                const container = document.getElementById('healthTipsContainer');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="alert alert-warning" role="alert">
+                            <strong>Unable to load health tips</strong><br>
+                            <small>${escapeHtml(error.message)}</small><br>
+                            <button class="btn btn-sm btn-primary mt-2" onclick="loadHealthTips(true)">Retry</button>
+                        </div>`;
+                }
+            })
+            .finally(() => {
+                healthTipsState.isLoading = false;
+            });
+    }
+
+    function displayHealthTips(tips) {
+        const container = document.getElementById('healthTipsContainer');
+        const countBadge = document.getElementById('healthTipsCount');
+        
+        if (!container || !countBadge) return;
+
+        countBadge.textContent = tips.length;
+        
+        if (tips.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4">
+                    <i class="fas fa-inbox fa-2x mb-3 opacity-50"></i>
+                    <p>No health tips yet. Your doctors will share personalized health tips here.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = '';
+        
+        tips.forEach((tip, index) => {
+            const dateStr = new Date(tip.created_at).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+            const timeStr = new Date(tip.created_at).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            const colors = ['info', 'success', 'warning', 'danger'];
+            const color = colors[index % colors.length];
+            
+            const tipElement = document.createElement('div');
+            tipElement.className = `alert alert-${color} mb-3`;
+            tipElement.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <h6 class="alert-heading mb-1">
+                            <i class="fas fa-stethoscope me-2"></i>${escapeHtml(tip.title)}
+                        </h6>
+                        <p class="mb-2">${escapeHtml(tip.description)}</p>
+                        <small class="d-block text-muted">
+                            <i class="fas fa-user-md me-1"></i> Dr. ${escapeHtml(tip.doctor_name || 'Your Doctor')}
+                            <br>
+                            <i class="fas fa-calendar me-1"></i> ${dateStr} at ${timeStr}
+                        </small>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(tipElement);
+        });
+    }
+
+    // ===== DOCTOR SEARCH =====
+    function loadDoctors(page = 1) {
+        if (doctorState.isLoading) return;
+
+        const searchQuery = document.getElementById('doctorSearchInput')?.value || '';
+        const specialty = document.getElementById('specialtyFilter')?.value || '';
+        const minRating = document.getElementById('ratingFilter')?.value || '';
+
+        doctorState.isLoading = true;
+        const container = document.getElementById('doctorsListContainer');
+
+        if (page === 1) {
+            container.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-2">Searching for doctors...</p>
+                </div>`;
+        }
+
+        let url = '/api/doctors?page=' + page + '&per_page=' + doctorState.pageSize;
+        if (searchQuery) url += '&search=' + encodeURIComponent(searchQuery);
+        if (specialty) url += '&specialty=' + encodeURIComponent(specialty);
+        if (minRating) url += '&min_rating=' + minRating;
+
+        fetch(url)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                doctorState.allDoctors = data.doctors || [];
+                doctorState.totalDoctors = data.total || 0;
+                doctorState.currentPage = page;
+
+                if (doctorState.allDoctors.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-search fa-3x mb-3 opacity-50"></i>
+                            <p>No doctors found matching your criteria.</p>
+                        </div>`;
+                } else {
+                    if (page === 1) container.innerHTML = '';
+                    
+                    doctorState.allDoctors.forEach(doctor => {
+                        const doctorCard = createDoctorCard(doctor);
+                        container.appendChild(doctorCard);
+                    });
+
+                    // Show/hide load more button
+                    const loadMoreContainer = document.getElementById('loadMoreDocsContainer');
+                    const totalShown = page * doctorState.pageSize;
+                    if (totalShown < doctorState.totalDoctors && loadMoreContainer) {
+                        loadMoreContainer.style.display = 'block';
+                    } else if (loadMoreContainer) {
+                        loadMoreContainer.style.display = 'none';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error loading doctors:', error);
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong>Error loading doctors</strong><br>
+                        <small>${escapeHtml(error.message)}</small>
+                    </div>`;
+            })
+            .finally(() => {
+                doctorState.isLoading = false;
+            });
+    }
+
+    function createDoctorCard(doctor) {
+        const card = document.createElement('div');
+        card.className = 'card mb-3';
+        card.style.borderRadius = '10px';
+        card.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+        
+        const rating = doctor.average_rating || 0;
+        const ratingStars = '⭐'.repeat(Math.floor(rating)) + (rating % 1 >= 0.5 ? '✨' : '');
+        
+        card.innerHTML = `
+            <div class="card-body p-3">
+                <div class="d-flex">
+                    <div class="flex-shrink-0">
+                        ${doctor.profile_picture_url ? 
+                            `<img src="${escapeHtml(doctor.profile_picture_url)}" alt="${escapeHtml(doctor.first_name)}" 
+                                  style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;">` :
+                            `<div style="width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #007bff, #0056b3); 
+                                        color: white; display: flex; align-items: center; justify-content: center; font-weight: bold;">
+                                ${(doctor.first_name?.[0] || 'D') + (doctor.last_name?.[0] || 'R')}
+                            </div>`
+                        }
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="mb-1">Dr. ${escapeHtml(doctor.first_name)} ${escapeHtml(doctor.last_name)}</h6>
+                        <p class="mb-1 text-muted small">
+                            <i class="fas fa-stethoscope me-1"></i>
+                            ${escapeHtml(doctor.specialization || 'General Practice')}
+                        </p>
+                        <div class="mb-2 small">
+                            ${ratingStars} <span class="text-muted">(${doctor.total_ratings || 0} reviews)</span>
+                        </div>
+                        <p class="mb-1 text-muted small">
+                            <i class="fas fa-clinic-medical me-1"></i>
+                            ${escapeHtml(doctor.department || 'General')} • 
+                            ${doctor.years_experience || 0}+ years experience
+                        </p>
+                        ${doctor.qualification ? `<p class="mb-0 text-muted small"><i class="fas fa-certificate me-1"></i>${escapeHtml(doctor.qualification)}</p>` : ''}
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-top d-flex gap-2">
+                    <button class="btn btn-sm btn-primary flex-grow-1" onclick="bookAppointment('${escapeHtml(doctor.user_id)}', '${escapeHtml(doctor.first_name)} ${escapeHtml(doctor.last_name)}')">
+                        <i class="fas fa-calendar-plus me-1"></i>Book Appointment
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="viewDoctorProfile('${escapeHtml(doctor.user_id)}')">
+                        <i class="fas fa-user me-1"></i>Profile
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        return card;
+    }
+
+    function bookAppointment(doctorId, doctorName) {
+        // Redirect to appointment booking with pre-selected doctor
+        window.location.href = `/patient/appointment?doctor=${doctorId}`;
+    }
+
+    function viewDoctorProfile(doctorId) {
+        // Open doctor profile
+        window.location.href = `/doctors/${doctorId}`;
+    }
+
+    // ===== EMERGENCY SERVICES =====
+    function initiateEmergencyCall() {
+        const location = document.getElementById('patientEmergencyLocation').value;
+        const severity = document.getElementById('patientEmergencySeverity').value;
+        const description = document.getElementById('patientEmergencyDescription').value;
+        const contactMethod = document.querySelector('input[name="patientEmergencyContact"]:checked').value;
+        const isConfirmed = document.getElementById('patientEmergencyConfirm').checked;
+
+        if (!location || !severity || !description || !isConfirmed) {
+            alert('Please fill in all required fields and confirm the emergency');
+            return;
+        }
+
+        // Log emergency action
+        const emergencyData = {
+            location: location,
+            severity: severity,
+            description: description,
+            contact_method: contactMethod,
+            timestamp: new Date().toISOString(),
+            user_role: 'patient'
+        };
+
+        // Save to backend for audit trail
+        fetch('/api/emergency-log', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf_token || ''
+            },
+            body: JSON.stringify(emergencyData)
+        })
+        .then(response => response.json())
+        .catch(error => console.error('Emergency log error:', error));
+
+        // Perform actual call/SMS/WhatsApp based on selection
+        if (contactMethod === 'call') {
+            performEmergencyCall(location, severity, description);
+        } else if (contactMethod === 'sms') {
+            sendEmergencySMS(location, severity, description);
+        } else if (contactMethod === 'whatsapp') {
+            sendEmergencyWhatsApp(location, severity, description);
+        }
+
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('emergencyModalPatient'));
+        if (modal) modal.hide();
+
+        // Show confirmation
+        showNotification('Emergency Alert Sent', 'Emergency services have been contacted. Stay calm and follow dispatcher instructions.', 'danger');
+
+        // Reset form
+        document.getElementById('patientEmergencyConfirm').checked = false;
+        document.getElementById('patientEmergencyLocation').value = '';
+        document.getElementById('patientEmergencySeverity').value = '';
+        document.getElementById('patientEmergencyDescription').value = '';
+    }
+
+    function performEmergencyCall(location, severity, description) {
+        if (window.socket && window.socket.connected) {
+            window.socket.emit('patient_emergency_call', {
+                location: location,
+                severity: severity,
+                description: description,
+                phone: '999'
+            });
+        } else {
+            // Fallback: Create clickable tel link
+            window.location.href = 'tel:999';
+        }
+        console.log('Emergency call initiated:', { location, severity, description });
+    }
+
+    function sendEmergencySMS(location, severity, description) {
+        const message = `EMERGENCY: Severity: ${severity}. Location: ${location}. ${description}`;
+        
+        fetch('/api/emergency-sms', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf_token || ''
+            },
+            body: JSON.stringify({
+                phone: '999',
+                message: message,
+                location: location,
+                severity: severity
+            })
+        })
+        .catch(error => console.error('SMS error:', error));
+
+        console.log('Emergency SMS sent:', { location, severity });
+    }
+
+    function sendEmergencyWhatsApp(location, severity, description) {
+        const message = `EMERGENCY: Severity: ${severity}. Location: ${location}. Symptoms: ${description}`;
+        const whatsappUrl = `https://api.whatsapp.com/send?phone=254999999999&text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
+        console.log('Emergency WhatsApp sent:', { location, severity });
+    }
+
+    // ===== UTILITY FUNCTIONS =====
+    function callNumber(phoneNumber) {
+        window.location.href = `tel:${phoneNumber}`;
+    }
+
+    function escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text || '').replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function showNotification(title, message, type = 'info') {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.setAttribute('role', 'alert');
+        alertDiv.innerHTML = `
+            <strong>${escapeHtml(title)}:</strong> ${escapeHtml(message)}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        let container = document.getElementById('notificationsContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notificationsContainer';
+            container.style.position = 'fixed';
+            container.style.top = '20px';
+            container.style.right = '20px';
+            container.style.zIndex = '9999';
+            container.style.maxWidth = '400px';
+            container.style.maxHeight = '80vh';
+            container.style.overflowY = 'auto';
+            document.body.appendChild(container);
+        }
+        
+        container.appendChild(alertDiv);
+        
+        // Auto-remove after 6 seconds
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 150);
+        }, 6000);
+    }
+
+    // ===== EVENT LISTENERS SETUP =====
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load health tips
+        loadHealthTips();
+
+        // Find Doctors modal initialization
+        const findDoctorsModal = document.getElementById('findDoctorsModal');
+        if (findDoctorsModal) {
+            findDoctorsModal.addEventListener('show.bs.modal', () => {
+                loadDoctors(1);
+            });
+
+            // Search and filter listeners
+            const searchInput = document.getElementById('doctorSearchInput');
+            const specialtyFilter = document.getElementById('specialtyFilter');
+            const ratingFilter = document.getElementById('ratingFilter');
+
+            if (searchInput) {
+                let searchTimeout;
+                searchInput.addEventListener('input', () => {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => loadDoctors(1), 500);
+                });
+            }
+
+            if (specialtyFilter) {
+                specialtyFilter.addEventListener('change', () => loadDoctors(1));
+            }
+
+            if (ratingFilter) {
+                ratingFilter.addEventListener('change', () => loadDoctors(1));
+            }
+
+            // Load more doctors button
+            const loadMoreBtn = document.getElementById('loadMoreDoctorsBtn');
+            if (loadMoreBtn) {
+                loadMoreBtn.addEventListener('click', () => {
+                    loadDoctors(doctorState.currentPage + 1);
+                });
+            }
+        }
+
+        // Emergency services modal initialization
+        const emergencyModal = document.getElementById('emergencyModalPatient');
+        if (emergencyModal) {
+            document.getElementById('callEmergencyServicesPatientBtn').addEventListener('click', initiateEmergencyCall);
+        }
+
+        // Real-time health tips updates via Socket.IO
+        if (typeof socket !== 'undefined') {
+            socket.on('new_health_tip', function(data) {
+                loadHealthTips(true);
+                showNotification('New Health Tip', `Dr. ${data.doctor_name} shared: ${data.title}`, 'info');
+            });
+            
+            socket.on('health_tip_updated', function(data) {
+                loadHealthTips(true);
+                showNotification('Health Tip Updated', `A health tip has been updated`, 'warning');
+            });
+            
+            socket.on('health_tip_deleted', function(data) {
+                loadHealthTips(true);
+                showNotification('Health Tip Removed', `A health tip has been removed`, 'info');
+            });
+        }
+    });
+
+    // ===== LEGACY FUNCTION STUBS =====
+    function joinConsultation(appointmentId) {
+        window.location.href = `/communication/appointment/${appointmentId}`;
+    }
+
+    function sendMessage(appointmentId) {
+        window.location.href = `/communication/appointment/${appointmentId}`;
+    }
+
+    function viewMedicalRecords() {
+        window.location.href = '/patient/medical-records';
+    }
+
+    function findDoctors() {
+        const modal = new bootstrap.Modal(document.getElementById('findDoctorsModal'));
+        modal.show();
+    }
+
+    // initialize bootstrap popovers for BMI badges
+    document.addEventListener('DOMContentLoaded', function(){
+        try{
+            var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+            popoverTriggerList.map(function (popoverTriggerEl) {
+                return new bootstrap.Popover(popoverTriggerEl)
+            })
+        }catch(e){
+            // ignore if bootstrap not available
+            console.error('Popover init failed', e)
+        }
+    });
+</script>
+{% endblock %}

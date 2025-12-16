@@ -1,0 +1,588 @@
+<!-- Modal for Call Logs -->
+<div class="modal fade" id="callLogsModal" tabindex="-1" aria-labelledby="callLogsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="border-bottom: 2px solid #e9ecef; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+        <div>
+          <h5 class="modal-title" id="callLogsModalLabel" style="font-weight: 600; color: #333;">📞 Call Logs</h5>
+          <small style="color: #666;">View all your calls — missed, incoming, and outgoing</small>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" title="Close (Esc)"></button>
+      </div>
+      <div class="modal-body p-0" style="overflow-y: auto; flex: 1;">
+        <div id="callLogsComponent" class="p-3">
+          <div class="d-flex justify-content-between align-items-center mb-3" style="gap: 12px;">
+            <div>
+              <h6 class="m-0" style="font-weight: 600; color: #333;">Call History</h6>
+              <small class="text-muted">Recent calls organized by date</small>
+            </div>
+            <div class="d-flex align-items-center gap-2" style="flex-wrap: wrap;">
+              <input id="callSearch" class="form-control form-control-sm" placeholder="Search by name..." style="min-width:180px; border-radius: 6px; border: 1px solid #ddd;" />
+              <div class="btn-group">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" style="border-radius: 6px;">Filter</button>
+                <ul class="dropdown-menu dropdown-menu-end p-2" style="border-radius: 8px;">
+                  <li><small class="d-block fw-semibold px-2 mb-2">Call Type</small></li>
+                  <div class="d-flex gap-2 flex-wrap px-2">
+                    <button class="btn btn-sm btn-outline-primary call-filter" data-filter="all" style="border-radius: 4px;">All</button>
+                    <button class="btn btn-sm btn-outline-info call-filter" data-filter="incoming" style="border-radius: 4px;">Incoming</button>
+                    <button class="btn btn-sm btn-outline-primary call-filter" data-filter="outgoing" style="border-radius: 4px;">Outgoing</button>
+                    <button class="btn btn-sm btn-outline-danger call-filter" data-filter="missed" style="border-radius: 4px;">Missed</button>
+                    <button class="btn btn-sm btn-outline-warning call-filter" data-filter="declined" style="border-radius: 4px;">Declined</button>
+                  </div>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div id="callLogsList" class="call-logs-list">
+            <div class="text-center py-5">
+              <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 30px; height: 30px;"><span class="visually-hidden">Loading...</span></div>
+              <div class="small text-muted mt-3">Loading your call logs...</div>
+            </div>
+          </div>
+
+          <div class="mt-3 d-flex justify-content-between align-items-center" style="border-top: 1px solid #e9ecef; padding-top: 12px;">
+            <div class="small text-muted" id="callLogsSummary" style="font-weight: 500;">Ready</div>
+            <div>
+              <button id="callLogsRefresh" class="btn btn-sm btn-outline-secondary" style="border-radius: 6px;">⟲ Refresh</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  #callLogsModal .call-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+
+  #callLogsModal .call-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  #callLogsModal .call-avatar-initials {
+    color: white;
+    font-weight: 600;
+    font-size: 18px;
+  }
+
+  #callLogsModal .call-log-item {
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    background: #fff;
+    transition: all 0.2s ease;
+    padding: 12px !important;
+  }
+
+  #callLogsModal .call-log-item:hover {
+    border-color: #0d6efd;
+    background: #f8f9fa;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.15);
+    transform: translateY(-1px);
+  }
+
+  #callLogsModal .call-group {
+    margin-bottom: 24px;
+  }
+
+  #callLogsModal .call-group > div:first-child {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+    padding: 8px 0;
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 12px;
+  }
+
+  #callLogsModal .call-logs-list {
+    min-height: 200px;
+  }
+
+  #callLogsModal .badge {
+    font-size: 11px;
+    padding: 4px 8px;
+    font-weight: 600;
+  }
+
+  #callLogsModal .btn-view,
+  #callLogsModal .btn-redial {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+  }
+
+  #callLogsModal .btn-redial {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    color: white;
+    border: none;
+  }
+
+  #callLogsModal .btn-redial:hover {
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a58ca 100%);
+    color: white;
+  }
+</style>
+
+<script>
+  (function(){
+    // ===== STATE MANAGEMENT =====
+    const state = {
+      cached: [],
+      activeFilter: 'all',
+      searchQuery: '',
+      currentPage: 1,
+      perPage: 25,
+      total: 0,
+      isLoading: false,
+      lastFetchTime: 0,
+      cacheExpiry: 30000 // 30 seconds
+    };
+
+    // ===== DOM ELEMENTS =====
+    const searchEl = document.getElementById('callSearch');
+    const listEl = document.getElementById('callLogsList');
+    const refreshBtn = document.getElementById('callLogsRefresh');
+    const summaryEl = document.getElementById('callLogsSummary');
+    const modalEl = document.getElementById('callLogsModal');
+
+    if (!listEl || !searchEl || !refreshBtn || !summaryEl || !modalEl) {
+      console.error('Call logs: required DOM elements missing');
+      return;
+    }
+
+    // ===== UTILITY FUNCTIONS =====
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+      return String(text || '').replace(/[&<>"']/g, c => map[c]);
+    }
+
+    function timeAgo(isoString) {
+      try {
+        const date = new Date(isoString);
+        if (isNaN(date.getTime())) return 'unknown';
+        const seconds = Math.floor((Date.now() - date) / 1000);
+        if (seconds < 60) return seconds + 's ago';
+        if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+        if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+        if (seconds < 172800) return 'Yesterday';
+        if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+        return date.toLocaleDateString();
+      } catch (e) {
+        console.warn('timeAgo error:', e);
+        return 'unknown';
+      }
+    }
+
+    function formatDuration(seconds) {
+      if (!seconds || seconds <= 0) return '—';
+      const s = Math.floor(Math.max(0, seconds));
+      const hours = Math.floor(s / 3600);
+      const minutes = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+      if (minutes > 0) return `${minutes}m ${secs}s`;
+      return `${secs}s`;
+    }
+
+    function getStatusBadge(status, endReason) {
+      const normalizedStatus = (status || '').toLowerCase();
+      const normalizedReason = (endReason || '').toLowerCase();
+      
+      if (normalizedStatus === 'missed' || normalizedReason === 'missed' || normalizedReason === 'unanswered') {
+        return '<span class="badge bg-danger" title="Call was not answered">Missed</span>';
+      }
+      if (normalizedStatus === 'declined' || normalizedStatus === 'rejected' || normalizedReason === 'callee_declined') {
+        return '<span class="badge bg-warning text-dark" title="Call was declined">Declined</span>';
+      }
+      if (normalizedStatus === 'connected' || normalizedReason === 'completed') {
+        return '<span class="badge bg-success" title="Call completed">Connected</span>';
+      }
+      if (normalizedStatus === 'initiated' || normalizedStatus === 'ringing' || normalizedReason === 'timeout') {
+        return '<span class="badge bg-info" title="Call timed out">No Answer</span>';
+      }
+      return `<span class="badge bg-secondary" title="${normalizedStatus}">${escapeHtml(normalizedStatus || 'Unknown')}</span>`;
+    }
+
+    function getDirectionIcon(direction) {
+      if (direction === 'outgoing') {
+        return '<i class="fas fa-arrow-up-right-from-square text-primary" title="Outgoing call"></i>';
+      }
+      return '<i class="fas fa-arrow-down-left fa-flip-horizontal text-info" title="Incoming call"></i>';
+    }
+
+    function createAvatar(item) {
+      const name = item.remote_user_name || 'U';
+      const initials = name.split(' ').map(p => p.charAt(0)).slice(0, 2).join('').toUpperCase();
+      
+      if (item.remote_user_avatar) {
+        return `
+          <div class="call-avatar" title="${escapeHtml(name)}">
+            <img src="${escapeHtml(item.remote_user_avatar)}" 
+                 alt="${escapeHtml(name)}" 
+                 onerror="this.parentElement.innerHTML='<div class=\\'call-avatar-initials\\'>${initials}</div>'"
+                 style="width:100%; height:100%; object-fit:cover;">
+          </div>`;
+      }
+      return `<div class="call-avatar call-avatar-initials" title="${escapeHtml(name)}">${initials}</div>`;
+    }
+
+    function createCallItem(callRecord) {
+      const container = document.createElement('div');
+      container.className = 'call-log-item d-flex align-items-center';
+      container.setAttribute('data-call-id', callRecord.id);
+
+      const duration = formatDuration(callRecord.duration);
+      const timeText = timeAgo(callRecord.created_at);
+      const callTypeEmoji = callRecord.call_type === 'video' ? '📹' : '🎤';
+      const statusBadge = getStatusBadge(callRecord.status, callRecord.end_reason);
+      const directionIcon = getDirectionIcon(callRecord.direction);
+
+      const html = `
+        ${createAvatar(callRecord)}
+        <div class="flex-grow-1 ms-3">
+          <div class="d-flex justify-content-between align-items-start" style="gap: 8px;">
+            <div style="min-width: 0;">
+              <div class="fw-bold" style="color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${escapeHtml(callRecord.remote_user_name || 'Unknown')}
+              </div>
+              <div class="small text-muted">${callTypeEmoji} ${callRecord.call_type === 'video' ? 'Video' : 'Voice'} • ${timeText}</div>
+            </div>
+            <div class="text-end" style="white-space: nowrap;">
+              ${statusBadge}
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-2 small" style="gap: 8px; flex-wrap: wrap;">
+            <span class="text-muted">${directionIcon} ${duration}</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-sm btn-outline-secondary btn-details" 
+                      data-call-id="${callRecord.id}"
+                      type="button"
+                      title="View call details">
+                <i class="fas fa-info-circle"></i>
+              </button>
+              <button class="btn btn-sm btn-redial" 
+                      data-doctor-id="${callRecord.remote_user_id}"
+                      data-doctor-name="${escapeHtml(callRecord.remote_user_name)}"
+                      type="button"
+                      title="Start new call">
+                <i class="fas fa-phone"></i>
+              </button>
+            </div>
+          </div>
+        </div>`;
+
+      container.innerHTML = html;
+
+      // Attach event listeners
+      container.querySelector('.btn-details')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showCallDetails(callRecord);
+      });
+
+      container.querySelector('.btn-redial')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const doctorId = e.target.closest('button').dataset.doctorId;
+        const doctorName = e.target.closest('button').dataset.doctorName;
+        initiateNewCall(doctorId, doctorName);
+      });
+
+      return container;
+    }
+
+    function showCallDetails(callRecord) {
+      const details = `
+        <strong>Call Details</strong><br>
+        <small>
+          <strong>Name:</strong> ${escapeHtml(callRecord.remote_user_name || 'Unknown')}<br>
+          <strong>Type:</strong> ${callRecord.call_type === 'video' ? 'Video Call' : 'Voice Call'}<br>
+          <strong>Direction:</strong> ${callRecord.direction === 'incoming' ? 'Incoming' : 'Outgoing'}<br>
+          <strong>Duration:</strong> ${formatDuration(callRecord.duration)}<br>
+          <strong>Status:</strong> ${callRecord.status || 'Unknown'}<br>
+          <strong>Time:</strong> ${new Date(callRecord.created_at).toLocaleString()}<br>
+          ${callRecord.call_note ? `<strong>Notes:</strong> ${escapeHtml(callRecord.call_note)}<br>` : ''}
+        </small>`;
+      
+      alert(details);
+    }
+
+    function initiateNewCall(doctorId, doctorName) {
+      if (!doctorId) {
+        alert('Unable to start call: doctor information missing');
+        return;
+      }
+
+      const currentUserId = document.getElementById('currentUserId')?.value;
+      const appointmentId = null; // Would need additional logic to find related appointment
+      
+      if (!currentUserId) {
+        alert('User session error. Please refresh the page.');
+        return;
+      }
+
+      console.log('Initiating call to doctor:', doctorName, 'ID:', doctorId);
+
+      // Emit through socket if available
+      if (window.socket && window.socket.connected) {
+        window.socket.emit('initiate_video_call', {
+          caller_id: currentUserId,
+          callee_id: doctorId,
+          appointment_id: appointmentId,
+          caller_name: document.getElementById('currentUserName')?.textContent || 'Patient'
+        });
+
+        // Show toast
+        if (window.InpageToasts) {
+          window.InpageToasts.show('Call', `Starting call with ${doctorName}...`);
+        }
+      } else {
+        alert('Not connected to server. Please refresh the page.');
+      }
+    }
+
+    function createDateGroup(title, items) {
+      const group = document.createElement('div');
+      group.className = 'call-group';
+      
+      const header = document.createElement('div');
+      header.className = 'd-flex justify-content-between align-items-center';
+      header.style.cssText = 'font-weight: 600; color: #333; font-size: 14px; padding: 8px 0; border-bottom: 2px solid #e9ecef; margin-bottom: 12px;';
+      header.innerHTML = `
+        <span>${title}</span>
+        <span class="small text-muted">${items.length} call${items.length > 1 ? 's' : ''}</span>`;
+      
+      group.appendChild(header);
+      items.forEach(item => group.appendChild(createCallItem(item)));
+      
+      return group;
+    }
+
+    function groupByDate(items) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const groups = {
+        'Today': [],
+        'Yesterday': [],
+        'This Week': [],
+        'Earlier': []
+      };
+
+      items.forEach(item => {
+        const itemDate = new Date(item.created_at);
+        itemDate.setHours(0, 0, 0, 0);
+        
+        const diffTime = today - itemDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) {
+          groups['Today'].push(item);
+        } else if (diffDays === 1) {
+          groups['Yesterday'].push(item);
+        } else if (diffDays < 7) {
+          groups['This Week'].push(item);
+        } else {
+          groups['Earlier'].push(item);
+        }
+      });
+
+      return groups;
+    }
+
+    function renderCallLogs(items) {
+      if (!items || items.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-center text-muted p-5" style="font-style: italic;">
+            <i class="fas fa-inbox" style="font-size: 36px; opacity: 0.3; display: block; margin-bottom: 12px;"></i>
+            No calls match your filters
+          </div>`;
+        return;
+      }
+
+      const groups = groupByDate(items);
+      listEl.innerHTML = '';
+
+      Object.keys(groups).forEach(key => {
+        if (groups[key].length > 0) {
+          listEl.appendChild(createDateGroup(key, groups[key]));
+        }
+      });
+    }
+
+    function applyFilters() {
+      const query = (searchEl.value || '').toLowerCase().trim();
+      
+      let filtered = state.cached.filter(item => {
+        // Apply type filter
+        if (state.activeFilter !== 'all') {
+          if (state.activeFilter === 'incoming' && item.direction !== 'incoming') return false;
+          if (state.activeFilter === 'outgoing' && item.direction !== 'outgoing') return false;
+          if (state.activeFilter === 'missed' && 
+              (item.status !== 'missed' && item.end_reason !== 'missed' && item.end_reason !== 'unanswered')) {
+            return false;
+          }
+          if (state.activeFilter === 'declined' && 
+              (item.status !== 'declined' && item.status !== 'rejected' && item.end_reason !== 'callee_declined')) {
+            return false;
+          }
+        }
+
+        // Apply search filter
+        if (query) {
+          const searchFields = [
+            item.remote_user_name || '',
+            item.call_note || '',
+            item.call_type || ''
+          ].join(' ').toLowerCase();
+          
+          return searchFields.includes(query);
+        }
+
+        return true;
+      });
+
+      renderCallLogs(filtered);
+      updateSummary(filtered.length);
+    }
+
+    function updateSummary(count) {
+      if (state.cached.length === 0) {
+        summaryEl.textContent = '📊 No calls yet';
+      } else {
+        summaryEl.textContent = `📊 ${count} of ${state.cached.length} call${state.cached.length > 1 ? 's' : ''}`;
+      }
+    }
+
+    async function fetchCallLogs(force = false) {
+      // Check cache validity
+      if (!force && state.cached.length > 0 && (Date.now() - state.lastFetchTime) < state.cacheExpiry) {
+        applyFilters();
+        return;
+      }
+
+      if (state.isLoading) return;
+
+      state.isLoading = true;
+      listEl.innerHTML = `
+        <div class="text-center py-5">
+          <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 30px; height: 30px;">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <div class="small text-muted mt-3">Loading your call logs...</div>
+        </div>`;
+
+      try {
+        const url = `/api/call_logs?page=${state.currentPage}&per_page=${state.perPage}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Session expired. Please login again.');
+          }
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.call_logs || !Array.isArray(data.call_logs)) {
+          throw new Error('Invalid response format');
+        }
+
+        state.cached = data.call_logs;
+        state.total = data.total || 0;
+        state.lastFetchTime = Date.now();
+        
+        applyFilters();
+      } catch (error) {
+        console.error('Call logs fetch error:', error);
+        listEl.innerHTML = `
+          <div class="alert alert-danger" role="alert" style="margin: 12px;">
+            <strong>Error loading call logs:</strong><br>
+            <small>${escapeHtml(error.message || 'Unknown error')}</small><br>
+            <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">Retry</button>
+          </div>`;
+        summaryEl.textContent = '⚠️ Error loading logs';
+      } finally {
+        state.isLoading = false;
+      }
+    }
+
+    // ===== EVENT LISTENERS =====
+    
+    // Debounce search input
+    let searchTimeout;
+    searchEl.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        state.searchQuery = searchEl.value;
+        applyFilters();
+      }, 300);
+    });
+
+    // Filter buttons
+    document.querySelectorAll('.call-filter').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        // Update button styling
+        document.querySelectorAll('.call-filter').forEach(b => {
+          b.classList.remove('active');
+          b.style.opacity = '1';
+        });
+        e.target.classList.add('active');
+        e.target.style.opacity = '0.8';
+        
+        state.activeFilter = e.target.dataset.filter || 'all';
+        applyFilters();
+      });
+    });
+
+    // Refresh button
+    refreshBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      refreshBtn.disabled = true;
+      refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
+      
+      fetchCallLogs(true).finally(() => {
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = '⟲ Refresh';
+      });
+    });
+
+    // Modal event listeners
+    if (modalEl) {
+      modalEl.addEventListener('shown.bs.modal', () => {
+        fetchCallLogs();
+      });
+
+      modalEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const bsModal = bootstrap.Modal.getInstance(modalEl);
+          if (bsModal) bsModal.hide();
+        }
+      });
+    }
+
+    // Initialize
+    setTimeout(() => fetchCallLogs(true), 100);
+  })();
+</script>

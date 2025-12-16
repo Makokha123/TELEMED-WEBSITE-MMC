@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Our Doctors - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block content %}
+<div class="container section-padding">
+    <div class="row mb-4">
+        <div class="col-12 text-center">
+            <h2 class="section-title">Our Doctors</h2>
+            <p class="section-subtitle">Browse our team of certified medical professionals</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        {% if doctors %}
+            {% for doctor, user in doctors %}
+            <div class="col-lg-4">
+                <div class="card doctor-card">
+                    <img src="{% if user.profile_picture %}{{ url_for('profile_picture', user_id=user.id) }}{% else %}https://via.placeholder.com/600x300?text=Doctor{% endif %}" class="doctor-image" alt="Dr. {{ user.get_display_name() }}">
+                    <div class="p-3">
+                        <h5>Dr. {{ user.get_display_name() }}</h5>
+                        <div class="doctor-specialty">{{ doctor.specialization }}</div>
+                        <div class="doctor-experience">{{ doctor.experience_years }} years experience</div>
+                        <p class="mt-2">KES {{ doctor.consultation_fee }} - <a href="{{ url_for('doctor_profile', doctor_id=doctor.id) }}">View profile</a></p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12 text-center">
+                <p class="text-muted">No doctors available at the moment.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
