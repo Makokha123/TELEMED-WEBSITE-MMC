@@ -1201,8 +1201,7 @@ def handle_end_call(data):
         }
 
 
-
-#
+def _uploads_rel_root():
     """Return uploads root relative to `static` (e.g. 'uploads')."""
     rel = app.config.get('UPLOAD_FOLDER', 'static/uploads').replace('\\', '/')
     if rel.startswith('static/'):
