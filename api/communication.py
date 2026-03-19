@@ -1,556 +1,263 @@
 """
-Real-Time Communication API Endpoints
-Handles call signaling, messaging, presence, and call history
+Call Logs & Quality Metrics API
+Unified endpoints for call history, statistics, and quality metrics.
+Used by doctors, patients, and admin dashboards.
 """
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from datetime import datetime, timezone, timedelta
 from models import (
-    db, User, Appointment, CallHistory, Message, Conversation, 
-    Attachment, CallQualityMetrics, UserPresence, Doctor, Patient
+    db, User, CallHistory, CallQualityMetrics, Doctor, Patient, Appointment
 )
 from sqlalchemy import and_, or_, desc, func
-import os
-import uuid
-from werkzeug.utils import secure_filename
 
-# Create Blueprint
 communication_bp = Blueprint('communication', __name__, url_prefix='/api')
 
-# ============================================
-# CALL HISTORY API
-# ============================================
 
-@communication_bp.route('/call-history', methods=['GET'])
+# ──────────────────────────────────────────────────────────
+# CALL LOGS  (unified endpoint for all roles)
+# ──────────────────────────────────────────────────────────
+
+@communication_bp.route('/call-logs', methods=['GET'])
 @login_required
-def get_call_history():
-    """Get call history for current user with filtering"""
-    try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        call_type = request.args.get('call_type', None)  # 'video' or 'voice'
-        status = request.args.get('status', None)
-        date_from = request.args.get('date_from', None)
-        date_to = request.args.get('date_to', None)
+def get_call_logs():
+    """Return call logs with comprehensive filtering.
 
-        query = CallHistory.query.filter(
-            or_(
+    Query params:
+        filter   – all | incoming | outgoing | missed | declined  (default: all)
+        call_type – voice | video
+        status   – completed | missed | declined | failed | ringing | connected | ended
+        start_date / end_date – YYYY-MM-DD inclusive range
+        doctor_id / patient_id – admin-only appointment-level filter
+        page     – pagination page (default 1)
+        per_page – items per page (default 25, max 100)
+    """
+    try:
+        page = min(max(request.args.get('page', 1, type=int), 1), 10000)
+        per_page = min(max(request.args.get('per_page', 25, type=int), 1), 100)
+        filter_by = (request.args.get('filter') or 'all').strip().lower()
+        call_type = (request.args.get('call_type') or '').strip().lower()
+        status_filter = (request.args.get('status') or '').strip().lower()
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        doctor_id = request.args.get('doctor_id', type=int)
+        patient_id = request.args.get('patient_id', type=int)
+
+        q = CallHistory.query
+
+        # Non-admins see only their own calls
+        if current_user.role != 'admin':
+            q = q.filter(or_(
                 CallHistory.caller_id == current_user.id,
                 CallHistory.callee_id == current_user.id
-            )
-        )
+            ))
 
-        # Apply filters
-        if call_type:
-            query = query.filter_by(call_type=call_type)
-        if status:
-            query = query.filter_by(status=status)
-        if date_from:
-            date_from_obj = datetime.fromisoformat(date_from)
-            query = query.filter(CallHistory.initiated_at >= date_from_obj)
-        if date_to:
-            date_to_obj = datetime.fromisoformat(date_to)
-            query = query.filter(CallHistory.initiated_at <= date_to_obj)
+        # Direction / disposition filter
+        if filter_by == 'incoming':
+            q = q.filter(CallHistory.callee_id == current_user.id)
+        elif filter_by == 'outgoing':
+            q = q.filter(CallHistory.caller_id == current_user.id)
+        elif filter_by == 'missed':
+            q = q.filter(CallHistory.end_reason.in_(
+                ['missed', 'unanswered', 'timeout']
+            ))
+        elif filter_by == 'declined':
+            q = q.filter(CallHistory.end_reason.in_(
+                ['callee_declined', 'declined', 'rejected']
+            ))
 
-        # Sort by most recent first
-        query = query.order_by(desc(CallHistory.initiated_at))
+        # Call type
+        if call_type in ('voice', 'video'):
+            q = q.filter(CallHistory.call_type == call_type)
 
-        # Paginate
-        pagination = query.paginate(page=page, per_page=per_page)
+        # Date range
+        if start_date:
+            try:
+                q = q.filter(CallHistory.initiated_at >= datetime.fromisoformat(start_date))
+            except (ValueError, TypeError):
+                pass
+        if end_date:
+            try:
+                q = q.filter(CallHistory.initiated_at < datetime.fromisoformat(end_date) + timedelta(days=1))
+            except (ValueError, TypeError):
+                pass
 
-        calls = [call.to_dict() for call in pagination.items]
+        # Admin appointment-level filters
+        if current_user.role == 'admin':
+            joined = False
+            if doctor_id is not None:
+                q = q.join(Appointment, Appointment.id == CallHistory.appointment_id)
+                joined = True
+                q = q.filter(Appointment.doctor_id == doctor_id)
+            if patient_id is not None:
+                if not joined:
+                    q = q.join(Appointment, Appointment.id == CallHistory.appointment_id)
+                q = q.filter(Appointment.patient_id == patient_id)
+
+        # Status filter
+        _status_map = {
+            'completed': lambda q: q.filter(or_(CallHistory.end_reason == 'user_hangup', CallHistory.status == 'ended', CallHistory.end_reason == 'completed')),
+            'missed':    lambda q: q.filter(CallHistory.end_reason.in_(['missed', 'unanswered', 'timeout'])),
+            'declined':  lambda q: q.filter(CallHistory.end_reason.in_(['rejected', 'declined', 'callee_declined', 'user_declined'])),
+            'failed':    lambda q: q.filter(CallHistory.end_reason.in_(['connection_failed', 'failed_network', 'network_error'])),
+            'busy':      lambda q: q.filter(CallHistory.end_reason == 'busy'),
+        }
+        if status_filter in _status_map:
+            q = _status_map[status_filter](q)
+        elif status_filter in ('ringing', 'accepted', 'connected', 'ended', 'initiated'):
+            q = q.filter(CallHistory.status == status_filter)
+
+        total = q.count()
+        items = q.order_by(desc(CallHistory.initiated_at)).offset(
+            (page - 1) * per_page
+        ).limit(per_page).all()
+
+        calls = []
+        for c in items:
+            d = c.to_dict()
+            # Ensure caller/callee names are always present for admin view
+            if current_user.role == 'admin':
+                caller = db.session.get(User, c.caller_id)
+                callee = db.session.get(User, c.callee_id)
+                d['caller_name'] = caller.get_display_name() if caller else 'Unknown'
+                d['callee_name'] = callee.get_display_name() if callee else 'Unknown'
+                d['remote_user_id'] = c.callee_id if c.caller_id == current_user.id else c.caller_id
+            calls.append(d)
 
         return jsonify({
             'success': True,
-            'calls': calls,
-            'total': pagination.total,
-            'pages': pagination.pages,
-            'current_page': page
+            'call_logs': calls,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': (total + per_page - 1) // per_page
         })
 
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 
-@communication_bp.route('/call-history/<int:call_id>', methods=['GET'])
+@communication_bp.route('/call-logs/<int:call_id>', methods=['GET'])
 @login_required
 def get_call_detail(call_id):
-    """Get detailed information about a specific call"""
+    """Get full detail for a single call including quality metrics."""
     try:
-        call = CallHistory.query.get(call_id)
+        call = db.session.get(CallHistory, call_id)
         if not call:
             return jsonify({'success': False, 'error': 'Call not found'}), 404
 
-        # Check access (only participants and admins can view)
-        if (current_user.id != call.caller_id and 
-            current_user.id != call.callee_id and 
-            current_user.role != 'admin'):
+        if (current_user.id != call.caller_id and
+                current_user.id != call.callee_id and
+                current_user.role != 'admin'):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
-        call_data = call.to_dict()
-        
-        # Include quality metrics
-        quality_metrics = CallQualityMetrics.query.filter_by(
-            call_id=call.call_id
-        ).all()
-        call_data['quality_metrics'] = [m.to_dict() for m in quality_metrics]
+        data = call.to_dict()
 
-        return jsonify({
-            'success': True,
-            'call': call_data
-        })
+        # Add both user names for detailed view
+        caller = db.session.get(User, call.caller_id)
+        callee = db.session.get(User, call.callee_id)
+        data['caller_name'] = caller.get_display_name() if caller else 'Unknown'
+        data['callee_name'] = callee.get_display_name() if callee else 'Unknown'
+
+        # Quality metrics for this call
+        metrics = CallQualityMetrics.query.filter_by(call_id=call.call_id).all()
+        data['quality_metrics_detailed'] = [m.to_dict() for m in metrics]
+
+        return jsonify({'success': True, 'call': data})
 
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return jsonify({'success': False, 'error': str(e)}), 400
 
+
+# ──────────────────────────────────────────────────────────
+# STATISTICS
+# ──────────────────────────────────────────────────────────
 
 @communication_bp.route('/call-statistics', methods=['GET'])
 @login_required
 def get_call_statistics():
-    """Get call statistics for current user"""
-    try:
-        # Time filters
-        period = request.args.get('period', '30d')  # 7d, 30d, 90d, all
-        
-        if period == '7d':
-            since = datetime.now(timezone.utc) - timedelta(days=7)
-        elif period == '30d':
-            since = datetime.now(timezone.utc) - timedelta(days=30)
-        elif period == '90d':
-            since = datetime.now(timezone.utc) - timedelta(days=90)
-        else:
-            since = None
+    """Aggregated call stats for the current user (or all calls for admin).
 
-        query = CallHistory.query.filter(
-            or_(
+    Query params:
+        period – 7d | 30d | 90d | all  (default 30d)
+    """
+    try:
+        period = (request.args.get('period') or '30d').strip().lower()
+        period_map = {'7d': 7, '30d': 30, '90d': 90}
+        since = None
+        if period in period_map:
+            since = datetime.now(timezone.utc) - timedelta(days=period_map[period])
+
+        base = CallHistory.query
+        if current_user.role != 'admin':
+            base = base.filter(or_(
                 CallHistory.caller_id == current_user.id,
                 CallHistory.callee_id == current_user.id
-            )
-        )
-
+            ))
         if since:
-            query = query.filter(CallHistory.initiated_at >= since)
+            base = base.filter(CallHistory.initiated_at >= since)
 
-        # Statistics
-        total_calls = query.count()
-        completed_calls = query.filter_by(status='ended').count()
-        missed_calls = query.filter_by(end_reason='missed').count()
-        declined_calls = query.filter_by(end_reason='callee_declined').count()
-        
-        video_calls = query.filter_by(call_type='video').count()
-        voice_calls = query.filter_by(call_type='voice').count()
+        total = base.count()
+        completed = base.filter(or_(
+            CallHistory.status == 'ended',
+            CallHistory.end_reason == 'user_hangup'
+        )).count()
+        missed = base.filter(CallHistory.end_reason.in_(['missed', 'timeout', 'unanswered'])).count()
+        declined = base.filter(CallHistory.end_reason.in_(['callee_declined', 'declined', 'rejected'])).count()
+        video = base.filter(CallHistory.call_type == 'video').count()
+        voice = base.filter(CallHistory.call_type == 'voice').count()
 
-        # Average duration
-        avg_duration_result = db.session.query(
+        avg_dur = base.filter(CallHistory.duration.isnot(None)).with_entities(
             func.avg(CallHistory.duration)
-        ).filter(
-            and_(
-                or_(
-                    CallHistory.caller_id == current_user.id,
-                    CallHistory.callee_id == current_user.id
-                ),
-                CallHistory.duration.isnot(None)
-            )
-        ).scalar() if since is None else query.filter(
-            CallHistory.duration.isnot(None)
-        ).with_entities(func.avg(CallHistory.duration)).scalar()
+        ).scalar()
 
-        avg_duration = int(avg_duration_result) if avg_duration_result else 0
+        # Longest call
+        longest = base.filter(CallHistory.duration.isnot(None)).with_entities(
+            func.max(CallHistory.duration)
+        ).scalar()
+
+        # Total talk time
+        total_talk = base.filter(CallHistory.duration.isnot(None)).with_entities(
+            func.sum(CallHistory.duration)
+        ).scalar()
 
         return jsonify({
             'success': True,
             'statistics': {
                 'period': period,
-                'total_calls': total_calls,
-                'completed_calls': completed_calls,
-                'missed_calls': missed_calls,
-                'declined_calls': declined_calls,
-                'video_calls': video_calls,
-                'voice_calls': voice_calls,
-                'average_duration': avg_duration
+                'total_calls': total,
+                'completed_calls': completed,
+                'missed_calls': missed,
+                'declined_calls': declined,
+                'video_calls': video,
+                'voice_calls': voice,
+                'average_duration': int(avg_dur) if avg_dur else 0,
+                'longest_call': int(longest) if longest else 0,
+                'total_talk_time': int(total_talk) if total_talk else 0
             }
         })
-
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 
-# ============================================
-# MESSAGING API
-# ============================================
-
-@communication_bp.route('/conversations', methods=['GET'])
-@login_required
-def get_conversations():
-    """Get all conversations for current user"""
-    try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-
-        # Query conversations where user is a participant
-        query = Conversation.query.filter(
-            Conversation.participant_ids.contains(str(current_user.id))
-        ).order_by(desc(Conversation.last_message_at))
-
-        pagination = query.paginate(page=page, per_page=per_page)
-
-        conversations = [conv.to_dict() for conv in pagination.items]
-
-        return jsonify({
-            'success': True,
-            'conversations': conversations,
-            'total': pagination.total,
-            'pages': pagination.pages
-        })
-
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-@communication_bp.route('/conversations/<int:conversation_id>/messages', methods=['GET'])
-@login_required
-def get_conversation_messages(conversation_id):
-    """Get messages in a conversation"""
-    try:
-        conversation = Conversation.query.get(conversation_id)
-        if not conversation:
-            return jsonify({'success': False, 'error': 'Conversation not found'}), 404
-
-        # Check access
-        if current_user.id not in conversation.participant_ids:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 50, type=int)
-
-        messages = Message.query.filter_by(
-            conversation_id=conversation_id
-        ).order_by(Message.created_at).paginate(
-            page=page, per_page=per_page
-        )
-
-        message_data = [msg.to_dict() for msg in messages.items]
-
-        return jsonify({
-            'success': True,
-            'messages': message_data,
-            'total': messages.total,
-            'pages': messages.pages
-        })
-
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-@communication_bp.route('/conversations/<int:conversation_id>/send-message', methods=['POST'])
-@login_required
-def send_message(conversation_id):
-    """Send a message in a conversation"""
-    try:
-        conversation = Conversation.query.get(conversation_id)
-        if not conversation:
-            return jsonify({'success': False, 'error': 'Conversation not found'}), 404
-
-        # Check access
-        if current_user.id not in conversation.participant_ids:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
-        data = request.get_json()
-        body = data.get('body', '').strip()
-        message_type = data.get('message_type', 'text')
-        call_id = data.get('call_id')
-
-        if not body and message_type == 'text':
-            return jsonify({'success': False, 'error': 'Message body required'}), 400
-
-        # Create message
-        message = Message(
-            message_id=str(uuid.uuid4()),
-            conversation_id=conversation_id,
-            sender_id=current_user.id,
-            body=body if message_type == 'text' else None,
-            message_type=message_type,
-            in_call=(call_id is not None),
-            call_id=call_id,
-            status='sent'
-        )
-
-        db.session.add(message)
-
-        # Update conversation last_message_at
-        conversation.last_message_at = datetime.now(timezone.utc)
-
-        db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'message': message.to_dict()
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-@communication_bp.route('/messages/<int:message_id>/mark-read', methods=['POST'])
-@login_required
-def mark_message_read(message_id):
-    """Mark a message as read"""
-    try:
-        message = Message.query.get(message_id)
-        if not message:
-            return jsonify({'success': False, 'error': 'Message not found'}), 404
-
-        # Check access
-        if message.conversation.participant_ids and current_user.id not in message.conversation.participant_ids:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
-        message.status = 'read'
-        message.read_at = datetime.now(timezone.utc)
-
-        db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'message': message.to_dict()
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-# ============================================
-# PRESENCE API
-# ============================================
-
-@communication_bp.route('/presence/update', methods=['POST'])
-@login_required
-def update_presence():
-    """Update user presence status"""
-    try:
-        data = request.get_json()
-        status = data.get('status', 'online')  # online, away, idle, busy, offline, do_not_disturb
-        current_call_id = data.get('current_call_id')
-        current_appointment_id = data.get('current_appointment_id')
-
-        # Get or create presence record
-        presence = UserPresence.query.filter_by(user_id=current_user.id).first()
-        if not presence:
-            presence = UserPresence(user_id=current_user.id)
-            db.session.add(presence)
-
-        presence.status = status
-        presence.current_call_id = current_call_id
-        presence.current_appointment_id = current_appointment_id
-        presence.last_heartbeat = datetime.now(timezone.utc)
-        presence.last_seen = datetime.now(timezone.utc)
-
-        db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'presence': presence.to_dict()
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-@communication_bp.route('/presence/<int:user_id>', methods=['GET'])
-@login_required
-def get_presence(user_id):
-    """Get presence status of a user"""
-    try:
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'}), 404
-
-        presence = UserPresence.query.filter_by(user_id=user_id).first()
-        if not presence:
-            # Return default offline status
-            return jsonify({
-                'success': True,
-                'presence': {
-                    'user_id': user_id,
-                    'status': 'offline',
-                    'last_seen': user.created_at.isoformat() if user.created_at else None
-                }
-            })
-
-        return jsonify({
-            'success': True,
-            'presence': presence.to_dict()
-        })
-
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-# ============================================
-# ATTACHMENT API
-# ============================================
-
-@communication_bp.route('/attachments/upload', methods=['POST'])
-@login_required
-def upload_attachment():
-    """Upload a file attachment"""
-    try:
-        if 'file' not in request.files:
-            return jsonify({'success': False, 'error': 'No file provided'}), 400
-
-        file = request.files['file']
-        call_id = request.form.get('call_id')
-        message_id = request.form.get('message_id')
-        access_control = request.form.get('access_control', 'private')
-
-        if file.filename == '':
-            return jsonify({'success': False, 'error': 'No file selected'}), 400
-
-        # Validate file size (max 50MB)
-        MAX_FILE_SIZE = 50 * 1024 * 1024
-        file.seek(0, 2)  # Seek to end
-        file_size = file.tell()
-        file.seek(0)  # Reset to beginning
-
-        if file_size > MAX_FILE_SIZE:
-            return jsonify({'success': False, 'error': 'File too large'}), 400
-
-        # Allowed extensions
-        ALLOWED_EXTENSIONS = {
-            'pdf', 'doc', 'docx', 'txt', 'xlsx', 'xls',
-            'jpg', 'jpeg', 'png', 'gif', 'webp',
-            'mp3', 'wav', 'm4a',
-            'mp4', 'mov', 'webm'
-        }
-
-        filename = secure_filename(file.filename)
-        file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
-
-        if file_ext not in ALLOWED_EXTENSIONS:
-            return jsonify({'success': False, 'error': 'File type not allowed'}), 400
-
-        # Generate S3 key
-        attachment_id = str(uuid.uuid4())
-        s3_key = f"attachments/{current_user.id}/{attachment_id}/{filename}"
-
-        # For now, save locally (integrate S3 in production)
-        upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'attachments')
-        os.makedirs(upload_folder, exist_ok=True)
-
-        file_path = os.path.join(upload_folder, attachment_id, filename)
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-        file.save(file_path)
-
-        # Create attachment record
-        attachment = Attachment(
-            attachment_id=attachment_id,
-            owner_id=current_user.id,
-            file_name=filename,
-            file_type=file.content_type or 'application/octet-stream',
-            file_size=file_size,
-            s3_key=s3_key,
-            s3_bucket='local',
-            file_url=f'/uploads/attachments/{attachment_id}/{filename}',
-            shared_in_call_id=call_id,
-            shared_in_message_id=message_id if message_id else None,
-            access_control=access_control,
-            is_encrypted=True
-        )
-
-        db.session.add(attachment)
-        db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'attachment': attachment.to_dict()
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-@communication_bp.route('/attachments/<attachment_id>', methods=['GET'])
-@login_required
-def get_attachment(attachment_id):
-    """Get attachment details"""
-    try:
-        attachment = Attachment.query.filter_by(
-            attachment_id=attachment_id
-        ).first()
-
-        if not attachment:
-            return jsonify({'success': False, 'error': 'Attachment not found'}), 404
-
-        # Check access based on access_control
-        if attachment.access_control == 'private' and attachment.owner_id != current_user.id:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
-        return jsonify({
-            'success': True,
-            'attachment': attachment.to_dict()
-        })
-
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-# ============================================
-# QUALITY METRICS API
-# ============================================
+# ──────────────────────────────────────────────────────────
+# QUALITY METRICS
+# ──────────────────────────────────────────────────────────
 
 @communication_bp.route('/calls/<call_id>/quality-metrics', methods=['POST'])
 @login_required
 def submit_quality_metrics(call_id):
-    """Submit quality metrics for a call"""
+    """Submit quality metrics for a call (client-side WebRTC stats)."""
     try:
         call = CallHistory.query.filter_by(call_id=call_id).first()
         if not call:
             return jsonify({'success': False, 'error': 'Call not found'}), 404
 
-        # Check access
-        if (current_user.id != call.caller_id and 
-            current_user.id != call.callee_id):
+        if current_user.id not in (call.caller_id, call.callee_id):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
-        data = request.get_json()
+        data = request.get_json() or {}
 
         metrics = CallQualityMetrics(
             call_id=call_id,
@@ -569,13 +276,11 @@ def submit_quality_metrics(call_id):
             video_quality=data.get('video_quality'),
             timestamp=datetime.now(timezone.utc)
         )
-
         db.session.add(metrics)
 
-        # Update call's overall quality metrics in JSON
+        # Update JSON summary on CallHistory
         if not call.quality_metrics:
             call.quality_metrics = {}
-
         call.quality_metrics[str(current_user.id)] = {
             'rtt': metrics.rtt,
             'packet_loss': metrics.packet_loss,
@@ -584,44 +289,64 @@ def submit_quality_metrics(call_id):
         }
 
         db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'metrics': metrics.to_dict()
-        })
+        return jsonify({'success': True, 'metrics': metrics.to_dict()})
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 
 @communication_bp.route('/calls/<call_id>/quality-metrics', methods=['GET'])
 @login_required
 def get_quality_metrics(call_id):
-    """Get quality metrics for a call"""
+    """Retrieve quality metrics for a specific call."""
     try:
         call = CallHistory.query.filter_by(call_id=call_id).first()
         if not call:
             return jsonify({'success': False, 'error': 'Call not found'}), 404
 
-        # Check access
-        if (current_user.id != call.caller_id and 
-            current_user.id != call.callee_id and
-            current_user.role != 'admin'):
+        if (current_user.id not in (call.caller_id, call.callee_id) and
+                current_user.role != 'admin'):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
         metrics = CallQualityMetrics.query.filter_by(call_id=call_id).all()
+        return jsonify({'success': True, 'metrics': [m.to_dict() for m in metrics]})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+# ──────────────────────────────────────────────────────────
+# MISSED-CALL NOTIFICATIONS  (polled by browser)
+# ──────────────────────────────────────────────────────────
+
+@communication_bp.route('/missed-calls', methods=['GET'])
+@login_required
+def get_missed_calls():
+    """Return recent missed calls for browser notification polling.
+
+    Query params:
+        since – ISO datetime; only return calls after this time (default: last 5 min)
+    """
+    try:
+        since_str = request.args.get('since')
+        if since_str:
+            try:
+                since = datetime.fromisoformat(since_str)
+            except (ValueError, TypeError):
+                since = datetime.now(timezone.utc) - timedelta(minutes=5)
+        else:
+            since = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+        calls = CallHistory.query.filter(
+            CallHistory.callee_id == current_user.id,
+            CallHistory.end_reason.in_(['missed', 'timeout', 'unanswered']),
+            CallHistory.initiated_at >= since
+        ).order_by(desc(CallHistory.initiated_at)).limit(20).all()
 
         return jsonify({
             'success': True,
-            'metrics': [m.to_dict() for m in metrics]
+            'missed_calls': [c.to_dict() for c in calls]
         })
-
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return jsonify({'success': False, 'error': str(e)}), 400

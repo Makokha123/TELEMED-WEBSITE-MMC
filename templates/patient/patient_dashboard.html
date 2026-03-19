@@ -77,15 +77,15 @@
                             </p>
                         </div>
                         <div class="col-md-4 text-end">
-                            <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+                            <div class="profile-header-end">
                                 {% if current_user.profile_picture %}
-                                    <img src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile" style="width:64px;height:64px;border-radius:50%;object-fit:cover;" />
+                                    <img src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile" class="avatar-img-lg" />
                                 {% else %}
                                     <i class="fas fa-heartbeat fa-4x opacity-50"></i>
                                 {% endif %}
                                 <div>
                                     <form id="uploadPicFormPatient" enctype="multipart/form-data">
-                                        <input type="file" name="file" id="patientProfileFile" accept="image/*" style="display:none;" />
+                                        <input type="file" name="file" id="patientProfileFile" accept="image/*" class="initially-hidden" title="Upload profile photo" aria-label="Upload profile photo" />
                                         <button type="button" class="btn btn-light btn-sm" id="uploadPicBtnPatient">Upload Photo</button>
                                     </form>
                                 </div>
@@ -134,7 +134,7 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card quick-action-card border-left-info" data-bs-toggle="modal" data-bs-target="#findDoctorsModal" style="cursor: pointer;">
+            <div class="card quick-action-card border-left-info cursor-pointer" data-bs-toggle="modal" data-bs-target="#findDoctorsModal">
                 <div class="card-body">
                     <i class="fas fa-user-md fa-3x text-warning mb-3"></i>
                     <h5 class="card-title">Find Doctors</h5>
@@ -187,7 +187,7 @@
                             <div class="row align-items-center">
                                 <div class="col-auto">
                                     {% if appointment.doctor and appointment.doctor.user %}
-                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" class="user-avatar-50">
                                     {% else %}
                                         <div class="doctor-avatar">DR</div>
                                     {% endif %}
@@ -195,11 +195,14 @@
                                 <div class="col">
                                     <h6 class="mb-1">
                                         {% if appointment.doctor and appointment.doctor.user %}
-                                            Dr. {{ appointment.doctor.user.first_name }} {{ appointment.doctor.user.last_name }}
+                                            {{ appointment.doctor.user.title or 'Dr.' }} {{ appointment.doctor.user.first_name }} {{ appointment.doctor.user.last_name }}
                                         {% else %}
                                             Doctor
                                         {% endif %}
                                     </h6>
+                                    {% if appointment.doctor and appointment.doctor.practitioner_type %}
+                                    <p class="mb-0 text-primary small fw-semibold">{{ appointment.doctor.practitioner_type }}</p>
+                                    {% endif %}
                                     <p class="mb-1 text-muted">
                                         <i class="fas fa-stethoscope me-1"></i>
                                         {% if appointment.doctor and appointment.doctor.specialization %}
@@ -327,15 +330,15 @@
                     <div class="row">
                         <div class="col-md-6">
                             <h6>Recent Medications</h6>
-                            <ul class="list-unstyled">
+                            <div class="list-unstyled" role="list">
                                 {% if medications %}
                                     {% for m in medications %}
-                                        <li><i class="fas fa-pills text-primary me-2"></i>{{ m }}</li>
+                                        <div role="listitem"><i class="fas fa-pills text-primary me-2"></i>{{ m }}</div>
                                     {% endfor %}
                                 {% else %}
-                                    <li class="text-muted">No medications listed</li>
+                                    <div class="text-muted" role="listitem">No medications listed</div>
                                 {% endif %}
-                            </ul>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <h6>Allergies</h6>
@@ -486,7 +489,7 @@
 <div class="modal fade" id="findDoctorsModal" tabindex="-1" aria-labelledby="findDoctorsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #007bff, #0056b3); color: white;">
+            <div class="modal-header modal-header-blue">
                 <h5 class="modal-title" id="findDoctorsModalLabel">
                     <i class="fas fa-user-md me-2"></i>Find Doctors
                 </h5>
@@ -496,11 +499,11 @@
                 <!-- Search and Filter Section -->
                 <div class="row mb-3">
                     <div class="col-md-6 mb-2">
-                        <input type="text" class="form-control" id="doctorSearchInput" placeholder="Search by name or specialization..." 
-                               style="border-radius: 25px; padding: 10px 15px;">
+                        <input type="text" class="form-control search-rounded" id="doctorSearchInput" placeholder="Search by name or specialization..."
+                               title="Search doctors" aria-label="Search doctors">
                     </div>
                     <div class="col-md-3 mb-2">
-                        <select class="form-control" id="specialtyFilter" style="border-radius: 25px;">
+                        <select class="form-control select-rounded" id="specialtyFilter" title="Filter by specialty" aria-label="Filter by specialty">
                             <option value="">All Specialties</option>
                             <option value="cardiology">Cardiology</option>
                             <option value="neurology">Neurology</option>
@@ -511,7 +514,7 @@
                         </select>
                     </div>
                     <div class="col-md-3 mb-2">
-                        <select class="form-control" id="ratingFilter" style="border-radius: 25px;">
+                        <select class="form-control select-rounded" id="ratingFilter" title="Filter by rating" aria-label="Filter by rating">
                             <option value="">All Ratings</option>
                             <option value="5">⭐⭐⭐⭐⭐ 5 Stars</option>
                             <option value="4">⭐⭐⭐⭐ 4+ Stars</option>
@@ -531,7 +534,7 @@
                 </div>
 
                 <!-- Load More Button -->
-                <div class="text-center mt-3" id="loadMoreDocsContainer" style="display: none;">
+                <div class="text-center mt-3 initially-hidden" id="loadMoreDocsContainer">
                     <button class="btn btn-outline-primary" id="loadMoreDoctorsBtn">Load More Doctors</button>
                 </div>
             </div>
@@ -543,7 +546,7 @@
 <div class="modal fade" id="emergencyModalPatient" tabindex="-1" aria-labelledby="emergencyModalLabelPatient" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-danger">
-            <div class="modal-header" style="background-color: #dc3545; color: white;">
+            <div class="modal-header modal-header-danger-bg">
                 <h5 class="modal-title" id="emergencyModalLabelPatient">
                     <i class="fas fa-exclamation-triangle me-2"></i>Emergency Services
                 </h5>

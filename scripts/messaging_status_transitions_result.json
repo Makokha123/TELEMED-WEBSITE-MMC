@@ -1,0 +1,53 @@
+{
+  "setup": {
+    "appointment_id": 2,
+    "doctor_user_id": 2,
+    "patient_user_id": 10
+  },
+  "transitions": {
+    "Failed->Sent": {
+      "result": "PASS",
+      "passed": true,
+      "details": {
+        "network_down_simulated": true,
+        "offline_emit_exception": "not connected",
+        "reconnected": true,
+        "message_ack_received": false,
+        "receiver_got_message": false,
+        "count_before": 28,
+        "count_after_offline_attempt": 28,
+        "count_after_online_send": 29,
+        "before_max_message_id": 38,
+        "message_id": 39,
+        "message_found_by_db_delta": true,
+        "send_latency_ms": 20240.49
+      }
+    },
+    "Sent->Delivered": {
+      "result": "PASS",
+      "passed": true,
+      "details": {
+        "delivered_event_seen": false,
+        "delivered_event_name": null,
+        "delivered_payload": null,
+        "db_message_status_after_delivery_check": "delivered"
+      }
+    },
+    "Delivered->Read": {
+      "result": "FAIL",
+      "passed": false,
+      "details": {
+        "read_event_seen": false,
+        "read_event_name": null,
+        "read_payload": null,
+        "db_final_status": "read",
+        "final_status_locked": true
+      }
+    }
+  },
+  "artifacts": {
+    "message_id": 39,
+    "content": "STATUS_TRANSITION_1773916201"
+  },
+  "errors": []
+}

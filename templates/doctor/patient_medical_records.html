@@ -41,7 +41,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Add Medical Record</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form id="recordForm" enctype="multipart/form-data">
@@ -49,15 +49,15 @@
           <input type="hidden" name="record_id" id="record_id" value="">
           <div class="mb-3">
             <label class="form-label">Type</label>
-            <input class="form-control" name="record_type" required>
+            <input class="form-control" name="record_type" required title="Record type" placeholder="Enter record type">
           </div>
           <div class="mb-3">
             <label class="form-label">Description</label>
-            <textarea class="form-control" name="description" rows="4"></textarea>
+            <textarea class="form-control" name="description" rows="4" title="Record description" placeholder="Enter description"></textarea>
           </div>
           <div class="mb-3">
             <label class="form-label">File (optional)</label>
-            <input type="file" name="file" class="form-control">
+            <input type="file" name="file" class="form-control" title="Attach file">
           </div>
         </form>
       </div>

@@ -79,15 +79,15 @@
                             </p>
                         </div>
                         <div class="col-md-4 text-end">
-                            <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+                            <div class="profile-header-end">
                                 {% if current_user.profile_picture %}
-                                    <img src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile" style="width:64px;height:64px;border-radius:50%;object-fit:cover;" />
+                                    <img src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile" class="avatar-img-lg" />
                                 {% else %}
                                     <i class="fas fa-user-md fa-4x opacity-50"></i>
                                 {% endif %}
                                 <div>
                                     <form id="uploadPicFormDoctor" enctype="multipart/form-data">
-                                        <input type="file" name="file" id="doctorProfileFile" accept="image/*" style="display:none;" />
+                                        <input type="file" name="file" id="doctorProfileFile" accept="image/*" class="initially-hidden" title="Upload profile photo" aria-label="Upload profile photo" />
                                         <button type="button" class="btn btn-light btn-sm" id="uploadPicBtnDoctor">Upload Photo</button>
                                     </form>
                                 </div>
@@ -124,7 +124,7 @@
             </a>
         </div>
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card quick-action-card border-left-info" data-bs-toggle="modal" data-bs-target="#prescriptionModal" style="cursor: pointer;">
+            <div class="card quick-action-card border-left-info cursor-pointer" data-bs-toggle="modal" data-bs-target="#prescriptionModal">
                 <div class="card-body">
                     <i class="fas fa-file-prescription fa-3x text-info mb-3"></i>
                     <h5 class="card-title">Prescriptions</h5>
@@ -133,7 +133,7 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card quick-action-card border-left-warning" data-bs-toggle="modal" data-bs-target="#reportsModal" style="cursor: pointer;">
+            <div class="card quick-action-card border-left-warning cursor-pointer" data-bs-toggle="modal" data-bs-target="#reportsModal">
                 <div class="card-body">
                     <i class="fas fa-chart-bar fa-3x text-warning mb-3"></i>
                     <h5 class="card-title">Reports</h5>
@@ -162,7 +162,7 @@
                                 <div class="row align-items-center">
                                     <div class="col-auto">
                                         {% if appointment.patient.user.profile_picture %}
-                                            <img src="{{ url_for('profile_picture', user_id=appointment.patient.user_id) }}" alt="Patient" style="width:50px;height:50px;border-radius:50%;object-fit:cover;" />
+                                            <img src="{{ url_for('profile_picture', user_id=appointment.patient.user_id) }}" alt="Patient" class="appt-patient-img" />
                                         {% else %}
                                             <div class="patient-avatar">
                                                 {{ appointment.patient.user.first_name[0] }}{{ appointment.patient.user.last_name[0] }}
@@ -240,24 +240,26 @@
                         <div class="col-md-6">
                             <h6>Recent Activity</h6>
                             <div class="{% if recent_activity|length >= 5 %}scrollable-activity{% endif %}">
-                                <ul class="list-unstyled">
-                                    {% if recent_activity %}
+                                {% if recent_activity %}
+                            <div class="list-unstyled" role="list">
                                         {% for act in recent_activity %}
-                                            <li class="d-flex align-items-center gap-2 mb-2">
+                                            <div class="d-flex align-items-center gap-2 mb-2" role="listitem">
                                                 {% if act.user and act.user.profile_picture %}
-                                                    <img src="{{ url_for('profile_picture', user_id=act.user.id) }}" alt="User" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
+                                                    <img src="{{ url_for('profile_picture', user_id=act.user.id) }}" alt="User" class="activity-user-img" />
                                                 {% elif act.user %}
-                                                    <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#28a745,#20c997);color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.8em;flex-shrink:0;">{{ act.user.first_name[0] if act.user.first_name else 'U' }}</div>
+                                                    <div class="activity-user-initial">{{ act.user.first_name[0] if act.user.first_name else 'U' }}</div>
                                                 {% else %}
-                                                    <i class="fas fa-{{ 'file-medical' if act.type == 'record' else 'comment' }} text-primary me-2 flex-shrink-0" style="width:32px;"></i>
+                                                    <i class="fas fa-{{ 'file-medical' if act.type == 'record' else 'comment' }} text-primary me-2 flex-shrink-0 activity-icon-w"></i>
                                                 {% endif %}
-                                                <span style="font-size:0.9em;">{{ act.text }}</span>
-                                            </li>
+                                                <span class="activity-text-sm">{{ act.text }}</span>
+                                            </div>
                                         {% endfor %}
-                                    {% else %}
-                                        <li class="text-muted">No recent activity</li>
-                                    {% endif %}
-                                </ul>
+                            </div>
+                            {% else %}
+                            <div class="list-unstyled" role="list">
+                                        <div class="text-muted" role="listitem">No recent activity</div>
+                            </div>
+                            {% endif %}
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -299,9 +301,9 @@
                                 <div class="list-group-item px-0">
                                     <div class="d-flex">
                                         <div class="flex-shrink-0">
-                                            <div class="patient-avatar" style="width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; overflow: hidden;">
+                                            <div class="recent-patient-avatar">
                                                 {% if patient.user.profile_picture_url %}
-                                                    <img src="{{ patient.user.profile_picture_url }}" alt="{{ patient.user.first_name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                                                    <img src="{{ patient.user.profile_picture_url }}" alt="{{ patient.user.first_name }}" class="recent-patient-avatar-img">
                                                 {% else %}
                                                     {{ patient.user.first_name[0] }}{{ patient.user.last_name[0] }}
                                                 {% endif %}
@@ -350,7 +352,7 @@
                     <div class="mb-3">
                         <label class="form-label">Next Available Slot</label>
                         <div class="input-group">
-                            <input type="datetime-local" class="form-control" value="2024-01-20T10:00">
+                            <input type="datetime-local" class="form-control" value="2024-01-20T10:00" aria-label="Next available appointment slot">
                             <button class="btn btn-outline-primary">Set</button>
                         </div>
                     </div>
@@ -479,7 +481,7 @@
 <div class="modal fade" id="prescriptionModal" tabindex="-1" aria-labelledby="prescriptionModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #28a745, #20c997); color: white;">
+            <div class="modal-header modal-header-green">
                 <h5 class="modal-title" id="prescriptionModalLabel">
                     <i class="fas fa-file-prescription me-2"></i>Create Prescription
                 </h5>
@@ -553,7 +555,7 @@
 <div class="modal fade" id="reportsModal" tabindex="-1" aria-labelledby="reportsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #ffc107, #ff9800); color: white;">
+            <div class="modal-header modal-header-amber">
                 <h5 class="modal-title" id="reportsModalLabel">
                     <i class="fas fa-chart-bar me-2"></i>Practice Reports & Analytics
                 </h5>
@@ -597,11 +599,11 @@
                             <div class="card-body">
                                 <div class="row text-center">
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #007bff;" id="totalConsultations">0</div>
+                                        <div class="stat-metric stat-metric-blue" id="totalConsultations">0</div>
                                         <small class="text-muted">Total</small>
                                     </div>
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #28a745;" id="avgRating">4.8</div>
+                                        <div class="stat-metric stat-metric-green" id="avgRating">4.8</div>
                                         <small class="text-muted">Avg Rating</small>
                                     </div>
                                 </div>
@@ -618,11 +620,11 @@
                             <div class="card-body">
                                 <div class="row text-center">
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #28a745;" id="totalRevenue">Ksh 0</div>
+                                        <div class="stat-metric stat-metric-green" id="totalRevenue">Ksh 0</div>
                                         <small class="text-muted">Total</small>
                                     </div>
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #ffc107;" id="avgConsultationFee">Ksh 0</div>
+                                        <div class="stat-metric stat-metric-yellow" id="avgConsultationFee">Ksh 0</div>
                                         <small class="text-muted">Avg Fee</small>
                                     </div>
                                 </div>
@@ -639,11 +641,11 @@
                             <div class="card-body">
                                 <div class="row text-center">
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #0dcaf0;" id="totalPrescriptions">0</div>
+                                        <div class="stat-metric stat-metric-cyan" id="totalPrescriptions">0</div>
                                         <small class="text-muted">Total</small>
                                     </div>
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #6f42c1;" id="avgMedsPerPrescription">0</div>
+                                        <div class="stat-metric stat-metric-purple" id="avgMedsPerPrescription">0</div>
                                         <small class="text-muted">Avg Medications</small>
                                     </div>
                                 </div>
@@ -660,11 +662,11 @@
                             <div class="card-body">
                                 <div class="row text-center">
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #ff9800;" id="totalUniquePatients">0</div>
+                                        <div class="stat-metric stat-metric-orange" id="totalUniquePatients">0</div>
                                         <small class="text-muted">Unique</small>
                                     </div>
                                     <div class="col-6">
-                                        <div style="font-size: 24px; font-weight: bold; color: #e74c3c;" id="newPatientsCount">0</div>
+                                        <div class="stat-metric stat-metric-red" id="newPatientsCount">0</div>
                                         <small class="text-muted">New</small>
                                     </div>
                                 </div>
@@ -679,7 +681,7 @@
                     <div class="table-responsive">
                         <table class="table table-sm table-hover" id="consultationTable">
                             <thead>
-                                <tr style="background-color: #f8f9fa;">
+                                <tr class="table-row-alt">
                                     <th>Patient</th>
                                     <th>Type</th>
                                     <th>Date</th>
@@ -708,7 +710,7 @@
 <div class="modal fade" id="emergencyModal" tabindex="-1" aria-labelledby="emergencyModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-danger">
-            <div class="modal-header" style="background-color: #dc3545; color: white;">
+            <div class="modal-header modal-header-danger-bg">
                 <h5 class="modal-title" id="emergencyModalLabel">
                     <i class="fas fa-exclamation-triangle me-2"></i>Emergency Services
                 </h5>

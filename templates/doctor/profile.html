@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dr. {{ user.first_name }} {{ user.last_name }} - MAKOKHA MEDICAL CENTRE{% endblock %}
+{% block title %}{{ user.title or 'Dr.' }} {{ user.first_name }} {{ user.last_name }} - MAKOKHA MEDICAL CENTRE{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -138,15 +138,18 @@
     <div class="profile-header">
         <div class="profile-avatar">
             {% if user.profile_picture %}
-                <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="{{ user.get_display_name() }}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;" />
+                <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="{{ user.get_display_name() }}" class="profile-img-xl" />
             {% else %}
                 {{ user.first_name[0] }}{{ user.last_name[0] }}
             {% endif %}
         </div>
         <div class="profile-info">
-            <h2>Dr. {{ user.first_name }} {{ user.last_name }}</h2>
+            <h2>{{ user.title or 'Dr.' }} {{ user.first_name }} {{ user.last_name }}</h2>
+            {% if doctor.practitioner_type %}
+            <div class="text-light fw-semibold mb-1">{{ doctor.practitioner_type }}</div>
+            {% endif %}
             <div class="specialization">{{ doctor.specialization }}</div>
-            <div style="margin-bottom:8px;">
+            <div class="mb-8px">
                 <span class="text-warning">
                     {% set avg = doctor.average_rating if doctor and doctor.average_rating else 0 %}
                     {% for i in range(avg|int) %}
@@ -161,7 +164,7 @@
                     <span id="ratingsCount" class="ms-2"></span>
                 </small>
             </div>
-            <p style="margin-bottom: 20px;">
+            <p class="profile-bio">
                 <span class="online-indicator"></span>
                 Available for consultations
             </p>
@@ -180,7 +183,7 @@
             <div class="ms-3">
                 <form id="uploadPictureForm" enctype="multipart/form-data">
                     {{ csrf_token() }}
-                    <input type="file" name="file" id="profileFileInput" accept="image/*" style="display:none;" />
+                    <input type="file" name="file" id="profileFileInput" accept="image/*" class="initially-hidden" title="Upload profile photo" aria-label="Upload profile photo" />
                     <input type="hidden" name="user_id" value="{% if current_user.role == 'admin' %}{{ user.id }}{% endif %}">
                     <button type="button" class="btn btn-outline-light" id="uploadPictureBtn"><i class="fas fa-upload"></i> Upload Photo</button>
                 </form>
@@ -194,6 +197,14 @@
         <h3><i class="fas fa-certificate me-2"></i>Qualifications</h3>
         <p>{{ doctor.qualifications }}</p>
     </div>
+
+    {% if doctor.awards %}
+    <!-- Awards Card -->
+    <div class="info-card">
+        <h3><i class="fas fa-award me-2"></i>Awards &amp; Merits</h3>
+        <p>{{ doctor.awards }}</p>
+    </div>
+    {% endif %}
 
     <!-- Details Card -->
     <div class="info-card">
@@ -239,7 +250,7 @@
 </div>
 
 <!-- Reviews Section -->
-<div class="info-card" id="reviewsCard" style="display:none;">
+<div class="info-card initially-hidden" id="reviewsCard">
     <h3><i class="fas fa-star me-2"></i>Reviews</h3>
     <div id="reviewsList" class="d-flex flex-column gap-3"></div>
 </div>

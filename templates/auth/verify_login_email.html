@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Verify Your Email – Login{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow card-rounded-12">
+                <div class="card-header otp-card-header text-white text-center py-3">
+                    <i class="fas fa-shield-alt fa-2x mb-2"></i>
+                    <h5 class="mb-0">Email Verification Required</h5>
+                </div>
+                <div class="card-body p-4">
+                    <!-- Data passed to JS via data attributes to avoid inline Jinja-in-script lint errors -->
+                    <span id="pendingEmailData"
+                          data-email="{{ pending_email }}"
+                          class="d-none"
+                          aria-hidden="true"></span>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <p class="text-muted text-center mb-4">
+                        Your account email has not been verified yet.<br>
+                        We'll send a 6-digit code to
+                        <strong id="displayEmail">{{ pending_email }}</strong>.
+                    </p>
+
+                    <div id="alertContainer"></div>
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" title="Close" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <!-- Send / Resend step -->
+                    <div id="sendStep" class="text-center">
+                        <p class="text-muted small">Click below to send the verification code to your email.</p>
+                        <button id="sendOtpBtn" class="btn btn-primary px-4" title="Send verification code">
+                            <i class="fas fa-paper-plane me-2"></i>Send Code
+                        </button>
+                    </div>
+
+                    <!-- OTP entry step (hidden until code sent) -->
+                    <div id="verifyStep" class="initially-hidden">
+                        <div class="mb-3">
+                            <label for="otpInput" class="form-label fw-semibold">Enter Verification Code</label>
+                            <input type="text" id="otpInput"
+                                   class="form-control form-control-lg text-center otp-code-field"
+                                   maxlength="6" pattern="[0-9]{6}" inputmode="numeric"
+                                   placeholder="000000" autocomplete="one-time-code"
+                                   title="Enter 6-digit verification code"
+                                   aria-label="Enter 6-digit verification code">
+                            <div id="otpError" class="invalid-feedback"></div>
+                        </div>
+
+                        <div class="d-grid mb-3">
+                            <button id="verifyOtpBtn" class="btn btn-primary btn-lg" title="Verify code">
+                                <i class="fas fa-check-circle me-2"></i>Verify &amp; Login
+                            </button>
+                        </div>
+
+                        <div class="text-center">
+                            <p class="text-muted small mb-1">Didn't receive the code?</p>
+                            <button id="resendBtn" class="btn btn-link btn-sm initially-hidden"
+                                    title="Resend verification code" aria-label="Resend verification code">
+                                Resend Code
+                            </button>
+                            <span id="resendCountdown" class="text-muted small"></span>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <div class="text-center">
+                        <a href="{{ url_for('login') }}" class="text-muted small">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Login
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    const pendingEmail = document.getElementById('pendingEmailData').dataset.email;
+    let challengeId = null;
+    let resendTimer = null;
+
+    function showAlert(message, type) {
+        const container = document.getElementById('alertContainer');
+        container.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" title="Close" aria-label="Close"></button>
+            </div>`;
+    }
+
+    function startResendTimer(seconds) {
+        const resendBtn = document.getElementById('resendBtn');
+        const countdown = document.getElementById('resendCountdown');
+        resendBtn.classList.add('initially-hidden');
+        countdown.textContent = '';
+
+        let remaining = seconds;
+        resendTimer = setInterval(function () {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(resendTimer);
+                countdown.textContent = '';
+                resendBtn.classList.remove('initially-hidden');
+            } else {
+                countdown.textContent = 'Resend in ' + remaining + 's';
+            }
+        }, 1000);
+    }
+
+    function requestOtp() {
+        const sendBtn = document.getElementById('sendOtpBtn');
+        const resendBtn = document.getElementById('resendBtn');
+
+        if (sendBtn) sendBtn.disabled = true;
+        if (resendBtn) resendBtn.disabled = true;
+
+        fetch('/api/email-otp/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({ email: pendingEmail, purpose: 'login_verify_email' })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                challengeId = data.challenge_id;
+                document.getElementById('sendStep').classList.add('initially-hidden');
+                document.getElementById('verifyStep').classList.remove('initially-hidden');
+                showAlert('A verification code has been sent to your email.', 'success');
+                startResendTimer(data.resend_after_seconds || 60);
+                document.getElementById('otpInput').focus();
+            } else if (data.error === 'resend_cooldown') {
+                // OTP already sent and still within cooldown – show the verify step
+                challengeId = null;
+                document.getElementById('sendStep').classList.add('initially-hidden');
+                document.getElementById('verifyStep').classList.remove('initially-hidden');
+                showAlert('A code was already sent. Please check your email or wait before resending.', 'info');
+                startResendTimer(data.retry_after_seconds || 60);
+                document.getElementById('otpInput').focus();
+            } else {
+                showAlert('Failed to send verification code. Please try again.', 'danger');
+                if (sendBtn) sendBtn.disabled = false;
+            }
+        })
+        .catch(function () {
+            showAlert('Network error. Please check your connection and try again.', 'danger');
+            if (sendBtn) sendBtn.disabled = false;
+        })
+        .finally(function () {
+            if (resendBtn) resendBtn.disabled = false;
+        });
+    }
+
+    function verifyOtp() {
+        const input = document.getElementById('otpInput');
+        const btn = document.getElementById('verifyOtpBtn');
+        const errorEl = document.getElementById('otpError');
+        const code = input.value.trim();
+
+        input.classList.remove('is-invalid');
+        errorEl.textContent = '';
+
+        if (!/^\d{6}$/.test(code)) {
+            input.classList.add('is-invalid');
+            errorEl.textContent = 'Please enter the 6-digit code from your email.';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Verifying…';
+
+        fetch('/api/email-otp/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({
+                email: pendingEmail,
+                purpose: 'login_verify_email',
+                otp_code: code,
+                challenge_id: challengeId
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success && data.login_verified) {
+                showAlert('Email verified! Redirecting…', 'success');
+                btn.innerHTML = '<i class="fas fa-check me-2"></i>Verified!';
+                setTimeout(function () {
+                    window.location.href = data.redirect_url || '/';
+                }, 800);
+            } else {
+                let msg = 'Invalid or expired code. Please try again.';
+                if (data.error === 'too_many_attempts') {
+                    msg = 'Too many failed attempts. Please request a new code.';
+                } else if (data.error === 'code_expired') {
+                    msg = 'The code has expired. Please request a new one.';
+                } else if (typeof data.attempts_remaining === 'number') {
+                    msg = 'Incorrect code. ' + data.attempts_remaining + ' attempt(s) remaining.';
+                }
+                input.classList.add('is-invalid');
+                errorEl.textContent = msg;
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check-circle me-2"></i>Verify &amp; Login';
+            }
+        })
+        .catch(function () {
+            showAlert('Network error. Please try again.', 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check-circle me-2"></i>Verify &amp; Login';
+        });
+    }
+
+    function getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) return meta.getAttribute('content');
+        // fallback: look for a hidden input
+        const input = document.querySelector('input[name="csrf_token"]');
+        return input ? input.value : '';
+    }
+
+    document.getElementById('sendOtpBtn').addEventListener('click', requestOtp);
+    document.getElementById('resendBtn').addEventListener('click', requestOtp);
+    document.getElementById('verifyOtpBtn').addEventListener('click', verifyOtp);
+
+    document.getElementById('otpInput').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') verifyOtp();
+    });
+
+    // Auto-request OTP on page load
+    requestOtp();
+}());
+</script>
+{% endblock %}

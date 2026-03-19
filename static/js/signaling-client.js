@@ -124,7 +124,13 @@
 
     _setupCoreListeners() {
       if (!this.socket) return;
-      const map = ['call:ringing','call:accepted','call:declined','call:busy','call:connected','call:ended','call:missed','webrtc:offer','webrtc:answer','webrtc:ice','call:error','presence:update','user:online','user:offline','chat:message','chat:delivered','chat:read','chat:typing'];
+      const map = [
+        'call:ringing','call:accepted','call:declined','call:busy','call:connected','call:ended','call:missed',
+        'webrtc:offer','webrtc:answer','webrtc:ice','call:error','presence:update','user:online','user:offline',
+        'chat:message','chat:delivered','chat:read','chat:typing',
+        'message_received','message_status_updated','message_receipt_updated','message_ack','message_error',
+        'message_read','messages_read','messages_delivered','typing','stop_typing','user_typing','user_stop_typing'
+      ];
       map.forEach(ev => {
         try {
           this.socket.on(ev, (data) => { this._handleEvent(ev, data); });

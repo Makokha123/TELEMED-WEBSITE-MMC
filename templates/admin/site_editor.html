@@ -1,0 +1,862 @@
+{% extends "base.html" %}
+
+{% block title %}Site Editor - Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ─── Site Editor Layout ─── */
+.site-editor-wrapper { display: flex; min-height: calc(100vh - 72px); }
+.se-sidebar { width: 260px; background: #1e293b; color: #e2e8f0; padding: 1rem 0; position: sticky; top: 56px; height: calc(100vh - 56px); overflow-y: auto; flex-shrink: 0; }
+.se-sidebar .nav-link { color: #cbd5e1; padding: .65rem 1.25rem; font-size: .9rem; border-left: 3px solid transparent; transition: all .15s; }
+.se-sidebar .nav-link:hover, .se-sidebar .nav-link.active { background: rgba(255,255,255,.08); color: #fff; border-left-color: #3b82f6; }
+.se-sidebar .nav-link i { width: 22px; text-align: center; margin-right: 8px; }
+.se-sidebar h6 { color: #94a3b8; font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; padding: .8rem 1.25rem .4rem; margin: 0; }
+.se-main { flex: 1; padding: 1.5rem 2rem; background: #f8fafc; overflow-y: auto; }
+.se-section { display: none; }
+.se-section.active { display: block; }
+.se-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+.se-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 1.5rem; margin-bottom: 1.25rem; }
+.se-card h5 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #334155; }
+.se-field { margin-bottom: 1rem; }
+.se-field label { font-size: .82rem; font-weight: 600; color: #64748b; margin-bottom: .3rem; display: block; }
+.se-field input[type="text"], .se-field textarea, .se-field select { width: 100%; }
+.se-field textarea { min-height: 80px; resize: vertical; }
+.se-field .color-row { display: flex; align-items: center; gap: 10px; }
+.se-field .color-row input[type="color"] { width: 48px; height: 38px; border: 1px solid #dee2e6; border-radius: 6px; padding: 2px; cursor: pointer; }
+.se-field .color-row input[type="text"] { flex: 1; }
+.se-image-preview { width: 120px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #dee2e6; margin-bottom: 8px; }
+.se-image-upload-zone { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 1rem; text-align: center; cursor: pointer; transition: all .15s; }
+.se-image-upload-zone:hover { border-color: #3b82f6; background: #eff6ff; }
+.se-save-bar { position: sticky; bottom: 0; background: #fff; padding: 1rem 2rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+.se-unsaved { color: #f59e0b; font-size: .85rem; font-weight: 500; display: none; }
+.se-unsaved.visible { display: inline-block; }
+.se-badge { font-size: .65rem; padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+.se-live-preview { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; background: #fff; margin-top: .5rem; }
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+.se-card-muted { background: #f8fafc; }
+.preview-color-chip { width: 50px; height: 50px; border-radius: 8px; }
+@media (max-width: 768px) {
+    .site-editor-wrapper { flex-direction: column; }
+    .se-sidebar { width: 100%; height: auto; position: relative; top: 0; display: flex; overflow-x: auto; padding: .5rem; }
+    .se-sidebar .nav-link { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; padding: .5rem .8rem; }
+    .se-sidebar .nav-link.active { border-bottom-color: #3b82f6; }
+    .se-sidebar h6 { display: none; }
+    .se-main { padding: 1rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="site-editor-wrapper">
+    <!-- Sidebar Navigation -->
+    <div class="se-sidebar">
+        <h6>Pages</h6>
+        <a class="nav-link active" href="#" data-section="branding"><i class="fas fa-palette"></i>Branding & Colors</a>
+        <a class="nav-link" href="#" data-section="hero"><i class="fas fa-home"></i>Homepage Hero</a>
+        <a class="nav-link" href="#" data-section="stats"><i class="fas fa-chart-bar"></i>Stats Section</a>
+        <a class="nav-link" href="#" data-section="features"><i class="fas fa-star"></i>Features Section</a>
+        <a class="nav-link" href="#" data-section="health_tips"><i class="fas fa-heartbeat"></i>Health Tips</a>
+        <a class="nav-link" href="#" data-section="cta"><i class="fas fa-bullhorn"></i>Call to Action</a>
+        <a class="nav-link" href="#" data-section="faq"><i class="fas fa-question-circle"></i>FAQ Section</a>
+        <a class="nav-link" href="#" data-section="contact"><i class="fas fa-phone-alt"></i>Contact Info</a>
+        <h6>Other Pages</h6>
+        <a class="nav-link" href="#" data-section="about"><i class="fas fa-info-circle"></i>About Page</a>
+        <a class="nav-link" href="#" data-section="services"><i class="fas fa-concierge-bell"></i>Services Page</a>
+        <a class="nav-link" href="#" data-section="doctors_page"><i class="fas fa-user-md"></i>Doctors Page</a>
+        <h6>Global</h6>
+        <a class="nav-link" href="#" data-section="footer"><i class="fas fa-shoe-prints"></i>Footer</a>
+    </div>
+
+    <!-- Main Editor Area -->
+    <div class="se-main" id="editorMain">
+        <div class="se-header">
+            <div>
+                <h4 class="mb-0"><i class="fas fa-edit me-2"></i>Site Content Editor</h4>
+                <small class="text-muted">Edit your website content, images, and styling.</small>
+            </div>
+            <div>
+                <a href="{{ url_for('index') }}" target="_blank" class="btn btn-outline-secondary btn-sm me-2"><i class="fas fa-external-link-alt me-1"></i>Preview Site</a>
+                <button class="btn btn-outline-danger btn-sm" id="resetBtn" title="Reset all content to defaults"><i class="fas fa-undo me-1"></i>Reset Defaults</button>
+            </div>
+        </div>
+
+        <!-- ═══════ BRANDING ═══════ -->
+        <div class="se-section active" id="sec-branding">
+            <div class="se-card">
+                <h5><i class="fas fa-palette me-2"></i>Branding & Colors</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label>Site Name</label>
+                            <input type="text" class="form-control se-input" title="Site name" data-section="branding" data-key="site_name" value="{{ content.branding.site_name|default('',true) }}">
+                        </div>
+                        <div class="se-field">
+                            <label>Site Tagline</label>
+                            <input type="text" class="form-control se-input" title="Site tagline" data-section="branding" data-key="site_tagline" value="{{ content.branding.site_tagline|default('',true) }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label>Logo</label>
+                            {% if content.branding.logo_url %}
+                            <img src="{{ url_for('static', filename=content.branding.logo_url) }}" class="se-image-preview d-block mb-2" id="preview-branding-logo_url" alt="Logo">
+                            {% else %}
+                            <img src="{{ url_for('static', filename='uploads/logo.png') }}" class="se-image-preview d-block mb-2" id="preview-branding-logo_url" alt="Logo">
+                            {% endif %}
+                            <div class="se-image-upload-zone" data-section="branding" data-key="logo_url">
+                                <i class="fas fa-cloud-upload-alt me-1"></i> Click or drag to upload logo
+                                <input type="file" accept="image/*" title="Upload logo image" class="d-none se-file-input">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="text-muted mb-3">Color Scheme</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>Primary Color</label>
+                            <div class="color-row">
+                                <input type="color" class="se-color-picker" title="Primary color" data-section="branding" data-key="primary_color" value="{{ content.branding.primary_color|default('#0d6efd',true) }}">
+                                <input type="text" class="form-control form-control-sm se-input" title="Primary color hex" data-section="branding" data-key="primary_color" value="{{ content.branding.primary_color|default('#0d6efd',true) }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>Secondary Color</label>
+                            <div class="color-row">
+                                <input type="color" class="se-color-picker" title="Secondary color" data-section="branding" data-key="secondary_color" value="{{ content.branding.secondary_color|default('#198754',true) }}">
+                                <input type="text" class="form-control form-control-sm se-input" title="Secondary color hex" data-section="branding" data-key="secondary_color" value="{{ content.branding.secondary_color|default('#198754',true) }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>Accent Color</label>
+                            <div class="color-row">
+                                <input type="color" class="se-color-picker" title="Accent color" data-section="branding" data-key="accent_color" value="{{ content.branding.accent_color|default('#6f42c1',true) }}">
+                                <input type="text" class="form-control form-control-sm se-input" title="Accent color hex" data-section="branding" data-key="accent_color" value="{{ content.branding.accent_color|default('#6f42c1',true) }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>Footer Background</label>
+                            <div class="color-row">
+                                <input type="color" class="se-color-picker" title="Footer background color" data-section="branding" data-key="footer_bg_color" value="{{ content.branding.footer_bg_color|default('#212529',true) }}">
+                                <input type="text" class="form-control form-control-sm se-input" title="Footer background color hex" data-section="branding" data-key="footer_bg_color" value="{{ content.branding.footer_bg_color|default('#212529',true) }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="se-live-preview mt-3">
+                    <small class="text-muted">Live Preview</small>
+                    <div class="d-flex gap-2 mt-2" id="colorPreview">
+                        <div class="preview-color-chip" id="cpPrimary"></div>
+                        <div class="preview-color-chip" id="cpSecondary"></div>
+                        <div class="preview-color-chip" id="cpAccent"></div>
+                        <div class="preview-color-chip" id="cpFooter"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ HERO ═══════ -->
+        <div class="se-section" id="sec-hero">
+            <div class="se-card">
+                <h5><i class="fas fa-home me-2"></i>Homepage Hero Section</h5>
+                <div class="se-field">
+                    <label>Badge Text</label>
+                    <input type="text" class="form-control se-input" data-section="hero" data-key="badge_text" value="{{ content.hero.badge_text|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Hero Title</label>
+                    <input type="text" class="form-control se-input" data-section="hero" data-key="title" value="{{ content.hero.title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Hero Subtitle</label>
+                    <textarea class="form-control se-input" data-section="hero" data-key="subtitle">{{ content.hero.subtitle|default('',true) }}</textarea>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label>Primary Button Text</label>
+                            <input type="text" class="form-control se-input" data-section="hero" data-key="cta_primary_text" value="{{ content.hero.cta_primary_text|default('',true) }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label>Secondary Button Text</label>
+                            <input type="text" class="form-control se-input" data-section="hero" data-key="cta_secondary_text" value="{{ content.hero.cta_secondary_text|default('',true) }}">
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="text-muted">Trust Badges</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>Badge 1</label>
+                            <input type="text" class="form-control se-input" data-section="hero" data-key="trust_badge_1" value="{{ content.hero.trust_badge_1|default('',true) }}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>Badge 2</label>
+                            <input type="text" class="form-control se-input" data-section="hero" data-key="trust_badge_2" value="{{ content.hero.trust_badge_2|default('',true) }}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>Badge 3</label>
+                            <input type="text" class="form-control se-input" data-section="hero" data-key="trust_badge_3" value="{{ content.hero.trust_badge_3|default('',true) }}">
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="text-muted">Carousel Slides</h6>
+                <div class="se-field">
+                    <label>Slide 1 Image</label>
+                    {% if content.hero.carousel_image_1 %}
+                    <img src="{{ url_for('static', filename=content.hero.carousel_image_1) }}" class="se-image-preview d-block mb-2" id="preview-hero-carousel_image_1" alt="Slide 1">
+                    {% else %}
+                    <img src="{{ url_for('static', filename='images/hero-telemedicine.jpg') }}" class="se-image-preview d-block mb-2" id="preview-hero-carousel_image_1" alt="Slide 1">
+                    {% endif %}
+                    <div class="se-image-upload-zone" data-section="hero" data-key="carousel_image_1">
+                        <i class="fas fa-cloud-upload-alt me-1"></i> Upload slide 1 image
+                        <input type="file" accept="image/*" class="d-none se-file-input">
+                    </div>
+                </div>
+                {% for i in range(1, 4) %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label>Slide {{ i }} Title</label>
+                            <input type="text" class="form-control se-input" data-section="hero" data-key="carousel_caption_{{ i }}_title" value="{{ content.hero['carousel_caption_' ~ i ~ '_title']|default('',true) }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label>Slide {{ i }} Text</label>
+                            <input type="text" class="form-control se-input" data-section="hero" data-key="carousel_caption_{{ i }}_text" value="{{ content.hero['carousel_caption_' ~ i ~ '_text']|default('',true) }}">
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ═══════ STATS ═══════ -->
+        <div class="se-section" id="sec-stats">
+            <div class="se-card">
+                <h5><i class="fas fa-chart-bar me-2"></i>Stats Section</h5>
+                <p class="text-muted small">Patient, doctor, and appointment counts come from the database automatically. You can override the satisfaction rate below.</p>
+                <div class="se-field">
+                    <label>Satisfaction Rate (%)</label>
+                    <input type="text" class="form-control se-input" data-section="stats" data-key="satisfaction_rate" value="{{ content.stats.satisfaction_rate|default('95',true) }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ FEATURES ═══════ -->
+        <div class="se-section" id="sec-features">
+            <div class="se-card">
+                <h5><i class="fas fa-star me-2"></i>Features Section</h5>
+                <div class="se-field">
+                    <label>Section Title</label>
+                    <input type="text" class="form-control se-input" data-section="features" data-key="section_title" value="{{ content.features.section_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Section Subtitle</label>
+                    <input type="text" class="form-control se-input" data-section="features" data-key="section_subtitle" value="{{ content.features.section_subtitle|default('',true) }}">
+                </div>
+                <hr>
+                {% for i in range(1, 4) %}
+                <div class="se-card se-card-muted">
+                    <h6>Feature {{ i }}</h6>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="se-field">
+                                <label>Icon Class (Font Awesome)</label>
+                                <input type="text" class="form-control se-input" data-section="features" data-key="feature_{{ i }}_icon" value="{{ content.features['feature_' ~ i ~ '_icon']|default('',true) }}">
+                                <small class="text-muted">e.g. fas fa-video</small>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="se-field">
+                                <label>Title</label>
+                                <input type="text" class="form-control se-input" data-section="features" data-key="feature_{{ i }}_title" value="{{ content.features['feature_' ~ i ~ '_title']|default('',true) }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="se-field">
+                        <label>Description</label>
+                        <textarea class="form-control se-input" data-section="features" data-key="feature_{{ i }}_text">{{ content.features['feature_' ~ i ~ '_text']|default('',true) }}</textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ═══════ HEALTH TIPS ═══════ -->
+        <div class="se-section" id="sec-health_tips">
+            <div class="se-card">
+                <h5><i class="fas fa-heartbeat me-2"></i>Health Tips Section</h5>
+                <div class="se-field">
+                    <label>Section Title</label>
+                    <input type="text" class="form-control se-input" data-section="health_tips" data-key="section_title" value="{{ content.health_tips.section_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Section Subtitle</label>
+                    <input type="text" class="form-control se-input" data-section="health_tips" data-key="section_subtitle" value="{{ content.health_tips.section_subtitle|default('',true) }}">
+                </div>
+                <hr>
+                {% for i in range(1, 4) %}
+                <div class="se-card se-card-muted">
+                    <h6>Tip {{ i }}</h6>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="se-field">
+                                <label>Badge Label</label>
+                                <input type="text" class="form-control se-input" data-section="health_tips" data-key="tip_{{ i }}_badge" value="{{ content.health_tips['tip_' ~ i ~ '_badge']|default('',true) }}">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="se-field">
+                                <label>Badge Color</label>
+                                <select class="form-select se-input" data-section="health_tips" data-key="tip_{{ i }}_badge_color">
+                                    {% for c in ['success','primary','info','warning','danger','secondary'] %}
+                                    <option value="{{ c }}" {{ 'selected' if content.health_tips['tip_' ~ i ~ '_badge_color']|default('') == c }}>{{ c }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="se-field">
+                                <label>Icon Class</label>
+                                <input type="text" class="form-control se-input" data-section="health_tips" data-key="tip_{{ i }}_icon" value="{{ content.health_tips['tip_' ~ i ~ '_icon']|default('',true) }}">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="se-field">
+                                <label>Title</label>
+                                <input type="text" class="form-control se-input" data-section="health_tips" data-key="tip_{{ i }}_title" value="{{ content.health_tips['tip_' ~ i ~ '_title']|default('',true) }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="se-field">
+                        <label>Content</label>
+                        <textarea class="form-control se-input" data-section="health_tips" data-key="tip_{{ i }}_text">{{ content.health_tips['tip_' ~ i ~ '_text']|default('',true) }}</textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ═══════ CTA ═══════ -->
+        <div class="se-section" id="sec-cta">
+            <div class="se-card">
+                <h5><i class="fas fa-bullhorn me-2"></i>Call to Action Section</h5>
+                <div class="se-field">
+                    <label>Title</label>
+                    <input type="text" class="form-control se-input" data-section="cta" data-key="title" value="{{ content.cta.title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Subtitle</label>
+                    <textarea class="form-control se-input" data-section="cta" data-key="subtitle">{{ content.cta.subtitle|default('',true) }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ FAQ ═══════ -->
+        <div class="se-section" id="sec-faq">
+            <div class="se-card">
+                <h5><i class="fas fa-question-circle me-2"></i>FAQ Section</h5>
+                <div class="se-field">
+                    <label>Section Title</label>
+                    <input type="text" class="form-control se-input" data-section="faq" data-key="section_title" value="{{ content.faq.section_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Section Subtitle</label>
+                    <input type="text" class="form-control se-input" data-section="faq" data-key="section_subtitle" value="{{ content.faq.section_subtitle|default('',true) }}">
+                </div>
+                <hr>
+                {% for i in range(1, 5) %}
+                <div class="se-card se-card-muted">
+                    <h6>FAQ {{ i }}</h6>
+                    <div class="se-field">
+                        <label>Question</label>
+                        <input type="text" class="form-control se-input" data-section="faq" data-key="faq_{{ i }}_q" value="{{ content.faq['faq_' ~ i ~ '_q']|default('',true) }}">
+                    </div>
+                    <div class="se-field">
+                        <label>Answer</label>
+                        <textarea class="form-control se-input" data-section="faq" data-key="faq_{{ i }}_a">{{ content.faq['faq_' ~ i ~ '_a']|default('',true) }}</textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ═══════ CONTACT ═══════ -->
+        <div class="se-section" id="sec-contact">
+            <div class="se-card">
+                <h5><i class="fas fa-phone-alt me-2"></i>Contact Information</h5>
+                <div class="se-field">
+                    <label>Section Title</label>
+                    <input type="text" class="form-control se-input" data-section="contact" data-key="section_title" value="{{ content.contact.section_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Section Subtitle</label>
+                    <input type="text" class="form-control se-input" data-section="contact" data-key="section_subtitle" value="{{ content.contact.section_subtitle|default('',true) }}">
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label><i class="fas fa-phone me-1"></i>Phone 1</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="phone_1" value="{{ content.contact.phone_1|default('',true) }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label><i class="fas fa-phone me-1"></i>Phone 2</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="phone_2" value="{{ content.contact.phone_2|default('',true) }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label><i class="fab fa-whatsapp me-1"></i>WhatsApp 1 (number for wa.me link)</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="whatsapp_1" value="{{ content.contact.whatsapp_1|default('',true) }}" placeholder="254741256531">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label><i class="fab fa-whatsapp me-1"></i>WhatsApp 1 Display</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="whatsapp_1_display" value="{{ content.contact.whatsapp_1_display|default('',true) }}" placeholder="0741256531">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label><i class="fab fa-whatsapp me-1"></i>WhatsApp 2 (number for wa.me link)</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="whatsapp_2" value="{{ content.contact.whatsapp_2|default('',true) }}" placeholder="254713580997">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="se-field">
+                            <label><i class="fab fa-whatsapp me-1"></i>WhatsApp 2 Display</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="whatsapp_2_display" value="{{ content.contact.whatsapp_2_display|default('',true) }}" placeholder="0713580997">
+                        </div>
+                    </div>
+                </div>
+                <div class="se-field">
+                    <label><i class="fas fa-envelope me-1"></i>Email</label>
+                    <input type="text" class="form-control se-input" data-section="contact" data-key="email" value="{{ content.contact.email|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label><i class="fas fa-ambulance me-1"></i>Emergency Number</label>
+                    <input type="text" class="form-control se-input" data-section="contact" data-key="emergency_number" value="{{ content.contact.emergency_number|default('',true) }}">
+                </div>
+                <hr>
+                <h6 class="text-muted">Social Media Links</h6>
+                {% for platform in ['facebook', 'telegram', 'instagram', 'twitter'] %}
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="se-field">
+                            <label>{{ platform|capitalize }} Handle</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="{{ platform }}_handle" value="{{ content.contact[platform ~ '_handle']|default('',true) }}">
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="se-field">
+                            <label>{{ platform|capitalize }} URL</label>
+                            <input type="text" class="form-control se-input" data-section="contact" data-key="{{ platform }}_url" value="{{ content.contact[platform ~ '_url']|default('',true) }}">
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ═══════ ABOUT ═══════ -->
+        <div class="se-section" id="sec-about">
+            <div class="se-card">
+                <h5><i class="fas fa-info-circle me-2"></i>About Page</h5>
+                <div class="se-field">
+                    <label>Hero Title</label>
+                    <input type="text" class="form-control se-input" data-section="about" data-key="hero_title" value="{{ content.about.hero_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Hero Subtitle</label>
+                    <input type="text" class="form-control se-input" data-section="about" data-key="hero_subtitle" value="{{ content.about.hero_subtitle|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Hero Image</label>
+                    {% if content.about.hero_image %}
+                    <img src="{{ url_for('static', filename=content.about.hero_image) }}" class="se-image-preview d-block mb-2" id="preview-about-hero_image" alt="About Hero">
+                    {% endif %}
+                    <div class="se-image-upload-zone" data-section="about" data-key="hero_image">
+                        <i class="fas fa-cloud-upload-alt me-1"></i> Upload about page image
+                        <input type="file" accept="image/*" class="d-none se-file-input">
+                    </div>
+                </div>
+                <hr>
+                <div class="se-field">
+                    <label>Mission Title</label>
+                    <input type="text" class="form-control se-input" data-section="about" data-key="mission_title" value="{{ content.about.mission_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Mission Text</label>
+                    <textarea class="form-control se-input" data-section="about" data-key="mission_text">{{ content.about.mission_text|default('',true) }}</textarea>
+                </div>
+                <div class="se-field">
+                    <label>What We Offer Title</label>
+                    <input type="text" class="form-control se-input" data-section="about" data-key="offer_title" value="{{ content.about.offer_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Offer Items (one per line)</label>
+                    <textarea class="form-control se-input se-json-list" data-section="about" data-key="offer_items" rows="5">{% if content.about.offer_items is iterable and content.about.offer_items is not string %}{% for item in content.about.offer_items %}{{ item }}{% if not loop.last %}
+{% endif %}{% endfor %}{% else %}{{ content.about.offer_items|default('',true) }}{% endif %}</textarea>
+                    <small class="text-muted">Enter one item per line. They will be displayed as a bullet list.</small>
+                </div>
+                <div class="se-field">
+                    <label>Values Title</label>
+                    <input type="text" class="form-control se-input" data-section="about" data-key="values_title" value="{{ content.about.values_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Values Text</label>
+                    <textarea class="form-control se-input" data-section="about" data-key="values_text">{{ content.about.values_text|default('',true) }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SERVICES ═══════ -->
+        <div class="se-section" id="sec-services">
+            <div class="se-card">
+                <h5><i class="fas fa-concierge-bell me-2"></i>Services Page</h5>
+                <div class="se-field">
+                    <label>Section Title</label>
+                    <input type="text" class="form-control se-input" data-section="services" data-key="section_title" value="{{ content.services.section_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Section Subtitle</label>
+                    <input type="text" class="form-control se-input" data-section="services" data-key="section_subtitle" value="{{ content.services.section_subtitle|default('',true) }}">
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="se-card se-card-muted">
+                            <h6><i class="fas fa-laptop-medical me-1"></i>Telemedicine Services</h6>
+                            <div class="se-field">
+                                <label>Section Title</label>
+                                <input type="text" class="form-control se-input" data-section="services" data-key="telemedicine_title" value="{{ content.services.telemedicine_title|default('',true) }}">
+                            </div>
+                            <div class="se-field">
+                                <label>Description</label>
+                                <textarea class="form-control se-input" data-section="services" data-key="telemedicine_description">{{ content.services.telemedicine_description|default('',true) }}</textarea>
+                            </div>
+                            <div class="se-field">
+                                <label>Service Items (one per line)</label>
+                                <textarea class="form-control se-input se-json-list" data-section="services" data-key="telemedicine_items" rows="6">{% if content.services.telemedicine_items is iterable and content.services.telemedicine_items is not string %}{% for item in content.services.telemedicine_items %}{{ item }}{% if not loop.last %}
+{% endif %}{% endfor %}{% else %}{{ content.services.telemedicine_items|default('',true) }}{% endif %}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="se-card se-card-muted">
+                            <h6><i class="fas fa-hospital me-1"></i>In-Facility Services</h6>
+                            <div class="se-field">
+                                <label>Section Title</label>
+                                <input type="text" class="form-control se-input" data-section="services" data-key="facility_title" value="{{ content.services.facility_title|default('',true) }}">
+                            </div>
+                            <div class="se-field">
+                                <label>Description</label>
+                                <textarea class="form-control se-input" data-section="services" data-key="facility_description">{{ content.services.facility_description|default('',true) }}</textarea>
+                            </div>
+                            <div class="se-field">
+                                <label>Service Items (one per line)</label>
+                                <textarea class="form-control se-input se-json-list" data-section="services" data-key="facility_items" rows="6">{% if content.services.facility_items is iterable and content.services.facility_items is not string %}{% for item in content.services.facility_items %}{{ item }}{% if not loop.last %}
+{% endif %}{% endfor %}{% else %}{{ content.services.facility_items|default('',true) }}{% endif %}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ DOCTORS PAGE ═══════ -->
+        <div class="se-section" id="sec-doctors_page">
+            <div class="se-card">
+                <h5><i class="fas fa-user-md me-2"></i>Doctors Page</h5>
+                <p class="text-muted small">The doctor cards are generated from the database. You can edit the page heading and subtitle here.</p>
+                <div class="se-field">
+                    <label>Section Title</label>
+                    <input type="text" class="form-control se-input" data-section="doctors_page" data-key="section_title" value="{{ content.doctors_page.section_title|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Section Subtitle</label>
+                    <input type="text" class="form-control se-input" data-section="doctors_page" data-key="section_subtitle" value="{{ content.doctors_page.section_subtitle|default('',true) }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ FOOTER ═══════ -->
+        <div class="se-section" id="sec-footer">
+            <div class="se-card">
+                <h5><i class="fas fa-shoe-prints me-2"></i>Footer</h5>
+                <div class="se-field">
+                    <label>Footer Description</label>
+                    <textarea class="form-control se-input" data-section="footer" data-key="description">{{ content.footer.description|default('',true) }}</textarea>
+                </div>
+                <div class="se-field">
+                    <label>Copyright Text</label>
+                    <input type="text" class="form-control se-input" data-section="footer" data-key="copyright" value="{{ content.footer.copyright|default('',true) }}">
+                </div>
+                <div class="se-field">
+                    <label>Info Email (footer)</label>
+                    <input type="text" class="form-control se-input" data-section="footer" data-key="info_email" value="{{ content.footer.info_email|default('',true) }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Bar -->
+        <div class="se-save-bar">
+            <span class="se-unsaved" id="unsavedIndicator"><i class="fas fa-exclamation-circle me-1"></i>Unsaved changes</span>
+            <div>
+                <button class="btn btn-primary px-4" id="saveBtn" disabled>
+                    <i class="fas fa-save me-1"></i>Save All Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+
+    const csrfToken = typeof csrf_token !== 'undefined' ? csrf_token : '';
+    let dirty = false;
+    const saveBtn = document.getElementById('saveBtn');
+    const unsavedEl = document.getElementById('unsavedIndicator');
+
+    // ─── Section navigation ───
+    document.querySelectorAll('.se-sidebar .nav-link').forEach(link => {
+        link.addEventListener('click', e => {
+            e.preventDefault();
+            const sec = link.dataset.section;
+            document.querySelectorAll('.se-sidebar .nav-link').forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            document.querySelectorAll('.se-section').forEach(s => s.classList.remove('active'));
+            const target = document.getElementById('sec-' + sec);
+            if (target) target.classList.add('active');
+        });
+    });
+
+    // ─── Track changes ───
+    function markDirty() {
+        dirty = true;
+        saveBtn.disabled = false;
+        unsavedEl.classList.add('visible');
+    }
+
+    document.querySelectorAll('.se-input').forEach(el => {
+        el.addEventListener('input', markDirty);
+        el.addEventListener('change', markDirty);
+    });
+
+    // ─── Color picker sync ───
+    document.querySelectorAll('.se-color-picker').forEach(picker => {
+        picker.addEventListener('input', function() {
+            const sec = this.dataset.section;
+            const key = this.dataset.key;
+            const textInput = document.querySelector(`input[type="text"].se-input[data-section="${sec}"][data-key="${key}"]`);
+            if (textInput) textInput.value = this.value;
+            markDirty();
+            updateColorPreview();
+        });
+    });
+
+    // Sync text inputs back to color pickers
+    document.querySelectorAll('input[type="text"].se-input').forEach(el => {
+        el.addEventListener('input', function() {
+            const sec = this.dataset.section;
+            const key = this.dataset.key;
+            const picker = document.querySelector(`.se-color-picker[data-section="${sec}"][data-key="${key}"]`);
+            if (picker && /^#[0-9a-f]{6}$/i.test(this.value)) picker.value = this.value;
+        });
+    });
+
+    function updateColorPreview() {
+        const get = (key) => {
+            const el = document.querySelector(`.se-color-picker[data-section="branding"][data-key="${key}"]`);
+            return el ? el.value : '#ccc';
+        };
+        const cp = document.getElementById('cpPrimary');
+        const cs = document.getElementById('cpSecondary');
+        const ca = document.getElementById('cpAccent');
+        const cf = document.getElementById('cpFooter');
+        if (cp) cp.style.background = get('primary_color');
+        if (cs) cs.style.background = get('secondary_color');
+        if (ca) ca.style.background = get('accent_color');
+        if (cf) cf.style.background = get('footer_bg_color');
+    }
+    updateColorPreview();
+
+    // ─── Image upload zones ───
+    document.querySelectorAll('.se-image-upload-zone').forEach(zone => {
+        const fileInput = zone.querySelector('.se-file-input');
+        zone.addEventListener('click', () => fileInput.click());
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = '#3b82f6'; });
+        zone.addEventListener('dragleave', () => { zone.style.borderColor = '#cbd5e1'; });
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            zone.style.borderColor = '#cbd5e1';
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+
+        fileInput.addEventListener('change', async function() {
+            if (!this.files.length) return;
+            const section = zone.dataset.section;
+            const key = zone.dataset.key;
+            const formData = new FormData();
+            formData.append('file', this.files[0]);
+            formData.append('section', section);
+            formData.append('key', key);
+
+            zone.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Uploading...';
+            try {
+                const resp = await fetch('/admin/site-editor/upload', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrfToken },
+                    body: formData
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    showToast('Image uploaded successfully', 'success');
+                    // Update preview
+                    const previewId = `preview-${section}-${key}`;
+                    let preview = document.getElementById(previewId);
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.id = previewId;
+                        preview.className = 'se-image-preview d-block mb-2';
+                        zone.parentNode.insertBefore(preview, zone);
+                    }
+                    preview.src = data.url;
+                } else {
+                    showToast(data.error || 'Upload failed', 'error');
+                }
+            } catch (err) {
+                showToast('Upload failed: ' + err.message, 'error');
+            }
+            zone.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Click or drag to upload<input type="file" accept="image/*" class="d-none se-file-input">';
+            // Re-attach the change listener
+            const newInput = zone.querySelector('.se-file-input');
+            newInput.addEventListener('change', arguments.callee);
+            zone.addEventListener('click', () => newInput.click());
+        });
+    });
+
+    // ─── Save ───
+    saveBtn.addEventListener('click', async function() {
+        const items = [];
+        document.querySelectorAll('.se-input').forEach(el => {
+            const section = el.dataset.section;
+            const key = el.dataset.key;
+            if (!section || !key) return;
+            // Skip duplicate color pickers (only take text input)
+            if (el.type === 'color') return;
+            let value = el.value;
+            // Convert json-list textareas to JSON array
+            if (el.classList.contains('se-json-list')) {
+                const lines = value.split('\n').map(l => l.trim()).filter(l => l);
+                value = JSON.stringify(lines);
+            }
+            items.push({ section, key, value });
+        });
+
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving...';
+        try {
+            const resp = await fetch('/admin/site-editor/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ items })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                showToast(`Saved ${data.saved} items successfully!`, 'success');
+                dirty = false;
+                unsavedEl.classList.remove('visible');
+            } else {
+                showToast(data.error || 'Save failed', 'error');
+                saveBtn.disabled = false;
+            }
+        } catch (err) {
+            showToast('Save failed: ' + err.message, 'error');
+            saveBtn.disabled = false;
+        }
+        saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save All Changes';
+    });
+
+    // ─── Reset ───
+    document.getElementById('resetBtn').addEventListener('click', async function() {
+        if (!confirm('This will reset ALL site content to factory defaults. Are you sure?')) return;
+        try {
+            const resp = await fetch('/admin/site-editor/reset', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                }
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                showToast('Content reset to defaults. Reloading...', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.error || 'Reset failed', 'error');
+            }
+        } catch (err) {
+            showToast('Reset failed: ' + err.message, 'error');
+        }
+    });
+
+    // ─── Warn on leave ───
+    window.addEventListener('beforeunload', function(e) {
+        if (dirty) { e.returnValue = 'You have unsaved changes.'; }
+    });
+
+    // ─── Toast helper ───
+    function showToast(message, type) {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        const bg = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+        toast.className = `toast align-items-center text-white ${bg} border-0 show`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+})();
+</script>
+{% endblock %}

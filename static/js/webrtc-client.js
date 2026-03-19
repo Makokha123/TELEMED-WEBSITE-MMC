@@ -465,17 +465,25 @@ if (!window.WebRTCClient) {
   close() {
     this.stopQualityMonitoring();
     
-    if (this.peerConnection) {
-      this.peerConnection.close();
-      this.peerConnection = null;
+    this.stopLocalStream();
+
+    if (this.remoteStream) {
+      this.remoteStream.getTracks().forEach(track => track.stop());
+      this.remoteStream = null;
     }
 
     if (this.dataChannel) {
-      this.dataChannel.close();
+      try { this.dataChannel.close(); } catch (e) {}
       this.dataChannel = null;
     }
 
-    this.remoteStream = null;
+    if (this.peerConnection) {
+      try { this.peerConnection.close(); } catch (e) {}
+      this.peerConnection = null;
+    }
+
+    this.pendingIceCandidates = [];
+    this.iceCandidates = [];
     this._setState('idle');
   }
 

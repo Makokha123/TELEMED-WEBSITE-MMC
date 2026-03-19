@@ -112,7 +112,7 @@ class User(UserMixin, db.Model):
     encrypted_email = db.Column(db.LargeBinary, nullable=False)
     email_hash = db.Column(db.String(64), index=True, unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # 'admin', 'doctor', 'patient'
+    role = db.Column(db.String(20), nullable=False)  # 'admin', 'doctor', 'non_staff', 'patient'
     encrypted_first_name = db.Column(db.LargeBinary, nullable=False)
     encrypted_last_name = db.Column(db.LargeBinary, nullable=False)
     encrypted_phone = db.Column(db.LargeBinary)
@@ -123,6 +123,18 @@ class User(UserMixin, db.Model):
     profile_picture_name = db.Column(db.String(255))  # Original filename for reference
     date_of_birth = db.Column(db.Date)
     is_active = db.Column(db.Boolean, default=True)
+
+    # Title (e.g. Dr., Mr., Mrs., Prof.)
+    title = db.Column(db.String(20), nullable=True)
+    # Email verification
+    email_verified = db.Column(db.Boolean, default=False)
+    # Bank details (sensitive – encrypted)
+    encrypted_bank_account = db.Column(db.LargeBinary)
+    encrypted_bank_name = db.Column(db.LargeBinary)  # bank name / type
+    preferred_payment_method = db.Column(db.String(50), nullable=True)  # e.g. 'mpesa','bank_transfer','paypal'
+    # Worker fields
+    department = db.Column(db.String(100), nullable=True)
+    job_category = db.Column(db.String(100), nullable=True)
 
     allow_user_creation = db.Column(db.Boolean, default=False)
     show_availability = db.Column(db.Boolean, default=True)
@@ -232,6 +244,23 @@ class User(UserMixin, db.Model):
             return years
         except Exception:
             return None
+
+    @property
+    def bank_account(self):
+        return _decrypt_text(self.encrypted_bank_account) if self.encrypted_bank_account else None
+
+    @bank_account.setter
+    def bank_account(self, value):
+        self.encrypted_bank_account = _encrypt_text(value) if value is not None else None
+
+    @property
+    def bank_name(self):
+        return _decrypt_text(self.encrypted_bank_name) if self.encrypted_bank_name else None
+
+    @bank_name.setter
+    def bank_name(self, value):
+        self.encrypted_bank_name = _encrypt_text(value) if value is not None else None
+
     def get_initials(self):
         """Get user initials for avatar display"""
         try:
@@ -462,6 +491,14 @@ class Doctor(db.Model):
     encrypted_experience_years = db.Column(db.LargeBinary)
     encrypted_consultation_fee = db.Column(db.LargeBinary)
     availability = db.Column(db.Boolean, default=True)
+    # Licence details
+    licence_regulatory_body = db.Column(db.String(200), nullable=True)
+    licence_issue_date = db.Column(db.Date, nullable=True)
+    licence_expiry_date = db.Column(db.Date, nullable=True)
+    licence_renewal_status = db.Column(db.String(30), nullable=True)  # active, expired, pending_renewal
+    # Practitioner profile
+    practitioner_type = db.Column(db.String(100), nullable=True)  # e.g. GP, Specialist, Surgeon
+    encrypted_awards = db.Column(db.LargeBinary)  # awards / merits
 
     appointments = db.relationship('Appointment', backref='doctor', lazy=True)
     testimonials = db.relationship('Testimonial', backref='doctor', lazy='dynamic')
@@ -527,6 +564,14 @@ class Doctor(db.Model):
         self.encrypted_consultation_fee = _encrypt_text(str(value)) if value is not None else None
 
     @property
+    def awards(self):
+        return _decrypt_text(self.encrypted_awards) if self.encrypted_awards else None
+
+    @awards.setter
+    def awards(self, value):
+        self.encrypted_awards = _encrypt_text(value) if value is not None else None
+
+    @property
     def average_rating(self):
         try:
             avg = db.session.query(func.avg(Testimonial.rating)).filter(Testimonial.doctor_id == self.id).scalar()
@@ -554,6 +599,12 @@ class Appointment(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     call_initiated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Track who initiated call
     call_status = db.Column(db.String(20), default='idle')  # idle, ringing, ongoing, missed, ended
+    reminder_sent = db.Column(db.Boolean, default=False)  # True once day-of reminder email sent
+    payment_status = db.Column(db.String(20), default='unpaid')  # unpaid, paid, refunded
+    payment_amount = db.Column(db.Float, nullable=True)
+    payment_date = db.Column(db.DateTime, nullable=True)
+    payment_method = db.Column(db.String(50), nullable=True)
+    reminder_sent_at = db.Column(db.DateTime, nullable=True)
 
     communications = db.relationship('Communication', backref='appointment', lazy=True)
 
@@ -597,6 +648,8 @@ class Communication(db.Model):
     message_status = db.Column(db.String(20), default='sent')  # sent, delivered, read
     notification_sent = db.Column(db.Boolean, default=False)  # Whether notification was sent to recipient
     sound_enabled = db.Column(db.Boolean, default=True)  # Whether sound notification is enabled
+    reply_to_message_id = db.Column(db.Integer, db.ForeignKey('communications.id'), nullable=True)
+    thread_root_id = db.Column(db.Integer, db.ForeignKey('communications.id'), nullable=True)
 
     sender = db.relationship('User', foreign_keys=[sender_id])
 
@@ -645,6 +698,76 @@ class MedicalRecord(db.Model):
     @description.setter
     def description(self, value):
         self.encrypted_description = _encrypt_text(value) if value is not None else None
+
+
+# ============================================
+# CUSTOMER CARE / SUPPORT MODELS
+# ============================================
+
+class SupportConversation(db.Model):
+    """A support conversation between a user and customer care."""
+    __tablename__ = 'support_conversations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    agent_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # assigned customer_care user
+    subject = db.Column(db.String(255), default='General Support')
+    status = db.Column(db.String(20), default='open')  # open, assigned, closed
+    priority = db.Column(db.String(10), default='normal')  # low, normal, high
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    closed_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('support_conversations', lazy=True))
+    agent = db.relationship('User', foreign_keys=[agent_id])
+    messages = db.relationship('SupportMessage', backref='conversation', lazy=True, order_by='SupportMessage.created_at')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'agent_id': self.agent_id,
+            'subject': self.subject,
+            'status': self.status,
+            'priority': self.priority,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'closed_at': self.closed_at.isoformat() if self.closed_at else None,
+        }
+
+
+class SupportMessage(db.Model):
+    """A message within a support conversation."""
+    __tablename__ = 'support_messages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('support_conversations.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    encrypted_content = db.Column(db.LargeBinary)
+    message_type = db.Column(db.String(20), default='text')  # text, system
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    sender = db.relationship('User', foreign_keys=[sender_id])
+
+    @property
+    def content(self):
+        return _decrypt_text(self.encrypted_content) if self.encrypted_content else None
+
+    @content.setter
+    def content(self, value):
+        self.encrypted_content = _encrypt_text(value) if value is not None else None
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'conversation_id': self.conversation_id,
+            'sender_id': self.sender_id,
+            'content': self.content,
+            'message_type': self.message_type,
+            'is_read': self.is_read,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
 
 
 class PatientVital(db.Model):
@@ -860,15 +983,25 @@ class CallSession(db.Model):
     __tablename__ = 'call_sessions'
     
     id = db.Column(db.Integer, primary_key=True)
+    call_id = db.Column(db.String(64), index=True)  # Links to CallHistory.call_id
     appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=False)
+    caller_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    callee_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    call_type = db.Column(db.String(10))  # 'video' or 'voice'
+    status = db.Column(db.String(20))  # ringing, ongoing, completed, ended
     started_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    accepted_at = db.Column(db.DateTime)
+    connected_at = db.Column(db.DateTime)
     ended_at = db.Column(db.DateTime)
     duration = db.Column(db.Integer)  # Duration in seconds
+    end_reason = db.Column(db.String(30))
     call_quality = db.Column(db.String(20))  # excellent, good, poor
     participants = db.Column(db.JSON)  # Store participant info
     
-    # Relationship
+    # Relationships
     appointment = db.relationship('Appointment', backref=db.backref('call_sessions', lazy=True))
+    caller = db.relationship('User', foreign_keys=[caller_id])
+    callee = db.relationship('User', foreign_keys=[callee_id])
 
 
 class HealthTip(db.Model):
@@ -897,6 +1030,28 @@ class HealthTip(db.Model):
     def description(self, value):
         """Encrypt description when set"""
         self.encrypted_description = _encrypt_text(value) if value is not None else None
+
+
+class EmailOTP(db.Model):
+    """Stores email verification OTP codes"""
+    __tablename__ = 'email_otps'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    otp_hash = db.Column(db.String(64), nullable=False)  # SHA-256 hash of the OTP
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+
+    user = db.relationship('User', backref=db.backref('email_otps', lazy=True))
+
+    def is_valid(self, otp_code):
+        """Check if OTP matches and hasn't expired"""
+        if self.used:
+            return False
+        if datetime.now(timezone.utc) > self.expires_at:
+            return False
+        return _hash_value(otp_code) == self.otp_hash
 
 
 # ============================================
@@ -983,6 +1138,7 @@ class CallHistory(db.Model):
             'end_reason': self.end_reason,
             'duration': self.duration,
             'direction': direction,
+            'remote_user_id': remote_user.id if remote_user else None,
             'remote_user_name': remote_user.get_display_name() if remote_user else 'Unknown',
             'remote_user_avatar': remote_user.profile_picture if remote_user and hasattr(remote_user, 'profile_picture') else None,
             'call_note': f"{self.status}" if self.end_reason else self.status,
@@ -1214,4 +1370,242 @@ class UserPresence(db.Model):
             'status': self.status,
             'current_call_id': self.current_call_id,
             'last_seen': self.last_seen.isoformat() if self.last_seen else None
+        }
+
+
+class EmailOTPChallenge(db.Model):
+    """Stores stateless email OTP challenges (not tied to a user account)."""
+    __tablename__ = 'email_otp_challenges'
+
+    id = db.Column(db.Integer, primary_key=True)
+    email_hash = db.Column(db.String(64), nullable=False, index=True)
+    purpose = db.Column(db.String(64), nullable=False)  # e.g. 'signup', 'admin_create_user'
+    otp_hash = db.Column(db.String(128), nullable=False)
+    attempts = db.Column(db.Integer, default=0, nullable=False)
+    max_attempts = db.Column(db.Integer, default=5, nullable=False)
+    verified = db.Column(db.Boolean, default=False, nullable=False)
+    verified_at = db.Column(db.DateTime, nullable=True)
+    consumed = db.Column(db.Boolean, default=False, nullable=False)
+    consumed_at = db.Column(db.DateTime, nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    resend_allowed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    created_by = db.relationship('User', foreign_keys=[created_by_user_id],
+                                 backref=db.backref('created_otp_challenges', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'purpose': self.purpose,
+            'verified': self.verified,
+            'consumed': self.consumed,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+        }
+
+
+class ConsultationRoom(db.Model):
+    """
+    Represents a secure, time-locked consultation room tied to one (or more) appointments.
+    The room_token is an HMAC secret used as the Socket.IO room name server-side; it is
+    NEVER exposed in any HTTP response or client-side variable.
+    """
+    __tablename__ = 'consultation_rooms'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Primary appointment that owns this room
+    appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'),
+                               nullable=False, unique=True, index=True)
+
+    # Server-only secret: HMAC-SHA256(secret_key, f"room:{appointment_id}")
+    room_token = db.Column(db.String(128), nullable=False, unique=True, index=True)
+
+    # Status machine: waiting → active → ended
+    status = db.Column(db.String(20), nullable=False, default='waiting')
+
+    # Group session support
+    is_group_session = db.Column(db.Boolean, default=False, nullable=False)
+    # JSON list of appointment IDs included in a group session (includes primary)
+    group_appointment_ids = db.Column(db.JSON, nullable=True)
+
+    # Time window: room.unlock_at = appointment_date - 15 min; lock_at = + 90 min
+    unlock_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    lock_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    # Lifecycle timestamps
+    started_at = db.Column(db.DateTime(timezone=True), nullable=True)   # first participant joined
+    ended_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True),
+                           default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True),
+                           onupdate=lambda: datetime.now(timezone.utc), nullable=True)
+
+    # Who ended the session (user_id)
+    ended_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    # Notes saved during the session (doctor-only, encrypted blob reused pattern)
+    session_notes = db.Column(db.Text, nullable=True)
+
+    # Recording consent given by both parties
+    recording_consent_doctor = db.Column(db.Boolean, default=False, nullable=False)
+    recording_consent_patient = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Relationships
+    appointment = db.relationship('Appointment',
+                                  backref=db.backref('consultation_room', uselist=False, lazy='select'))
+    ended_by = db.relationship('User', foreign_keys=[ended_by_user_id],
+                               backref=db.backref('ended_consultation_rooms', lazy=True))
+
+    @property
+    def is_open(self):
+        # Time-window controlled by admin consultation_settings in SiteContent
+        # 0 means "no limit" — room is always open while waiting/active
+        try:
+            rows = SiteContent.query.filter_by(section='consultation_settings').all()
+            settings = {r.key: int(r.value) for r in rows}
+        except Exception:
+            settings = {}
+        open_before = settings.get('open_before_minutes', 0)
+        open_after = settings.get('open_after_minutes', 0)
+
+        if open_before == 0 and open_after == 0:
+            # No limit mode
+            return self.status in ('waiting', 'active')
+
+        now = datetime.now(timezone.utc)
+        unlock = self.unlock_at if self.unlock_at.tzinfo else self.unlock_at.replace(tzinfo=timezone.utc)
+        lock = self.lock_at if self.lock_at.tzinfo else self.lock_at.replace(tzinfo=timezone.utc)
+        return self.status in ('waiting', 'active') and unlock <= now <= lock
+
+    @property
+    def seconds_until_unlock(self):
+        now = datetime.now(timezone.utc)
+        unlock = self.unlock_at if self.unlock_at.tzinfo else self.unlock_at.replace(tzinfo=timezone.utc)
+        delta = (unlock - now).total_seconds()
+        return max(0, delta)
+
+    def to_public_dict(self):
+        """Public-safe dict — room_token intentionally excluded."""
+        now = datetime.now(timezone.utc)
+        unlock = self.unlock_at if self.unlock_at.tzinfo else self.unlock_at.replace(tzinfo=timezone.utc)
+        lock = self.lock_at if self.lock_at.tzinfo else self.lock_at.replace(tzinfo=timezone.utc)
+        return {
+            'id': self.id,
+            'appointment_id': self.appointment_id,
+            'status': self.status,
+            'is_open': self.is_open,
+            'is_group_session': self.is_group_session,
+            'group_appointment_ids': self.group_appointment_ids or [],
+            'unlock_at': unlock.isoformat(),
+            'lock_at': lock.isoformat(),
+            'seconds_until_unlock': max(0, (unlock - now).total_seconds()),
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'ended_at': self.ended_at.isoformat() if self.ended_at else None,
+        }
+
+
+class Partner(db.Model):
+    """Represents partner institutions: hospitals, labs, pharmacies."""
+    __tablename__ = 'partners'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    partner_type = db.Column(db.String(50), nullable=False)  # 'hospital', 'lab', 'pharmacy'
+    region = db.Column(db.String(100), nullable=True)
+    city = db.Column(db.String(100), nullable=True)
+    country = db.Column(db.String(100), nullable=True)
+    contact_email = db.Column(db.String(255), nullable=True)
+    contact_phone = db.Column(db.String(50), nullable=True)
+    website = db.Column(db.String(500), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, onupdate=lambda: datetime.now(timezone.utc), nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'partner_type': self.partner_type,
+            'region': self.region,
+            'city': self.city,
+            'country': self.country,
+            'contact_email': self.contact_email,
+            'contact_phone': self.contact_phone,
+            'website': self.website,
+            'notes': self.notes,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class SiteContent(db.Model):
+    """Key-value store for admin-editable website content (text, images, colors, etc.)."""
+    __tablename__ = 'site_content'
+
+    id = db.Column(db.Integer, primary_key=True)
+    section = db.Column(db.String(50), nullable=False, index=True)   # e.g. 'hero', 'about', 'footer', 'branding'
+    key = db.Column(db.String(100), nullable=False)                  # e.g. 'title', 'subtitle', 'image_url'
+    value = db.Column(db.Text, nullable=True)                        # text / path / color hex / JSON list
+    content_type = db.Column(db.String(20), default='text')          # text, image, color, json, html
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+    updated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    __table_args__ = (db.UniqueConstraint('section', 'key', name='uq_section_key'),)
+
+    def __repr__(self):
+        return f'<SiteContent {self.section}.{self.key}>'
+
+
+class ConsultationRecording(db.Model):
+    """Stores recorded consultation sessions (audio/video) with full metadata."""
+    __tablename__ = 'consultation_recordings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    consultation_room_id = db.Column(db.Integer, db.ForeignKey('consultation_rooms.id'), nullable=False)
+    appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=False)
+    doctor_id = db.Column(db.Integer, db.ForeignKey('doctors.id'), nullable=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
+    doctor_name = db.Column(db.String(255), nullable=False)
+    patient_name = db.Column(db.String(255), nullable=False)
+    appointment_booked_at = db.Column(db.DateTime, nullable=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    ended_at = db.Column(db.DateTime, nullable=True)
+    duration_seconds = db.Column(db.Integer, default=0)
+    recording_filename = db.Column(db.String(500), nullable=True)
+    recording_size = db.Column(db.Integer, default=0)  # bytes
+    recording_type = db.Column(db.String(20), default='video')  # video or audio
+    review_rating = db.Column(db.Integer, nullable=True)
+    review_content = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(30), default='recording')  # recording, completed, failed
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    consultation_room = db.relationship('ConsultationRoom', backref=db.backref('recordings', lazy=True))
+    appointment = db.relationship('Appointment', backref=db.backref('consultation_recordings', lazy=True))
+    doctor = db.relationship('Doctor', backref=db.backref('consultation_recordings', lazy=True))
+    patient = db.relationship('Patient', backref=db.backref('consultation_recordings', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'consultation_room_id': self.consultation_room_id,
+            'appointment_id': self.appointment_id,
+            'doctor_id': self.doctor_id,
+            'patient_id': self.patient_id,
+            'doctor_name': self.doctor_name,
+            'patient_name': self.patient_name,
+            'appointment_booked_at': self.appointment_booked_at.isoformat() if self.appointment_booked_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'ended_at': self.ended_at.isoformat() if self.ended_at else None,
+            'duration_seconds': self.duration_seconds,
+            'recording_filename': self.recording_filename,
+            'recording_size': self.recording_size,
+            'recording_type': self.recording_type,
+            'review_rating': self.review_rating,
+            'review_content': self.review_content,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }

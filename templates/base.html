@@ -8,7 +8,6 @@
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
-    <meta name="theme-color" content="#0d6efd">
     <!-- Server-provided ICE servers (JSON) stored in a meta tag so JS doesn't contain raw Jinja markers -->
     <meta name="ice-servers" content='{{ ice_servers|tojson | safe }}'>
     
@@ -22,96 +21,129 @@
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
+    {% if current_user.is_authenticated and current_user.wallpaper %}
+        {% set wallpaper_url = url_for('static', filename=current_user.wallpaper.split('static/')[-1]) %}
+        <style>body { background-image: url('{{ wallpaper_url }}'); background-size: cover; background-repeat: no-repeat; background-attachment: fixed; }</style>
+    {% endif %}
+    {% if site and site.branding %}
+    <style>
+        :root {
+            --bs-primary: {{ site.branding.primary_color|default('#0d6efd',true) }};
+            --bs-success: {{ site.branding.secondary_color|default('#198754',true) }};
+            --site-accent: {{ site.branding.accent_color|default('#6f42c1',true) }};
+        }
+        .bg-primary, .btn-primary { background-color: {{ site.branding.primary_color|default('#0d6efd',true) }} !important; border-color: {{ site.branding.primary_color|default('#0d6efd',true) }} !important; }
+        .btn-primary:hover { background-color: {{ site.branding.primary_color|default('#0d6efd',true) }}dd !important; }
+        .text-primary { color: {{ site.branding.primary_color|default('#0d6efd',true) }} !important; }
+        .bg-dark.text-light.mt-5 { background-color: {{ site.branding.footer_bg_color|default('#212529',true) }} !important; }
+    </style>
+    {% endif %}
     {% block extra_css %}{% endblock %}
 </head>
 {% set user_theme = (current_user.theme if current_user.is_authenticated and current_user.theme else 'light') %}
-{% if current_user.is_authenticated and current_user.wallpaper %}
-    {% set wallpaper_url = url_for('static', filename=current_user.wallpaper.split('static/')[-1]) %}
-    <body data-theme="{{ user_theme }}" style="background-image: url('{{ wallpaper_url }}'); background-size: cover; background-repeat: no-repeat; background-attachment: fixed;">
-{% else %}
-    <body data-theme="{{ user_theme }}">
-{% endif %}
+<body data-theme="{{ user_theme }}">
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
                         <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
-                                <img src="{{ url_for('static', filename='uploads/logo.png') }}" alt="Makokha MC" style="height:36px; margin-right:10px; object-fit:contain;"/>
+                                <img src="{% if site and site.branding and site.branding.logo_url %}{{ url_for('static', filename=site.branding.logo_url) }}{% else %}{{ url_for('static', filename='uploads/logo.png') }}{% endif %}" alt="{{ (site.branding.site_name if site and site.branding) | default('Makokha MC',true) }}" class="navbrand-logo"/>
                                 <div>
-                                    <div style="line-height:1; font-weight:700;">Makokha Medical Centre</div>
-                                    <div style="font-size:11px; margin-top:2px; opacity:0.85;">Telemedicine & Clinical Services</div>
+                                    <div class="navbrand-title">{{ (site.branding.site_name if site and site.branding) | default('Makokha Medical Centre',true) }}</div>
+                                    <div class="navbrand-subtitle">{{ (site.branding.site_tagline if site and site.branding) | default('Telemedicine &amp; Clinical Services',true) }}</div>
                                 </div>
                         </a>
             
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" title="Toggle navigation" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
+                <div class="navbar-nav me-auto">
+                    <div class="nav-item">
                         <a class="nav-link" href="{{ url_for('index') }}">Home</a>
-                    </li>
+                    </div>
                     <!-- In the navbar section, update the authenticated user section -->
                     {% if current_user.is_authenticated %}
                         {% if current_user.role == 'admin' %}
-                            <li class="nav-item">
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
-                            </li>
-                            <li class="nav-item">
+                            </div>
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('admin_users') }}">Users</a>
-                            </li>
-                            <li class="nav-item">
+                            </div>
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('admin_patients') }}">Patients</a>
-                            </li>
-                            <li class="nav-item">
+                            </div>
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('admin_communication') }}">Communications</a>
-                            </li>
+                            </div>
+                            <div class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_site_editor') }}"><i class="fas fa-edit me-1"></i>Edit Site</a>
+                            </div>
                         {% elif current_user.role == 'doctor' %}
-                            <li class="nav-item">
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('doctor_dashboard') }}">Dashboard</a>
-                            </li>
-                            <li class="nav-item">
+                            </div>
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('get_doctor_patients') }}">Patients</a>    
-                            </li>
-                            <li class="nav-item">
+                            </div>
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('doctor_communication') }}">Communications</a>
-                            </li>
+                            </div>
                         {% else %}
-                            <li class="nav-item">
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('patient_dashboard') }}">Dashboard</a>
-                            </li>
-                            <li class="nav-item">
+                            </div>
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('patient_appointment') }}">Appointments</a>
-                            </li>
-                            <li class="nav-item">
+                            </div>
+                            <div class="nav-item">
                                 <a class="nav-link" href="{{ url_for('patient_communication') }}">Messages</a>
-                            </li>
+                            </div>
                         {% endif %}
+                    {% else %}
+                        <div class="nav-item">
+                            <a class="nav-link" href="{{ url_for('about') }}">About</a>
+                        </div>
+                        <div class="nav-item">
+                            <a class="nav-link" href="{{ url_for('services') }}">Services</a>
+                        </div>
+                        <div class="nav-item">
+                            <a class="nav-link" href="{{ url_for('doctors') }}">Doctors</a>
+                        </div>
+                        <div class="nav-item">
+                            <a class="nav-link" href="{{ url_for('about') }}#how-it-works">How It Works</a>
+                        </div>
+                        <div class="nav-item">
+                            <a class="nav-link" href="{{ url_for('testimonials_page') }}">Testimonials</a>
+                        </div>
                     {% endif %}
-                </ul>
+                </div>
                 
-                <ul class="navbar-nav">
+                <div class="navbar-nav">
                     {% if current_user.is_authenticated %}
-                        <li class="nav-item dropdown me-2">
+                        <div class="nav-item dropdown me-2">
                             <a class="nav-link position-relative" href="#" id="notificationsToggle" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-bell"></i>
-                                <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display:none;">0</span>
+                                <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger initially-hidden">0</span>
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-end p-2" aria-labelledby="notificationsToggle" style="min-width:320px; max-height:420px; overflow:auto;">
+                            <ul class="dropdown-menu dropdown-menu-end p-2 notif-dropdown" aria-labelledby="notificationsToggle">
                                 <li class="d-flex justify-content-between align-items-center px-2 mb-2">
                                     <strong>Notifications</strong>
-                                    <button id="markAllReadBtn" class="btn btn-sm btn-link">Mark all read</button>
+                                    <button id="markAllReadBtn" class="btn btn-sm btn-link" title="Mark all notifications as read" aria-label="Mark all notifications as read">Mark all read</button>
                                 </li>
+                                <li>
                                 <div id="notificationsList" class="list-group px-2"></div>
-                                <div class="px-2 mt-2 d-flex justify-content-center"><button id="notifLoadMore" class="btn btn-sm btn-outline-secondary">Load more</button></div>
+                                </li>
+                                <li><div class="px-2 mt-2 d-flex justify-content-center"><button id="notifLoadMore" class="btn btn-sm btn-outline-secondary" title="Load more notifications" aria-label="Load more notifications">Load more</button></div></li>
                                 <li class="text-center mt-2"><a href="/notifications" class="small">View all</a></li>
-                                <input type="hidden" id="notifDropdownPage" value="1">
+                                <li><input type="hidden" id="notifDropdownPage" value="1"></li>
                             </ul>
-                        </li>
-                        <li class="nav-item me-2 d-flex align-items-center">
+                        </div>
+                        <div class="nav-item me-2 d-flex align-items-center">
                             <button id="pushToggleBtn" class="btn btn-sm btn-outline-light" title="Enable push notifications">Enable Push</button>
-                        </li>
-                        <li class="nav-item dropdown">
+                        </div>
+                        <div class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-user-circle"></i> {{ current_user.get_display_name() }}
                             </a>
@@ -120,16 +152,16 @@
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
                             </ul>
-                        </li>
+                        </div>
                     {% else %}
-                        <li class="nav-item">
+                        <div class="nav-item">
                             <a class="nav-link" href="{{ url_for('login') }}">Login</a>
-                        </li>
-                        <li class="nav-item">
+                        </div>
+                        <div class="nav-item">
                             <a class="nav-link" href="{{ url_for('signup') }}">Sign Up</a>
-                        </li>
+                        </div>
                     {% endif %}
-                </ul>
+                </div>
             </div>
         </div>
     </nav>
@@ -141,7 +173,7 @@
                 {% for category, message in messages %}
                     <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
                         {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" title="Close" aria-label="Close"></button>
                     </div>
                 {% endfor %}
             {% endif %}
@@ -154,47 +186,52 @@
     </main>
 
     <!-- Footer -->
+    {% set _c = site.contact if site and site.contact else {} %}
+    {% set _f = site.footer if site and site.footer else {} %}
+    {% set _b = site.branding if site and site.branding else {} %}
     <footer class="bg-dark text-light mt-5 py-4">
         <div class="container">
             <div class="row">
                 <div class="col-md-6">
-                    <h5>MAKOKHA MEDICAL CENTRE</h5>
-                    <p>Providing quality telemedicine services for all your healthcare needs.</p>
+                    <h5>{{ _b.site_name|default('MAKOKHA MEDICAL CENTRE',true)|upper }}</h5>
+                    <p>{{ _f.description|default('Providing quality telemedicine services for all your healthcare needs.',true) }}</p>
                 </div>
                 <div class="col-md-3">
                     <h6>Quick Links</h6>
                     <ul class="list-unstyled">
                         <li><a href="{{ url_for('about') }}" class="text-light">About Us</a></li>
                         <li><a href="{{ url_for('services') }}" class="text-light">Services</a></li>
-                        <li><a href="#" class="text-light">Contact</a></li>
+                        <li><a href="{{ url_for('doctors') }}" class="text-light">Our Doctors</a></li>
+                        <li><a href="{{ url_for('testimonials_page') }}" class="text-light">Testimonials</a></li>
+                        <li><a href="{{ url_for('index') }}#contact" class="text-light">Contact</a></li>
                     </ul>
                 </div>
                 <div class="col-md-3">
                     <h6>Contact Info</h6>
                     <div class="footer-contact-icons mb-2" role="group" aria-label="Contact methods">
-                        <a href="tel:+254741256531" class="footer-contact-icon phone" aria-label="Call us"><i class="fas fa-phone"></i></a>
-                        <a href="https://wa.me/254741256531" target="_blank" rel="noopener" class="footer-contact-icon whatsapp" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+                        <a href="tel:{{ _c.phone_1|default('+254741256531',true)|replace(' ','') }}" class="footer-contact-icon phone" aria-label="Call us"><i class="fas fa-phone"></i></a>
+                        <a href="https://wa.me/{{ _c.whatsapp_1|default('0741256531',true)|replace(' ','') }}" target="_blank" rel="noopener" class="footer-contact-icon whatsapp" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
                         <a href="#" class="footer-contact-icon message" aria-label="Message"><i class="fas fa-comment-dots"></i></a>
                     </div>
 
-                    <p class="mb-0">+254 741256531</p>
-                    <p class="mb-0">+254 713580997</p>
+                    <p class="mb-0">{{ _c.phone_1|default('+254 741256531',true) }}</p>
+                    <p class="mb-0">{{ _c.phone_2|default('+254 713580997',true) }}</p>
 
-                    <p class="mt-2"><i class="fas fa-envelope"></i> info@makokhamedical.com</p>
-                    <p class="mt-2"><i class="fas fa-exclamation-triangle"></i> <strong>Emergency:</strong> <a href="tel:911" class="text-light">911</a></p>
+                    <p class="mt-2"><i class="fas fa-envelope"></i> {{ _f.info_email|default('info@makokhamedical.com',true) }}</p>
+                    <p class="mt-2"><i class="fas fa-exclamation-triangle"></i> <strong>Emergency:</strong> <a href="tel:{{ _c.emergency_number|default('911',true) }}" class="text-light">{{ _c.emergency_number|default('911',true) }}</a></p>
 
                     <div class="social-links mt-3" aria-label="Social links">
-                        <a href="https://wa.me/254741256531" target="_blank" class="social-icon whatsapp" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
-                        <a href="https://facebook.com/makokhamedical" target="_blank" class="social-icon facebook" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
-                        <a href="https://t.me/makokhamedical" target="_blank" class="social-icon telegram" aria-label="Telegram"><i class="fab fa-telegram-plane"></i></a>
-                        <a href="https://instagram.com/makokhamedical" target="_blank" class="social-icon instagram" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
-                        <a href="https://twitter.com/makokhamedical" target="_blank" class="social-icon twitter" aria-label="X"><i class="fab fa-twitter"></i></a>
+                        <a href="https://wa.me/{{ _c.whatsapp_1|default('0741256531',true)|replace(' ','') }}" target="_blank" rel="noopener noreferrer" class="social-icon whatsapp" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+                        <a href="{{ _c.facebook_url|default('https://facebook.com/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="social-icon facebook" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                        <a href="{{ _c.telegram_url|default('https://t.me/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="social-icon telegram" aria-label="Telegram"><i class="fab fa-telegram-plane"></i></a>
+                        <a href="{{ _c.instagram_url|default('https://instagram.com/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="social-icon instagram" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                        <a href="{{ _c.twitter_url|default('https://twitter.com/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="social-icon twitter" aria-label="X"><i class="fab fa-twitter"></i></a>
                     </div>
                 </div>
             </div>
             <hr>
             <div class="text-center">
-                <p>&copy; 2025 MAKOKHA MEDICAL CENTRE. All rights reserved.</p>
+                <p>&copy; {{ _f.copyright|default('2025 MAKOKHA MEDICAL CENTRE. All rights reserved.',true) }}</p>
             </div>
         </div>
     </footer>
@@ -716,5 +753,194 @@
     </script>
     
     {% block extra_js %}{% endblock %}
+
+    <!-- Support Chat Widget (shown to all authenticated non-admin, non-doctor, non-customer_care users) -->
+    {% if current_user.is_authenticated and current_user.role not in ('admin', 'doctor', 'customer_care') %}
+    <style>
+        #supportChatWidget { position: fixed; bottom: 28px; right: 28px; z-index: 9999; }
+        #supportChatFab {
+            width: 56px; height: 56px; border-radius: 50%; background: #0d6efd; color: #fff;
+            border: none; box-shadow: 0 4px 12px rgba(13,110,253,.4); font-size: 1.4rem;
+            cursor: pointer; transition: transform .2s, box-shadow .2s;
+        }
+        #supportChatFab:hover { transform: scale(1.1); box-shadow: 0 6px 18px rgba(13,110,253,.5); }
+        #supportChatBadge {
+            position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; border-radius: 50%;
+            background: #dc3545; color: #fff; font-size: 0.65rem; display: none;
+            align-items: center; justify-content: center; font-weight: bold;
+        }
+        #supportChatPanel {
+            position: fixed; bottom: 96px; right: 28px; width: 340px; height: 480px; z-index: 9999;
+            box-shadow: 0 8px 24px rgba(0,0,0,.2); border-radius: 16px; overflow: hidden;
+            display: none; flex-direction: column; background: #fff;
+        }
+        #supportChatHeader {
+            background: #0d6efd; color: #fff; padding: 14px 16px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #supportChatMessages { flex: 1; overflow-y: auto; padding: 12px; background: #f8f9fa; }
+        #supportChatInputRow { padding: 10px 12px; border-top: 1px solid #dee2e6; background: #fff; display: flex; gap: 8px; }
+        .sc-msg { max-width: 75%; padding: 8px 12px; border-radius: 14px; margin-bottom: 6px; word-wrap: break-word; font-size: .9rem; }
+        .sc-msg.me { background: #0d6efd; color: #fff; margin-left: auto; }
+        .sc-msg.other { background: #e9ecef; color: #212529; }
+        .sc-msg-meta { font-size: .7rem; opacity: .7; margin-top: 2px; }
+    </style>
+    <div id="supportChatWidget">
+        <button id="supportChatFab" onclick="toggleSupportChat()" aria-label="Contact Support" title="Contact Customer Care">
+            <i class="fas fa-headset"></i>
+        </button>
+        <span id="supportChatBadge" id="supportChatBadge">0</span>
+    </div>
+    <div id="supportChatPanel">
+        <div id="supportChatHeader">
+            <div><i class="fas fa-headset me-2"></i><strong>Customer Care</strong></div>
+            <button class="btn btn-sm btn-link text-white p-0" onclick="toggleSupportChat()"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="supportChatMessages">
+            <div class="text-center text-muted py-4" id="supportChatPlaceholder">
+                <i class="fas fa-comments fa-2x mb-2"></i>
+                <p>Hi {{ current_user.first_name or current_user.username }}! How can we help you today?</p>
+            </div>
+        </div>
+        <div id="supportChatInputRow">
+            <input type="text" id="supportChatInput" class="form-control form-control-sm" placeholder="Type a message..." maxlength="2000" autocomplete="off" onkeydown="if(event.key==='Enter'){sendSupportMessage();event.preventDefault();}">
+            <button class="btn btn-primary btn-sm" onclick="sendSupportMessage()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+    <script>
+    (function(){
+        let supportConvId = null;
+        let supportPanelOpen = false;
+        let unreadCount = 0;
+        const socket = window._supportSocket || window.io && io({ transports: ['websocket','polling'] });
+
+        window.toggleSupportChat = function() {
+            supportPanelOpen = !supportPanelOpen;
+            document.getElementById('supportChatPanel').style.display = supportPanelOpen ? 'flex' : 'none';
+            if (supportPanelOpen) {
+                unreadCount = 0;
+                updateBadge();
+                loadSupportMessages();
+                setTimeout(() => document.getElementById('supportChatInput').focus(), 200);
+            }
+        };
+
+        function loadSupportMessages() {
+            if (!supportConvId) {
+                // Check for existing open conversation
+                fetch('/api/support/conversations')
+                    .then(r => r.json())
+                    .then(d => {
+                        const open = (d.conversations || []).find(c => c.status !== 'closed');
+                        if (open) {
+                            supportConvId = open.id;
+                            fetchMessages();
+                        }
+                    });
+                return;
+            }
+            fetchMessages();
+        }
+
+        function fetchMessages() {
+            if (!supportConvId) return;
+            fetch(`/api/support/conversations/${supportConvId}/messages`)
+                .then(r => r.json())
+                .then(d => {
+                    renderMessages(d.messages || []);
+                });
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('supportChatMessages');
+            if (messages.length === 0) return;
+            container.innerHTML = '';
+            messages.forEach(msg => appendSupportMsg(msg, false));
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendSupportMsg(msg, scroll) {
+            const container = document.getElementById('supportChatMessages');
+            document.getElementById('supportChatPlaceholder').style.display = 'none';
+            const div = document.createElement('div');
+            const isMe = msg.sender_id === {{ current_user.id }};
+            div.className = `sc-msg d-flex flex-column ${isMe ? 'me' : 'other'}`;
+            const t = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
+            const name = isMe ? 'You' : escHtml(msg.sender_name || 'Support');
+            div.innerHTML = `<div>${escHtml(msg.content || '')}</div><div class="sc-msg-meta">${name} · ${t}</div>`;
+            container.appendChild(div);
+            if (scroll !== false) container.scrollTop = container.scrollHeight;
+        }
+
+        window.sendSupportMessage = function() {
+            const input = document.getElementById('supportChatInput');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+
+            if (!supportConvId) {
+                // Create new conversation
+                fetch('/api/support/conversations', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: text, subject: 'General Support' })
+                })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.conversation) {
+                        supportConvId = d.conversation.id;
+                        appendSupportMsg(d.message);
+                    }
+                });
+            } else {
+                fetch(`/api/support/conversations/${supportConvId}/messages`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: text })
+                })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.message) appendSupportMsg(d.message);
+                });
+            }
+        };
+
+        // Real-time incoming messages
+        if (socket) {
+            socket.on('new_support_message', (msg) => {
+                if (msg.sender_id === {{ current_user.id }}) return;
+                if (supportConvId && msg.conversation_id === supportConvId) {
+                    if (supportPanelOpen) {
+                        appendSupportMsg(msg);
+                    } else {
+                        unreadCount++;
+                        updateBadge();
+                    }
+                }
+            });
+            socket.on('support_conversation_closed', () => {
+                supportConvId = null;
+            });
+        }
+
+        function updateBadge() {
+            const badge = document.getElementById('supportChatBadge');
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function escHtml(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>

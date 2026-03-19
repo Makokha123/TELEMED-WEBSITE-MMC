@@ -28,6 +28,9 @@
     .filter-dropdown {
         min-width: 200px;
     }
+    .badge-sensitive { background: #dc3545; color: #fff; font-size: 0.65em; vertical-align: middle; }
+    .badge-public    { background: #198754; color: #fff; font-size: 0.65em; vertical-align: middle; }
+    .view-section-title { font-weight: 600; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; margin-top: 12px; margin-bottom: 8px; }
 </style>
 {% endblock %}
 
@@ -39,7 +42,7 @@
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h1 class="h3 mb-2">User Management</h1>
-                    <p class="text-muted">Manage all users including admins, doctors, and patients.</p>
+                    <p class="text-muted">Manage admins, healthcare practitioners, and non-staff workers. Patients are managed in the Patients section.</p>
                 </div>
                 <div>
                     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
@@ -63,15 +66,16 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <select class="form-select" id="roleFilter">
+                            <select class="form-select" id="roleFilter" title="Filter by role" aria-label="Filter by role">
                                 <option value="">All Roles</option>
                                 <option value="admin">Admin</option>
-                                <option value="doctor">Doctor</option>
-                                <option value="patient">Patient</option>
+                                <option value="doctor">Healthcare Practitioner</option>
+                                <option value="non_staff">Non-Staff Worker</option>
+                                <option value="customer_care">Customer Care</option>
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <select class="form-select" id="statusFilter">
+                            <select class="form-select" id="statusFilter" title="Filter by status" aria-label="Filter by status">
                                 <option value="">All Status</option>
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>
@@ -104,6 +108,7 @@
                                     <th>Role</th>
                                     <th>Email</th>
                                     <th>Phone</th>
+                                    <th>Specialization / Dept</th>
                                     <th>Status</th>
                                     <th>Joined</th>
                                     <th>Actions</th>
@@ -114,9 +119,13 @@
                                 <tr>
                                     <td>
                                         <div class="d-flex align-items-center">
+                                            {% if user.profile_picture_blob or user.profile_picture %}
+                                            <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="{{ user.first_name }}" class="me-3 user-avatar-40">
+                                            {% else %}
                                             <div class="user-avatar me-3">
                                                 {{ user.first_name[0] }}{{ user.last_name[0] }}
                                             </div>
+                                            {% endif %}
                                             <div>
                                                 <h6 class="mb-1">{{ user.first_name }} {{ user.last_name }}</h6>
                                                 <small class="text-muted">@{{ user.username }}</small>
@@ -127,12 +136,24 @@
                                         <span class="badge 
                                             {% if user.role == 'admin' %}bg-danger
                                             {% elif user.role == 'doctor' %}bg-success
-                                            {% else %}bg-info{% endif %}">
-                                            {{ user.role|title }}
+                                            {% elif user.role == 'non_staff' %}bg-info
+                                            {% elif user.role == 'customer_care' %}bg-warning
+                                            {% else %}bg-secondary{% endif %}">
+                                            {% if user.role == 'doctor' %}Healthcare Practitioner
+                                            {% elif user.role == 'non_staff' %}Non-Staff
+                                            {% elif user.role == 'customer_care' %}Customer Care
+                                            {% else %}{{ user.role|title }}{% endif %}
                                         </span>
                                     </td>
                                     <td>{{ user.email }}</td>
                                     <td>{{ user.phone or 'N/A' }}</td>
+                                    <td>
+                                        {% if user.role == 'doctor' and user.doctor_profile %}
+                                            {{ user.doctor_profile.specialization or '—' }}
+                                        {% else %}
+                                            {{ user.department or '—' }}
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         <span class="badge {% if user.is_active %}bg-success{% else %}bg-secondary{% endif %} status-badge">
                                             {{ 'Active' if user.is_active else 'Inactive' }}
@@ -201,95 +222,327 @@
     </div>
 </div>
 
-<!-- Add User Modal -->
+<!-- Add / Edit User Modal -->
 <div class="modal fade" id="addUserModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add New User</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="addUserForm">
                     <input type="hidden" name="user_id" id="userIdField">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <!-- Basic Info -->
+                    <h6 class="view-section-title"><i class="fas fa-user me-1"></i> Basic Information</h6>
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-2">
                             <div class="mb-3">
-                                <label class="form-label">First Name *</label>
-                                <input type="text" class="form-control" name="first_name" required>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Last Name *</label>
-                                <input type="text" class="form-control" name="last_name" required>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Username *</label>
-                                <input type="text" class="form-control" name="username" required>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Email *</label>
-                                <input type="email" class="form-control" name="email" required>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Role *</label>
-                                <select class="form-select" name="role" required>
-                                    <option value="">Select Role</option>
-                                    <option value="admin">Admin</option>
-                                    <option value="doctor">Doctor</option>
-                                    <option value="patient">Patient</option>
+                                <label class="form-label">Title</label>
+                                <select class="form-select" name="title" title="Title" aria-label="Title">
+                                    <option value="">—</option>
+                                    <option value="Mr.">Mr.</option>
+                                    <option value="Mrs.">Mrs.</option>
+                                    <option value="Ms.">Ms.</option>
+                                    <option value="Dr.">Dr.</option>
+                                    <option value="Prof.">Prof.</option>
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-5">
                             <div class="mb-3">
-                                <label class="form-label">Phone</label>
-                                <input type="tel" class="form-control" name="phone">
+                                <label class="form-label">First Name *</label>
+                                <input type="text" class="form-control" name="first_name" required title="First name" aria-label="First name">
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="mb-3">
+                                <label class="form-label">Last Name *</label>
+                                <input type="text" class="form-control" name="last_name" required title="Last name" aria-label="Last name">
                             </div>
                         </div>
                     </div>
                     <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Username *</label>
+                                <input type="text" class="form-control" name="username" required title="Username" aria-label="Username">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Email * <span class="badge badge-sensitive">Sensitive</span></label>
+                                <input type="email" class="form-control" name="email" id="addUserEmailField" required title="Email address" aria-label="Email address">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="mb-3">
+                                <label class="form-label">Email verified</label>
+                                <select class="form-select" name="email_verified" title="Email verified" aria-label="Email verified">
+                                    <option value="false">No</option>
+                                    <option value="true">Yes</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="mb-3">
+                                <label class="form-label">Role *</label>
+                                <select class="form-select" name="role" required title="Role" aria-label="Role">
+                                    <option value="">Select</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="doctor">Healthcare Practitioner</option>
+                                    <option value="non_staff">Non-Staff Worker</option>
+                                    <option value="customer_care">Customer Care</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Email OTP Verification (new users only) -->
+                    <div id="adminOtpSection" class="mb-3">
+                        <div class="card border-0 bg-light card-rounded-10">
+                            <div class="card-body py-3">
+                                <h6 class="mb-2 text-primary"><i class="fas fa-shield-alt me-1"></i>Email Verification Required</h6>
+                                <p class="text-muted small mb-2">The user's email must be verified with a code before the account is created.</p>
+
+                                <div id="adminOtpRequestStep" class="d-flex gap-2 align-items-center">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="adminSendOtpBtn" onclick="requestAdminOTP()">
+                                        <i class="fas fa-paper-plane me-1"></i>Send Verification Code
+                                    </button>
+                                    <span id="adminOtpSendStatus" class="small"></span>
+                                </div>
+
+                                <div id="adminOtpVerifyStep" class="mt-2 initially-hidden">
+                                    <p class="text-success small mb-2"><i class="fas fa-envelope-open me-1"></i>Code sent to the email address. Enter it below:</p>
+                                    <div class="d-flex gap-2 align-items-end">
+                                        <div>
+                                            <input type="text" class="form-control text-center fw-bold otp-input-users" id="adminOtpCodeInput"
+                                                   maxlength="6" pattern="[0-9]{6}" placeholder="000000"
+                                                   title="Enter 6-digit verification code" aria-label="Enter 6-digit verification code">
+                                        </div>
+                                        <button type="button" class="btn btn-success btn-sm" id="adminVerifyOtpBtn" onclick="verifyAdminOTP()">
+                                            <i class="fas fa-check me-1"></i>Verify
+                                        </button>
+                                        <button type="button" class="btn btn-link btn-sm text-muted p-0 initially-hidden" id="adminResendOtpBtn"
+                                                onclick="requestAdminOTP(true)">
+                                            Resend
+                                        </button>
+                                    </div>
+                                    <div id="adminOtpVerifyStatus" class="mt-1 small"></div>
+                                </div>
+
+                                <div id="adminOtpVerifiedStep" class="mt-2 initially-hidden">
+                                    <div class="alert alert-success py-2 mb-0 small">
+                                        <i class="fas fa-check-circle me-1"></i><strong>Email verified!</strong> Account can be created.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Hidden OTP fields -->
+                    <input type="hidden" name="email_otp_challenge_id" id="adminEmailOtpChallengeId" value="">
+                    <input type="hidden" name="email_otp_verified" id="adminEmailOtpVerified" value="false">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Phone <span class="badge badge-sensitive">Sensitive</span></label>
+                                <input type="tel" class="form-control" name="phone" title="Phone number" aria-label="Phone number">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Department</label>
+                                <input type="text" class="form-control" name="department" title="Department" aria-label="Department">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Job Category</label>
+                                <input type="text" class="form-control" name="job_category" title="Job category" aria-label="Job category">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3 position-relative">
-                                <label class="form-label">Password *</label>
-                                <input type="password" class="form-control" name="password" id="passwordField" required>
-                                <button type="button" class="btn btn-sm btn-outline-secondary position-absolute" style="right:10px;top:38px;" id="togglePassword" tabindex="-1">Show</button>
+                                <label class="form-label">Password * <span class="badge badge-sensitive">Sensitive</span></label>
+                                <input type="password" class="form-control" name="password" id="passwordField" required title="Password" aria-label="Password">
+                                <button type="button" class="btn btn-sm btn-outline-secondary position-absolute toggle-pwd-btn" id="togglePassword" tabindex="-1" title="Toggle password visibility" aria-label="Toggle password visibility">Show</button>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3 position-relative">
                                 <label class="form-label">Confirm Password *</label>
-                                <input type="password" class="form-control" name="confirm_password" id="confirmPasswordField" required>
-                                <button type="button" class="btn btn-sm btn-outline-secondary position-absolute" style="right:10px;top:38px;" id="toggleConfirmPassword" tabindex="-1">Show</button>
+                                <input type="password" class="form-control" name="confirm_password" id="confirmPasswordField" required title="Confirm password" aria-label="Confirm password">
+                                <button type="button" class="btn btn-sm btn-outline-secondary position-absolute toggle-pwd-btn" id="toggleConfirmPassword" tabindex="-1" title="Toggle confirm password visibility" aria-label="Toggle confirm password visibility">Show</button>
                             </div>
                         </div>
                     </div>
-                    <div id="doctorFields" style="display: none;">
-                        <hr>
-                        <h6>Doctor Information</h6>
+
+                    <!-- Profile Picture -->
+                    <h6 class="view-section-title"><i class="fas fa-camera me-1"></i> Profile Picture</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Upload Photo</label>
+                                <input type="file" class="form-control" name="profile_picture" accept="image/*" title="Upload profile picture" aria-label="Upload profile picture">
+                                <small class="text-muted">Optional. JPG, PNG or GIF. Max 5 MB.</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6 d-flex align-items-center">
+                            <div id="profilePicPreview" class="profile-pic-preview">
+                                <i class="fas fa-user text-muted icon-fs-2rem"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bank / Payment (sensitive) -->
+                    <h6 class="view-section-title"><i class="fas fa-university me-1"></i> Bank &amp; Payment <span class="badge badge-sensitive">Sensitive</span></h6>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Bank Account</label>
+                                <input type="text" class="form-control" name="bank_account" title="Bank account number" aria-label="Bank account number">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Bank Name / Type</label>
+                                <input type="text" class="form-control" name="bank_name" title="Bank name" aria-label="Bank name">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Preferred Payment Method</label>
+                                <select class="form-select" name="preferred_payment_method" title="Preferred payment method" aria-label="Preferred payment method">
+                                    <option value="">—</option>
+                                    <option value="mpesa">M-Pesa</option>
+                                    <option value="bank_transfer">Bank Transfer</option>
+                                    <option value="paypal">PayPal</option>
+                                    <option value="cash">Cash</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Healthcare Practitioner fields -->
+                    <div id="doctorFields" class="initially-hidden">
+                        <h6 class="view-section-title"><i class="fas fa-stethoscope me-1"></i> Healthcare Practitioner Details</h6>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label">Specialization *</label>
-                                    <input type="text" class="form-control" name="specialization">
+                                    <label class="form-label">Practitioner Type <span class="badge badge-public">Public</span></label>
+                                    <select class="form-select" name="practitioner_type" title="Practitioner type" aria-label="Practitioner type">
+                                        <option value="">— Select Type —</option>
+                                        <optgroup label="General Practice">
+                                            <option value="General Doctor (MBChB/MBBS)">General Doctor (MBChB/MBBS)</option>
+                                            <option value="Clinician (BSc Clinical Medicine)">Clinician (BSc Clinical Medicine)</option>
+                                            <option value="Senior Clinician (Specialist)">Senior Clinician (Specialist)</option>
+                                        </optgroup>
+                                        <optgroup label="Specialists">
+                                            <option value="Orthopaedic Surgeon">Orthopaedic Surgeon</option>
+                                            <option value="Psychiatrist">Psychiatrist</option>
+                                            <option value="Internal Medicine Specialist">Internal Medicine Specialist</option>
+                                            <option value="Neurosurgeon">Neurosurgeon</option>
+                                            <option value="Dermatologist &amp; Cosmetic Specialist">Dermatologist &amp; Cosmetic Specialist</option>
+                                            <option value="Pediatrician">Pediatrician</option>
+                                            <option value="Geriatrician">Geriatrician</option>
+                                            <option value="Nephrologist">Nephrologist</option>
+                                            <option value="Cardiologist">Cardiologist</option>
+                                            <option value="ENT Specialist">ENT Specialist</option>
+                                            <option value="Ophthalmologist">Ophthalmologist</option>
+                                        </optgroup>
+                                        <optgroup label="Allied Health">
+                                            <option value="Nutritionist">Nutritionist</option>
+                                            <option value="Physiotherapist">Physiotherapist</option>
+                                            <option value="Pharmacist">Pharmacist</option>
+                                            <option value="Radiologist">Radiologist</option>
+                                            <option value="Lab Technologist">Lab Technologist</option>
+                                        </optgroup>
+                                        <optgroup label="Other">
+                                            <option value="Other">Other (specify in Specialization)</option>
+                                        </optgroup>
+                                    </select>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label">License Number *</label>
-                                    <input type="text" class="form-control" name="license_number">
+                                    <label class="form-label">Specialization <span class="badge badge-public">Public</span></label>
+                                    <input type="text" class="form-control" name="specialization" placeholder="Sub-specialization or area of focus">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Consultation Fee <span class="badge badge-public">Public</span></label>
+                                    <input type="number" step="0.01" class="form-control" name="consultation_fee" title="Consultation fee" aria-label="Consultation fee">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Experience (years) <span class="badge badge-public">Public</span></label>
+                                    <input type="number" class="form-control" name="experience_years" title="Years of experience" aria-label="Years of experience">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Qualifications <span class="badge badge-public">Public</span></label>
+                                    <textarea class="form-control" name="qualifications" rows="2" title="Qualifications" aria-label="Qualifications"></textarea>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Awards / Merits <span class="badge badge-public">Public</span></label>
+                                    <textarea class="form-control" name="awards" rows="2" title="Awards and merits" aria-label="Awards and merits"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h6 class="view-section-title"><i class="fas fa-id-card me-1"></i> Practising Licence <span class="badge badge-sensitive">Sensitive</span></h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Licence Number</label>
+                                    <input type="text" class="form-control" name="license_number" title="License number" aria-label="License number">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Regulatory Body</label>
+                                    <input type="text" class="form-control" name="licence_regulatory_body" title="Regulatory body" aria-label="Regulatory body">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Renewal Status</label>
+                                    <select class="form-select" name="licence_renewal_status" title="License renewal status" aria-label="License renewal status">
+                                        <option value="">—</option>
+                                        <option value="active">Active</option>
+                                        <option value="expired">Expired</option>
+                                        <option value="pending_renewal">Pending Renewal</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Issue Date</label>
+                                    <input type="date" class="form-control" name="licence_issue_date" title="License issue date" aria-label="License issue date">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Expiry Date</label>
+                                    <input type="date" class="form-control" name="licence_expiry_date" title="License expiry date" aria-label="License expiry date">
                                 </div>
                             </div>
                         </div>
@@ -306,11 +559,11 @@
 
 <!-- View User Modal -->
 <div class="modal fade" id="viewUserModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">User Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="viewUserBody">
                 <!-- populated dynamically -->
@@ -333,7 +586,12 @@
             form.reset();
             document.getElementById('userIdField').value = '';
             document.getElementById('addUserSubmitBtn').textContent = 'Add User';
+            // make password required for new users
+            form.querySelector('input[name="password"]').required = true;
+            form.querySelector('input[name="confirm_password"]').required = true;
             $('#doctorFields').hide();
+            // Reset OTP state for new user creation
+            resetAdminOtpState(false);
         });
 
         // When modal is hidden, reset edit state
@@ -342,7 +600,11 @@
             form.reset();
             document.getElementById('userIdField').value = '';
             document.getElementById('addUserSubmitBtn').textContent = 'Add User';
+            form.querySelector('input[name="password"]').required = true;
+            form.querySelector('input[name="confirm_password"]').required = true;
             $('#doctorFields').hide();
+            // Reset OTP state
+            resetAdminOtpState(false);
         });
 
         // Show/hide doctor fields based on role selection
@@ -408,9 +670,25 @@
         const isActive = (isActiveRaw === true || isActiveRaw === 'true');
         toggleUserStatus(userId, isActive);
     });
+    $(document).on('click', 'button.resend-otp', function() {
+        const userId = $(this).data('user-id');
+        if (!confirm('Resend OTP verification email to this user?')) return;
+        const token = document.querySelector('input[name="csrf_token"]') ? document.querySelector('input[name="csrf_token"]').value : '';
+        fetch(`/admin/resend_otp/${userId}`, {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded'},
+            body: token ? `csrf_token=${encodeURIComponent(token)}` : ''
+        }).then(r => r.json()).then(data => {
+            alert(data.message || data.error || 'Done');
+        }).catch(() => alert('Request failed'));
+    });
+    $(document).on('click', 'button.confirm-delete', function() {
+        const userId = $(this).data('user-id');
+        const userName = $(this).data('user-name');
+        deleteUser(userId);
+    });
 
     function filterUsers() {
-        // legacy: replaced by server-side filtering via fetchUsers
         fetchUsers();
     }
 
@@ -434,31 +712,39 @@
     function renderUsers(users) {
         const tbody = document.querySelector('table tbody');
         tbody.innerHTML = '';
+        const roleLabels = {'admin':'Admin','doctor':'Healthcare Practitioner','non_staff':'Non-Staff','customer_care':'Customer Care'};
+        const roleBadgeClasses = {'admin':'bg-danger','doctor':'bg-success','non_staff':'bg-info','customer_care':'bg-warning'};
         users.forEach(u => {
             const statusBadge = u.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>';
-            const roleBadgeClass = u.role === 'admin' ? 'bg-danger' : (u.role === 'doctor' ? 'bg-success' : 'bg-info');
+            const roleBadgeClass = roleBadgeClasses[u.role] || 'bg-secondary';
+            const roleLabel = roleLabels[u.role] || u.role;
+            const titlePrefix = u.title ? escapeHtml(u.title) + ' ' : '';
+            const specDept = u.role === 'doctor' ? escapeHtml(u.specialization || u.practitioner_type || '—') : escapeHtml(u.department || '—');
+            const verifiedIcon = u.email_verified ? '<i class="fas fa-check-circle text-success ms-1" title="Verified"></i>' : '<i class="fas fa-times-circle text-muted ms-1" title="Not verified"></i>';
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>
                     <div class="d-flex align-items-center">
-                        <div class="user-avatar me-3">${(u.first_name||'')[0] || ''}${(u.last_name||'')[0] || ''}</div>
+                        ${u.has_profile_picture ? `<img src="/profile_picture/${u.id}" alt="${escapeHtml(u.first_name||'')}" class="me-3" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : `<div class="user-avatar me-3">${(u.first_name||'')[0] || ''}${(u.last_name||'')[0] || ''}</div>`}
                         <div>
-                            <h6 class="mb-1">${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</h6>
+                            <h6 class="mb-1">${titlePrefix}${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</h6>
                             <small class="text-muted">@${escapeHtml(u.username || '')}</small>
                         </div>
                     </div>
                 </td>
                 <td>
-                    <span class="badge ${roleBadgeClass}">${escapeHtml((u.role||'').charAt(0).toUpperCase() + (u.role||'').slice(1))}</span>
+                    <span class="badge ${roleBadgeClass}">${escapeHtml(roleLabel)}</span>
                 </td>
-                <td>${escapeHtml(u.email || '')}</td>
+                <td>${escapeHtml(u.email || '')} ${verifiedIcon}</td>
                 <td>${escapeHtml(u.phone || 'N/A')}</td>
+                <td>${specDept}</td>
                 <td>${statusBadge}</td>
                 <td><small class="text-muted">${u.created_at ? (new Date(u.created_at)).toISOString().slice(0,10) : ''}</small></td>
                 <td>
                     <div class="action-buttons">
                         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Edit User" data-action="edit" data-user-id="${u.id}"><i class="fas fa-edit"></i></button>
                         <button class="btn btn-sm btn-outline-info" data-bs-toggle="tooltip" title="View Details" data-action="view" data-user-id="${u.id}"><i class="fas fa-eye"></i></button>
+                        ${!u.email_verified ? `<button class="btn btn-sm btn-outline-primary resend-otp" data-bs-toggle="tooltip" title="Resend OTP" data-user-id="${u.id}"><i class="fas fa-envelope"></i></button>` : ''}
                         <button class="btn btn-sm btn-outline-${u.is_active ? 'warning' : 'success'} toggle-status" data-bs-toggle="tooltip" title="${u.is_active ? 'Deactivate' : 'Activate'}" data-user-id="${u.id}" data-user-active="${u.is_active ? 'true' : 'false'}"><i class="fas fa-${u.is_active ? 'ban' : 'check'}"></i></button>
                         <button class="btn btn-sm btn-outline-danger confirm-delete" data-bs-toggle="tooltip" title="Delete User" data-user-id="${u.id}" data-user-name="${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}"><i class="fas fa-trash"></i></button>
                     </div>
@@ -478,45 +764,119 @@
     fetchUsers();
 
     function editUser(userId) {
-        // Populate add/edit modal with user data
         fetch(`/admin/user/${userId}`)
             .then(r => r.json())
             .then(data => {
                 if (data.error) { alert('Error: ' + data.error); return; }
                 const form = document.getElementById('addUserForm');
+                form.reset();
+                // Basic fields
+                form.querySelector('select[name="title"]').value = data.title || '';
                 form.querySelector('input[name="first_name"]').value = data.first_name || '';
                 form.querySelector('input[name="last_name"]').value = data.last_name || '';
                 form.querySelector('input[name="username"]').value = data.username || '';
                 form.querySelector('input[name="email"]').value = data.email || '';
+                form.querySelector('select[name="email_verified"]').value = data.email_verified ? 'true' : 'false';
                 form.querySelector('input[name="phone"]').value = data.phone || '';
                 form.querySelector('select[name="role"]').value = data.role || '';
-                // show/hide doctor fields
-                if (data.role === 'doctor') { $('#doctorFields').show(); } else { $('#doctorFields').hide(); }
+                form.querySelector('input[name="department"]').value = data.department || '';
+                form.querySelector('input[name="job_category"]').value = data.job_category || '';
+                // Bank / payment
+                form.querySelector('input[name="bank_account"]').value = data.bank_account || '';
+                form.querySelector('input[name="bank_name"]').value = data.bank_name || '';
+                form.querySelector('select[name="preferred_payment_method"]').value = data.preferred_payment_method || '';
+                // Password not required for edit
+                form.querySelector('input[name="password"]').required = false;
+                form.querySelector('input[name="confirm_password"]').required = false;
+                // Doctor fields
+                if (data.role === 'doctor') {
+                    $('#doctorFields').show();
+                    form.querySelector('input[name="specialization"]').value = data.specialization || '';
+                    form.querySelector('input[name="license_number"]').value = data.license_number || '';
+                    form.querySelector('textarea[name="qualifications"]').value = data.qualifications || '';
+                    form.querySelector('input[name="consultation_fee"]').value = data.consultation_fee || '';
+                    form.querySelector('input[name="experience_years"]').value = data.experience_years || '';
+                    form.querySelector('select[name="practitioner_type"]').value = data.practitioner_type || '';
+                    form.querySelector('textarea[name="awards"]').value = data.awards || '';
+                    form.querySelector('input[name="licence_regulatory_body"]').value = data.licence_regulatory_body || '';
+                    form.querySelector('input[name="licence_issue_date"]').value = data.licence_issue_date || '';
+                    form.querySelector('input[name="licence_expiry_date"]').value = data.licence_expiry_date || '';
+                    form.querySelector('select[name="licence_renewal_status"]').value = data.licence_renewal_status || '';
+                } else {
+                    $('#doctorFields').hide();
+                }
                 document.getElementById('userIdField').value = data.id;
                 document.getElementById('addUserSubmitBtn').textContent = 'Save Changes';
+                // Hide OTP section when editing
+                resetAdminOtpState(true);
                 $('#addUserModal').modal('show');
             })
             .catch(err => { console.error(err); alert('Failed to load user'); });
     }
 
     function viewUser(userId) {
-        // Fetch and show user details in modal
         const modalBody = document.getElementById('viewUserBody');
         modalBody.innerHTML = '<p class="text-center text-muted">Loading...</p>';
+        const roleLabels = {'admin':'Admin','doctor':'Healthcare Practitioner','non_staff':'Non-Staff Worker','customer_care':'Customer Care','patient':'Patient'};
         fetch(`/admin/user/${userId}`)
             .then(r => r.json())
             .then(data => {
-                if (data.error) { modalBody.innerHTML = '<p class="text-danger">' + data.error + '</p>'; return; }
-                modalBody.innerHTML = `
-                    <dl class="row">
-                        <dt class="col-sm-4">Username</dt><dd class="col-sm-8">${data.username}</dd>
-                        <dt class="col-sm-4">Name</dt><dd class="col-sm-8">${data.first_name} ${data.last_name}</dd>
-                        <dt class="col-sm-4">Email</dt><dd class="col-sm-8">${data.email}</dd>
-                        <dt class="col-sm-4">Phone</dt><dd class="col-sm-8">${data.phone || 'N/A'}</dd>
-                        <dt class="col-sm-4">Role</dt><dd class="col-sm-8">${data.role}</dd>
-                        <dt class="col-sm-4">Status</dt><dd class="col-sm-8">${data.is_active ? 'Active' : 'Inactive'}</dd>
-                    </dl>
-                `;
+                if (data.error) { modalBody.innerHTML = '<p class="text-danger">' + escapeHtml(data.error) + '</p>'; return; }
+
+                const pub = '<span class="badge badge-public ms-1">Public</span>';
+                const sens = '<span class="badge badge-sensitive ms-1">Sensitive</span>';
+                const verifiedIcon = data.email_verified
+                    ? '<i class="fas fa-check-circle text-success ms-1" title="Verified"></i>'
+                    : '<i class="fas fa-times-circle text-warning ms-1" title="Not verified"></i>';
+
+                let profilePicHtml = '';
+                if (data.profile_picture) {
+                    profilePicHtml = `<div class="text-center mb-3"><img src="/api/user/${data.id}/profile" alt="Profile" style="width:80px;height:80px;border-radius:50%;object-fit:cover;" onerror="this.style.display='none'"></div>`;
+                }
+
+                const displayRole = roleLabels[data.role] || data.role;
+
+                let html = profilePicHtml;
+                html += `<h6 class="view-section-title"><i class="fas fa-user me-1"></i> Public Profile${pub}</h6>`;
+                html += `<dl class="row mb-0">`;
+                html += `<dt class="col-sm-4">Title &amp; Name</dt><dd class="col-sm-8">${escapeHtml(data.title || '')} ${escapeHtml(data.first_name || '')} ${escapeHtml(data.last_name || '')}</dd>`;
+                html += `<dt class="col-sm-4">Username</dt><dd class="col-sm-8">@${escapeHtml(data.username)}</dd>`;
+                html += `<dt class="col-sm-4">Role</dt><dd class="col-sm-8">${escapeHtml(displayRole)}</dd>`;
+                html += `<dt class="col-sm-4">Status</dt><dd class="col-sm-8">${data.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>'}</dd>`;
+
+                if (data.role === 'doctor') {
+                    if (data.practitioner_type) html += `<dt class="col-sm-4">Practitioner Type</dt><dd class="col-sm-8">${escapeHtml(data.practitioner_type)}</dd>`;
+                    if (data.specialization) html += `<dt class="col-sm-4">Specialization</dt><dd class="col-sm-8">${escapeHtml(data.specialization)}</dd>`;
+                    if (data.qualifications) html += `<dt class="col-sm-4">Qualifications</dt><dd class="col-sm-8">${escapeHtml(data.qualifications)}</dd>`;
+                    if (data.awards) html += `<dt class="col-sm-4">Awards / Merits</dt><dd class="col-sm-8">${escapeHtml(data.awards)}</dd>`;
+                    if (data.consultation_fee != null) html += `<dt class="col-sm-4">Consultation Fee</dt><dd class="col-sm-8">${data.consultation_fee}</dd>`;
+                    if (data.experience_years != null) html += `<dt class="col-sm-4">Experience</dt><dd class="col-sm-8">${data.experience_years} years</dd>`;
+                    if (data.licence_renewal_status) html += `<dt class="col-sm-4">Licence Status</dt><dd class="col-sm-8"><span class="badge ${data.licence_renewal_status === 'active' ? 'bg-success' : (data.licence_renewal_status === 'expired' ? 'bg-danger' : 'bg-warning')}">${escapeHtml(data.licence_renewal_status)}</span></dd>`;
+                }
+                if (data.department) html += `<dt class="col-sm-4">Department</dt><dd class="col-sm-8">${escapeHtml(data.department)}</dd>`;
+                if (data.job_category) html += `<dt class="col-sm-4">Job Category</dt><dd class="col-sm-8">${escapeHtml(data.job_category)}</dd>`;
+                html += `</dl>`;
+
+                // Sensitive section
+                html += `<h6 class="view-section-title mt-3"><i class="fas fa-lock me-1"></i> Sensitive / Admin-Only${sens}</h6>`;
+                html += `<dl class="row mb-0">`;
+                html += `<dt class="col-sm-4">Email</dt><dd class="col-sm-8">${escapeHtml(data.email || '')} ${verifiedIcon}</dd>`;
+                html += `<dt class="col-sm-4">Phone</dt><dd class="col-sm-8">${escapeHtml(data.phone || 'N/A')}</dd>`;
+                html += `<dt class="col-sm-4">Bank Account</dt><dd class="col-sm-8">${escapeHtml(data.bank_account || 'N/A')}</dd>`;
+                html += `<dt class="col-sm-4">Bank Name / Type</dt><dd class="col-sm-8">${escapeHtml(data.bank_name || 'N/A')}</dd>`;
+                html += `<dt class="col-sm-4">Preferred Payment</dt><dd class="col-sm-8">${escapeHtml(data.preferred_payment_method || 'N/A')}</dd>`;
+
+                if (data.role === 'doctor') {
+                    html += `<dt class="col-sm-4">Licence Number</dt><dd class="col-sm-8">${escapeHtml(data.license_number || 'N/A')}</dd>`;
+                    html += `<dt class="col-sm-4">Regulatory Body</dt><dd class="col-sm-8">${escapeHtml(data.licence_regulatory_body || 'N/A')}</dd>`;
+                    html += `<dt class="col-sm-4">Issue Date</dt><dd class="col-sm-8">${escapeHtml(data.licence_issue_date || 'N/A')}</dd>`;
+                    html += `<dt class="col-sm-4">Expiry Date</dt><dd class="col-sm-8">${escapeHtml(data.licence_expiry_date || 'N/A')}</dd>`;
+                    html += `<dt class="col-sm-4">Renewal Status</dt><dd class="col-sm-8">${escapeHtml(data.licence_renewal_status || 'N/A')}</dd>`;
+                }
+                html += `<dt class="col-sm-4">Joined</dt><dd class="col-sm-8">${data.created_at ? (new Date(data.created_at)).toISOString().slice(0,10) : 'N/A'}</dd>`;
+                html += `</dl>`;
+
+                modalBody.innerHTML = html;
                 $('#viewUserModal').modal('show');
             })
             .catch(err => { console.error(err); modalBody.innerHTML = '<p class="text-danger">Failed to load</p>'; });
@@ -525,7 +885,6 @@
     function toggleUserStatus(userId, isActive) {
         const action = isActive ? 'deactivate' : 'activate';
         if (!confirm(`Are you sure you want to ${action} this user?`)) return;
-        // include CSRF token
         const token = document.querySelector('input[name="csrf_token"]') ? document.querySelector('input[name="csrf_token"]').value : '';
         const params = new URLSearchParams({'user_id': userId});
         if (token) params.append('csrf_token', token);
@@ -536,7 +895,6 @@
             body: params
         }).then(r => r.json()).then(data => {
             if (data.success) {
-                // update button appearance
                 const btn = document.querySelector(`button.toggle-status[data-user-id='${userId}']`);
                 if (btn) {
                     const active = data.is_active;
@@ -564,13 +922,151 @@
             body: params
         }).then(r => r.json()).then(data => {
             if (data.success) {
-                // remove row from table
                 const row = document.querySelector(`button.confirm-delete[data-user-id='${userId}']`).closest('tr');
                 if (row) row.remove();
             } else {
                 alert('Error deleting user: ' + (data.error || 'Unknown'));
             }
         }).catch(err => { console.error(err); alert('Request failed'); });
+    }
+
+    let _adminOtpVerified = false;
+    let _adminOtpResendTimer = null;
+
+    function resetAdminOtpState(isEdit) {
+        _adminOtpVerified = false;
+        if (_adminOtpResendTimer) { clearInterval(_adminOtpResendTimer); _adminOtpResendTimer = null; }
+        document.getElementById('adminEmailOtpVerified').value = 'false';
+        document.getElementById('adminEmailOtpChallengeId').value = '';
+        document.getElementById('adminOtpVerifyStep').style.display = 'none';
+        document.getElementById('adminOtpVerifiedStep').style.display = 'none';
+        document.getElementById('adminOtpRequestStep').style.display = 'flex';
+        document.getElementById('adminOtpSendStatus').innerHTML = '';
+        const otpSection = document.getElementById('adminOtpSection');
+        // Hide OTP section when editing an existing user
+        if (otpSection) otpSection.style.display = isEdit ? 'none' : 'block';
+    }
+    document.addEventListener('input', function(e) {
+        if (e.target && e.target.id === 'addUserEmailField') {
+            if (_adminOtpVerified) {
+                _adminOtpVerified = false;
+                document.getElementById('adminEmailOtpVerified').value = 'false';
+                document.getElementById('adminEmailOtpChallengeId').value = '';
+                document.getElementById('adminOtpVerifiedStep').style.display = 'none';
+                document.getElementById('adminOtpVerifyStep').style.display = 'none';
+                document.getElementById('adminOtpRequestStep').style.display = 'flex';
+                document.getElementById('adminOtpSendStatus').textContent = '';
+            }
+        }
+    });
+
+    function requestAdminOTP(isResend) {
+        const emailInput = document.getElementById('addUserEmailField');
+        const email = emailInput ? emailInput.value.trim() : '';
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            document.getElementById('adminOtpSendStatus').innerHTML = '<span class="text-danger">Please enter a valid email address.</span>';
+            return;
+        }
+        const btn = isResend ? document.getElementById('adminResendOtpBtn') : document.getElementById('adminSendOtpBtn');
+        const statusEl = document.getElementById('adminOtpSendStatus');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Sending...';
+        statusEl.innerHTML = '';
+
+        const csrfToken = document.querySelector('#addUserForm input[name="csrf_token"]');
+        fetch('/api/email-otp/request', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken ? csrfToken.value : ''},
+            body: JSON.stringify({email: email, purpose: 'admin_create_user'})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Send Verification Code';
+                document.getElementById('adminOtpVerifyStep').style.display = 'block';
+                document.getElementById('adminOtpCodeInput').focus();
+                if (isResend) {
+                    document.getElementById('adminOtpVerifyStatus').innerHTML = '<span class="text-success">New code sent.</span>';
+                }
+                if (data.resend_after_seconds) {
+                    startAdminResendCooldown(data.resend_after_seconds);
+                }
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = isResend ? 'Resend' : '<i class="fas fa-paper-plane me-1"></i>Send Verification Code';
+                let msg = 'Failed to send code.';
+                if (data.error === 'email_already_registered') msg = 'Email already registered.';
+                else if (data.error === 'resend_cooldown') msg = 'Please wait ' + (data.retry_after_seconds || 60) + 's before resending.';
+                else if (data.message) msg = data.message;
+                statusEl.innerHTML = '<span class="text-danger">' + msg + '</span>';
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.innerHTML = isResend ? 'Resend' : '<i class="fas fa-paper-plane me-1"></i>Send Verification Code';
+            statusEl.innerHTML = '<span class="text-danger">Network error.</span>';
+        });
+    }
+
+    function verifyAdminOTP() {
+        const emailInput = document.getElementById('addUserEmailField');
+        const email = emailInput ? emailInput.value.trim() : '';
+        const code = document.getElementById('adminOtpCodeInput').value.trim();
+        if (!code || code.length < 4) {
+            document.getElementById('adminOtpVerifyStatus').innerHTML = '<span class="text-danger">Please enter the full code.</span>';
+            return;
+        }
+        const btn = document.getElementById('adminVerifyOtpBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Verifying...';
+        document.getElementById('adminOtpVerifyStatus').innerHTML = '';
+
+        const csrfToken = document.querySelector('#addUserForm input[name="csrf_token"]');
+        fetch('/api/email-otp/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken ? csrfToken.value : ''},
+            body: JSON.stringify({email: email, otp_code: code, purpose: 'admin_create_user'})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.verified) {
+                document.getElementById('adminEmailOtpChallengeId').value = data.challenge_id;
+                document.getElementById('adminEmailOtpVerified').value = 'true';
+                _adminOtpVerified = true;
+                document.getElementById('adminOtpVerifyStep').style.display = 'none';
+                document.getElementById('adminOtpVerifiedStep').style.display = 'block';
+                if (_adminOtpResendTimer) clearInterval(_adminOtpResendTimer);
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Verify';
+                let msg = 'Incorrect code.';
+                if (data.error === 'code_expired') { msg = 'Code expired. Request a new one.'; document.getElementById('adminResendOtpBtn').style.display = 'inline-block'; }
+                else if (data.error === 'too_many_attempts') { msg = 'Too many attempts. Request a new code.'; document.getElementById('adminResendOtpBtn').style.display = 'inline-block'; }
+                else if (data.error === 'challenge_not_found') { msg = 'No active code. Request a new one.'; document.getElementById('adminResendOtpBtn').style.display = 'inline-block'; }
+                if (data.attempts_remaining !== undefined) msg += ' (' + data.attempts_remaining + ' left)';
+                document.getElementById('adminOtpVerifyStatus').innerHTML = '<span class="text-danger">' + msg + '</span>';
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check me-1"></i>Verify';
+            document.getElementById('adminOtpVerifyStatus').innerHTML = '<span class="text-danger">Network error.</span>';
+        });
+    }
+
+    function startAdminResendCooldown(seconds) {
+        document.getElementById('adminResendOtpBtn').style.display = 'none';
+        if (_adminOtpResendTimer) clearInterval(_adminOtpResendTimer);
+        let remaining = parseInt(seconds) || 60;
+        _adminOtpResendTimer = setInterval(function() {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(_adminOtpResendTimer);
+                _adminOtpResendTimer = null;
+                document.getElementById('adminResendOtpBtn').style.display = 'inline-block';
+            }
+        }, 1000);
     }
 
     function submitUserForm() {
@@ -580,26 +1076,30 @@
             return;
         }
 
-        const password = form.querySelector('input[name="password"]').value;
-        const confirm = form.querySelector('input[name="confirm_password"]').value;
-        if (password !== confirm) {
+        const passwordEl = form.querySelector('input[name="password"]');
+        const confirmEl = form.querySelector('input[name="confirm_password"]');
+        if (passwordEl.value && passwordEl.value !== confirmEl.value) {
             alert('Passwords do not match');
             return;
         }
-        // determine whether this is a create or update (edit sets user_id)
         const userId = document.getElementById('userIdField').value;
         const isEdit = userId && userId.trim() !== '';
+
+        // Require OTP verification for new users only
+        if (!isEdit && !_adminOtpVerified) {
+            alert('Please verify the user\'s email with the OTP code before creating the account.');
+            document.getElementById('adminOtpSection').scrollIntoView({behavior: 'smooth'});
+            return;
+        }
+
         const url = isEdit ? '{{ url_for("admin_update_user") }}' : '{{ url_for("add_user") }}';
 
         const formData = new FormData(form);
-        // ensure csrf present (form already contains hidden csrf_token)
-        // for safety, also append if missing
         if (!formData.has('csrf_token')) {
             const tokenInput = document.querySelector('input[name="csrf_token"]');
             if (tokenInput) formData.append('csrf_token', tokenInput.value);
         }
 
-        // If editing ensure user_id is sent
         if (isEdit) formData.set('user_id', userId);
 
         fetch(url, {
@@ -612,7 +1112,6 @@
         .then(resp => resp.json())
         .then(data => {
             if (data.success) {
-                // Reload to show new/updated user in the table
                 location.reload();
             } else {
                 alert('Error: ' + (data.error || 'Unknown error'));
@@ -632,6 +1131,21 @@
     document.getElementById('toggleConfirmPassword').addEventListener('click', function(e) {
         const p = document.getElementById('confirmPasswordField');
         if (p.type === 'password') { p.type = 'text'; this.textContent = 'Hide'; } else { p.type = 'password'; this.textContent = 'Show'; }
+    });
+
+    // Profile picture preview
+    document.querySelector('input[name="profile_picture"]').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        const preview = document.getElementById('profilePicPreview');
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                preview.innerHTML = '<img src="' + ev.target.result + '" style="width:100%;height:100%;object-fit:cover;">';
+            };
+            reader.readAsDataURL(file);
+        } else {
+            preview.innerHTML = '<i class="fas fa-user text-muted" style="font-size:2rem;"></i>';
+        }
     });
 </script>
 {% endblock %}

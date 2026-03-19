@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Support Call - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    body { background: #1a1a2e; }
+    .call-container {
+        min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; color: #fff; padding: 20px;
+    }
+    .avatar-ring {
+        width: 120px; height: 120px; border-radius: 50%; background: #0d6efd;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 3rem; margin-bottom: 16px; animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0%,100% { box-shadow: 0 0 0 0 rgba(13,110,253,.4); }
+        50% { box-shadow: 0 0 0 20px rgba(13,110,253,0); }
+    }
+    .call-status { font-size: 1.1rem; opacity: .8; margin-bottom: 8px; }
+    .call-controls { display: flex; gap: 20px; margin-top: 32px; }
+    .ctrl-btn {
+        width: 64px; height: 64px; border-radius: 50%; display: flex;
+        align-items: center; justify-content: center; font-size: 1.5rem; border: none;
+        cursor: pointer; transition: transform .2s;
+    }
+    .ctrl-btn:hover { transform: scale(1.1); }
+    .btn-end { background: #dc3545; color: #fff; }
+    .btn-mute { background: rgba(255,255,255,.15); color: #fff; }
+    .btn-mute.active { background: #ffc107; color: #212529; }
+    .hidden { display: none !important; }
+    audio#remoteAudio { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div
+    class="call-container"
+    id="supportCallPage"
+    data-user-id="{{ current_user.id }}"
+    data-conv-id="{{ conv.id }}"
+    data-room-id="{{ room_id }}"
+>
+    <audio id="remoteAudio" autoplay playsinline></audio>
+    <div class="avatar-ring" id="avatarRing">
+        <i class="fas fa-user"></i>
+    </div>
+    <h4 id="callerName">{{ other_user.get_display_name() if other_user else 'Support Agent' }}</h4>
+    <div class="call-status" id="callStatus">Connecting...</div>
+    <div id="callTimer" class="text-muted hidden">00:00</div>
+
+    <div class="call-controls">
+        <button class="ctrl-btn btn-mute" id="btnMute" onclick="toggleMute()" title="Mute">
+            <i class="fas fa-microphone" id="muteIcon"></i>
+        </button>
+        <button class="ctrl-btn btn-end" onclick="endSupportCall()" title="End Call">
+            <i class="fas fa-phone-slash"></i>
+        </button>
+    </div>
+
+    <div class="mt-4">
+        <a href="{{ url_for('index') }}" class="text-muted small"><i class="fas fa-arrow-left me-1"></i>Return to Dashboard</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+(function() {
+    const pageEl = document.getElementById('supportCallPage');
+    const userId = Number(pageEl.dataset.userId);
+    const convId = Number(pageEl.dataset.convId);
+    const roomId = pageEl.dataset.roomId;
+    let pc = null;
+    let localStream = null;
+    let isMuted = false;
+    let callStartTime = null;
+    let timerInterval = null;
+
+    const socket = io({ transports: ['websocket','polling'] });
+
+    socket.on('connect', () => {
+        socket.emit('register', { user_id: userId });
+        setTimeout(() => {
+            socket.emit('join_support_call', { room: roomId, conv_id: convId });
+        }, 500);
+    });
+
+    // ICE servers
+    let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+    fetch('/api/ice').then(r => r.json()).then(d => { if (d.iceServers) iceServers = d.iceServers; });
+
+    async function startCall(isInitiator) {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            document.getElementById('callStatus').textContent = 'Connected';
+            pc = new RTCPeerConnection({ iceServers });
+            localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+            pc.ontrack = (e) => {
+                document.getElementById('remoteAudio').srcObject = e.streams[0];
+            };
+            pc.onicecandidate = (e) => {
+                if (e.candidate) socket.emit('support_ice', { room: roomId, candidate: e.candidate });
+            };
+            pc.onconnectionstatechange = () => {
+                const s = pc.connectionState;
+                if (s === 'connected') {
+                    document.getElementById('callStatus').textContent = 'On Call';
+                    startTimer();
+                } else if (s === 'disconnected') {
+                    document.getElementById('callStatus').textContent = 'Reconnecting...';
+                } else if (s === 'failed') {
+                    document.getElementById('callStatus').textContent = 'Connection failed';
+                }
+            };
+
+            if (isInitiator) {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                socket.emit('support_offer', { room: roomId, offer });
+            }
+        } catch (err) {
+            document.getElementById('callStatus').textContent = 'Microphone error — check permissions';
+            console.error('getUserMedia error:', err);
+        }
+    }
+
+    socket.on('support_call_peer_joined', (data) => {
+        document.getElementById('callStatus').textContent = 'Peer joined...';
+        startCall(true);
+    });
+
+    socket.on('support_call_joined', (data) => {
+        if (data.peer_count > 1) startCall(false);
+    });
+
+    socket.on('support_offer', async (data) => {
+        if (!pc) await startCall(false);
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('support_answer', { room: roomId, answer });
+    });
+
+    socket.on('support_answer', async (data) => {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+    });
+
+    socket.on('support_ice', async (data) => {
+        try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e) {}
+    });
+
+    socket.on('support_call_ended', () => {
+        cleanup();
+        window.location.href = '/';
+    });
+
+    window.toggleMute = function() {
+        if (!localStream) return;
+        isMuted = !isMuted;
+        localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+        document.getElementById('btnMute').classList.toggle('active', isMuted);
+        document.getElementById('muteIcon').className = isMuted ? 'fas fa-microphone-slash' : 'fas fa-microphone';
+    };
+
+    window.endSupportCall = function() {
+        socket.emit('support_call_end', { room: roomId });
+        cleanup();
+        window.location.href = '/';
+    };
+
+    function cleanup() {
+        if (timerInterval) clearInterval(timerInterval);
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+        if (pc) { try { pc.close(); } catch(e) {} }
+    }
+
+    function startTimer() {
+        callStartTime = Date.now();
+        const el = document.getElementById('callTimer');
+        el.classList.remove('hidden');
+        timerInterval = setInterval(() => {
+            const s = Math.floor((Date.now() - callStartTime) / 1000);
+            el.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+        }, 1000);
+    }
+
+    window.addEventListener('beforeunload', cleanup);
+})();
+</script>
+{% endblock %}

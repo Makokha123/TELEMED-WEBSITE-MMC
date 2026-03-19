@@ -90,6 +90,19 @@
     .card-color { color: #1A1F71; }
     .paypal-color { color: #003087; }
     .google-color { color: #4285F4; }
+
+    .processing-spinner {
+        width: 3rem;
+        height: 3rem;
+    }
+
+    .progress-full {
+        width: 100%;
+    }
+
+    .hidden {
+        display: none;
+    }
 </style>
 {% endblock %}
 
@@ -252,13 +265,13 @@
                 <h5 class="modal-title">Processing Payment</h5>
             </div>
             <div class="modal-body text-center py-4">
-                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                <div class="spinner-border text-primary mb-3 processing-spinner" role="status">
                     <span class="visually-hidden">Processing...</span>
                 </div>
                 <h5>Please wait</h5>
                 <p class="text-muted">We're processing your payment. This may take a few moments.</p>
                 <div class="progress mb-3">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                    <div class="progress-bar progress-bar-striped progress-bar-animated progress-full" role="progressbar" title="Payment processing progress"></div>
                 </div>
             </div>
         </div>
@@ -301,7 +314,7 @@
      data-appointment-id="{{ payment.appointment_id }}"
      data-amount="{{ payment.amount }}"
      data-currency="{{ payment.currency }}"
-     style="display:none">
+    class="hidden">
 </div>
 
 <script>

@@ -72,6 +72,20 @@
     .confirmed {
         border-left: 4px solid #28a745;
     }
+    .doctor-profile-img {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .rating-star {
+        cursor: pointer;
+        opacity: 0.3;
+    }
+    .doctor-profile-modal-body {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
 </style>
 {% endblock %}
 
@@ -185,11 +199,13 @@
                             <div class="card-footer bg-transparent">
                                 <div class="btn-group w-100 action-buttons">
                                     {% if appointment.status == 'confirmed' and appointment.payment_status == 'paid' %}
-                                    <button class="btn btn-outline-primary" 
-                                            onclick="joinConsultation('{{ appointment.id }}')">
-                                        <i class="fas fa-{{ 'video' if appointment.consultation_type == 'video' else 'phone' if appointment.consultation_type == 'voice' else 'comments' }} me-1"></i>
-                                        Join Consultation
-                                    </button>
+                                    <a class="btn btn-consultation-room btn-sm"
+                                       href="/consultation-room/{{ appointment.id }}"
+                                       target="_blank" rel="noopener noreferrer"
+                                       title="Open Consultation Room">
+                                        <i class="fas fa-door-open"></i>
+                                        Join Room
+                                    </a>
                                     {% endif %}
                                     
                                     <button class="btn btn-outline-info" 
@@ -240,7 +256,7 @@
                             <div class="card-body">
                                 <div class="row align-items-center">
                                     <div class="col-auto">
-                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" class="doctor-profile-img">
                                     </div>
                                     <div class="col">
                                         <h5 class="card-title mb-1">
@@ -315,7 +331,7 @@
                             <div class="card-body">
                                 <div class="row align-items-center">
                                     <div class="col-auto">
-                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" class="doctor-profile-img">
                                     </div>
                                     <div class="col">
                                         <h5 class="card-title mb-1">
@@ -390,7 +406,7 @@
                             <div class="card-body">
                                 <div class="row align-items-center">
                                     <div class="col-auto">
-                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.doctor.user.id) }}" alt="Dr. Profile" class="doctor-profile-img">
                                     </div>
                                     <div class="col">
                                         <h5 class="card-title mb-1">
@@ -458,7 +474,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Book New Appointment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="bookAppointmentForm">
@@ -468,7 +484,7 @@
                             <div class="mb-3">
                                 <label class="form-label">Select Doctor *</label>
                                 <div class="input-group">
-                                    <select class="form-select" id="doctorSelect" required>
+                                    <select class="form-select" id="doctorSelect" required title="Select doctor">
                                         <option value="">Choose a doctor...</option>
                                         {% for doctor in doctors %}
                                         <option value="{{ doctor.id }}" data-fee="{{ doctor.consultation_fee or 1500 }}" data-doctor-id="{{ doctor.id }}">
@@ -486,7 +502,7 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Consultation Type *</label>
-                                <select class="form-select" id="consultationType" required>
+                                <select class="form-select" id="consultationType" required title="Select consultation type">
                                     <option value="">Select type...</option>
                                     <option value="video">Video Call</option>
                                     <option value="voice">Voice Call</option>
@@ -500,13 +516,13 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Preferred Date *</label>
-                                <input type="date" class="form-control" id="appointmentDate" required>
+                                <input type="date" class="form-control" id="appointmentDate" required title="Preferred appointment date">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Preferred Time *</label>
-                                <input type="time" class="form-control" id="appointmentTime" required>
+                                <input type="time" class="form-control" id="appointmentTime" required title="Preferred appointment time">
                             </div>
                         </div>
                     </div>
@@ -536,7 +552,7 @@
                     </div>
 
                     <!-- Consultation Fee Display -->
-                    <div class="alert alert-info" id="feeAlert" style="display: none;">
+                    <div class="alert alert-info d-none" id="feeAlert">
                         <i class="fas fa-info-circle me-2"></i>
                         <strong>Consultation Fee:</strong> 
                         <span id="consultationFee">KES 0</span>
@@ -573,7 +589,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Terms and Conditions</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <h6>Appointment Booking Terms</h6>
@@ -611,7 +627,7 @@
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     Confirm Your Appointment
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="confirmationContent">
@@ -635,7 +651,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Rate Your Consultation</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
             </div>
             <div class="modal-body text-center">
                 <div id="ratingContent">
@@ -1001,7 +1017,7 @@ function rateAppointment(appointmentId) {
         <div class="rating-stars mb-3">
             <div class="d-flex justify-content-center">
                 ${[1, 2, 3, 4, 5].map(star => `
-                    <i class="fas fa-star fa-2x text-warning me-2" style="cursor: pointer; opacity: 0.3;" 
+                          <i class="fas fa-star fa-2x text-warning me-2 rating-star" 
                        onmouseover="highlightStars(${star})" 
                        onclick="setRating(${star})"
                        data-rating="${star}"></i>
@@ -1085,7 +1101,7 @@ function submitRating() {
 
 // Other appointment functions
 function joinConsultation(appointmentId) {
-    window.location.href = `/communication/appointment/${appointmentId}`;
+    window.open('/consultation-room/' + appointmentId, '_blank', 'noopener,noreferrer');
 }
 
 function sendMessage(appointmentId) {
@@ -1154,7 +1170,7 @@ function showSuccessMessage(message) {
                     <i class="fas fa-check-circle me-2"></i>
                     ${message}
                 </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" title="Close" aria-label="Close"></button>
             </div>
         </div>
     `;
@@ -1232,9 +1248,9 @@ function showDoctorProfileModal(doctor) {
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Doctor Profile & Reviews</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
                 </div>
-                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <div class="modal-body doctor-profile-modal-body">
                     <!-- Doctor Info -->
                     <div class="mb-4">
                         <h6 class="text-muted mb-3">Doctor Information</h6>

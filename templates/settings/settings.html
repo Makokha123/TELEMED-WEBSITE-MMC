@@ -1,5 +1,30 @@
 {% extends "base.html" %}
 {% block title %}Settings{% endblock %}
+{% block extra_css %}
+<style>
+    .profile-preview-sm {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .profile-preview-lg {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .wallpaper-preview-box {
+        width: 100%;
+        height: 160px;
+        background-size: cover;
+        background-position: center;
+        border-radius: 8px;
+    }
+</style>
+{% endblock %}
 {% block content %}
 <div class="container py-5">
     <h2 class="mb-4">Account Settings</h2>
@@ -9,14 +34,14 @@
         <div class="row g-4">
             <div class="col-md-6">
                 <label class="form-label">Profile Picture</label>
-                <input type="file" name="profile_picture" id="profile_picture_input" accept="image/*" class="form-control">
+                <input type="file" name="profile_picture" id="profile_picture_input" accept="image/*" class="form-control" title="Upload profile picture">
                 <div class="mt-2">
-                    <img id="profile_preview" src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile preview" style="width:72px;height:72px;border-radius:50%;object-fit:cover;" />
+                    <img id="profile_preview" src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile preview" class="profile-preview-sm" />
                 </div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Username</label>
-                <input type="text" name="username" class="form-control" value="{{ current_user.username }}">
+                <input type="text" name="username" class="form-control" value="{{ current_user.username }}" title="Username">
             </div>
             <div class="col-md-6">
                 <label class="form-label">Change Password</label>
@@ -24,7 +49,7 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">Theme</label>
-                <select name="theme" class="form-select">
+                <select name="theme" class="form-select" title="Theme">
                     <option value="light" {% if current_user.theme == 'light' %}selected{% endif %}>Light</option>
                     <option value="dark" {% if current_user.theme == 'dark' %}selected{% endif %}>Dark</option>
                 </select>
@@ -35,7 +60,7 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">Time Zone</label>
-                <select name="timezone" class="form-select">
+                <select name="timezone" class="form-select" title="Time zone">
                     {% set user_tz = current_user.last_known_timezone or 'Africa/Nairobi' %}
                     <option value="Africa/Nairobi" {% if user_tz == 'Africa/Nairobi' %}selected{% endif %}>Africa/Nairobi (EAT)</option>
                     <option value="Africa/Johannesburg" {% if user_tz == 'Africa/Johannesburg' %}selected{% endif %}>Africa/Johannesburg (SAST)</option>
@@ -52,7 +77,7 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">Wallpaper</label>
-                <input type="file" name="wallpaper" id="wallpaper_input" accept="image/*" class="form-control">
+                <input type="file" name="wallpaper" id="wallpaper_input" accept="image/*" class="form-control" title="Upload wallpaper">
                 <div class="mt-2">
                     <small class="text-muted">Preview (live preview must be enabled)</small>
                 </div>
@@ -103,13 +128,13 @@
                         <div class="row">
                                 <div class="col-md-4 text-center">
                                         <h6>Profile Picture</h6>
-                                        <img id="modal_profile_preview" src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile preview" style="width:120px;height:120px;border-radius:50%;object-fit:cover;" />
+                                    <img id="modal_profile_preview" src="{{ url_for('profile_picture', user_id=current_user.id) }}" alt="Profile preview" class="profile-preview-lg" />
                                 </div>
                                 <div class="col-md-8">
                                         <h6>Theme</h6>
                                         <p id="modal_theme_preview">{{ current_user.theme or 'light' }}</p>
                                         <h6>Wallpaper Preview</h6>
-                                        <div id="modal_wallpaper_preview" style="width:100%;height:160px;background-size:cover;background-position:center;border-radius:8px;">
+                                    <div id="modal_wallpaper_preview" class="wallpaper-preview-box">
                                         </div>
                                 </div>
                         </div>

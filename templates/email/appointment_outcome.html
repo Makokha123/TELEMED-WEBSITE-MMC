@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointment Update</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .email-shell {
+            background-color: #f4f4f4;
+            padding: 40px 0;
+        }
+
+        .email-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .email-header {
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        .header-completed {
+            background-color: #198754;
+        }
+
+        .header-cancelled {
+            background-color: #dc3545;
+        }
+
+        .header-missed {
+            background-color: #ffc107;
+        }
+
+        .header-rescheduled {
+            background-color: #0d6efd;
+        }
+
+        .header-default {
+            background-color: #6c757d;
+        }
+
+        .brand-title {
+            margin: 0;
+            font-size: 24px;
+            color: #ffffff;
+        }
+
+        .brand-title-dark {
+            color: #333333;
+        }
+
+        .header-subtitle {
+            margin: 8px 0 0;
+            font-size: 14px;
+        }
+
+        .subtitle-completed {
+            color: #d4edda;
+        }
+
+        .subtitle-cancelled {
+            color: #f8d7da;
+        }
+
+        .subtitle-missed {
+            color: #664d03;
+        }
+
+        .subtitle-rescheduled {
+            color: #cfe2ff;
+        }
+
+        .subtitle-default {
+            color: #e2e3e5;
+        }
+
+        .email-body {
+            padding: 40px;
+        }
+
+        .greeting {
+            font-size: 16px;
+            color: #333333;
+            margin: 0 0 20px;
+        }
+
+        .body-text {
+            font-size: 15px;
+            color: #555555;
+            margin: 0 0 15px;
+        }
+
+        .notice-box {
+            padding: 15px 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+            border-left: 4px solid transparent;
+        }
+
+        .notice-completed {
+            background-color: #d4edda;
+            border-left-color: #198754;
+        }
+
+        .notice-cancelled {
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+        }
+
+        .notice-missed {
+            background-color: #fff3cd;
+            border-left-color: #ffc107;
+        }
+
+        .notice-rescheduled {
+            background-color: #cfe2ff;
+            border-left-color: #0d6efd;
+        }
+
+        .notice-text {
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .notice-text-completed {
+            color: #155724;
+        }
+
+        .notice-text-cancelled {
+            color: #842029;
+        }
+
+        .notice-text-missed {
+            color: #664d03;
+        }
+
+        .notice-text-rescheduled {
+            color: #084298;
+        }
+
+        .details-table {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+
+        .details-label,
+        .details-value {
+            font-size: 14px;
+        }
+
+        .details-label {
+            color: #666666;
+            width: 40%;
+        }
+
+        .details-value {
+            color: #333333;
+        }
+
+        .details-divider {
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .review-box {
+            background-color: #e8f0fe;
+            border: 1px solid #b6d4fe;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 25px 0;
+            text-align: center;
+        }
+
+        .review-title {
+            font-size: 15px;
+            color: #084298;
+            margin: 0 0 10px;
+            font-weight: bold;
+        }
+
+        .review-text {
+            font-size: 14px;
+            color: #555555;
+            margin: 0 0 15px;
+        }
+
+        .cta-wrap {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .btn {
+            display: inline-block;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        .btn-sm {
+            padding: 12px 30px;
+            font-size: 14px;
+        }
+
+        .btn-lg {
+            padding: 14px 40px;
+            font-size: 16px;
+        }
+
+        .btn-success {
+            background-color: #198754;
+        }
+
+        .btn-primary {
+            background-color: #0d6efd;
+        }
+
+        .support-text {
+            font-size: 14px;
+            color: #666666;
+            margin: 0 0 20px;
+        }
+
+        .separator {
+            border: none;
+            border-top: 1px solid #eeeeee;
+            margin: 30px 0;
+        }
+
+        .footer-note {
+            font-size: 12px;
+            color: #999999;
+            text-align: center;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-shell">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="email-card">
+                    <!-- Header -->
+                    <tr>
+                        {% if outcome == 'completed' %}
+                        <td class="email-header header-completed">
+                            <h1 class="brand-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle subtitle-completed">Consultation Completed</p>
+                        </td>
+                        {% elif outcome == 'cancelled' %}
+                        <td class="email-header header-cancelled">
+                            <h1 class="brand-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle subtitle-cancelled">Appointment Cancelled</p>
+                        </td>
+                        {% elif outcome == 'missed' %}
+                        <td class="email-header header-missed">
+                            <h1 class="brand-title brand-title-dark">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle subtitle-missed">Missed Appointment</p>
+                        </td>
+                        {% elif outcome == 'rescheduled' %}
+                        <td class="email-header header-rescheduled">
+                            <h1 class="brand-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle subtitle-rescheduled">Appointment Rescheduled</p>
+                        </td>
+                        {% else %}
+                        <td class="email-header header-default">
+                            <h1 class="brand-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle subtitle-default">Appointment Update</p>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    <!-- Body -->
+                    <tr>
+                        <td class="email-body">
+                            <p class="greeting">
+                                Hello <strong>{{ patient_name or 'Patient' }}</strong>,
+                            </p>
+
+                            {% if outcome == 'completed' %}
+                            <p class="body-text">
+                                Your consultation with <strong>{{ doctor_name or 'your doctor' }}</strong> has been completed successfully. Thank you for choosing Makokha Medical Centre!
+                            </p>
+                            <div class="notice-box notice-completed">
+                                <p class="notice-text notice-text-completed">
+                                    &#10004; Your consultation on <strong>{{ appointment_time }}</strong> has been marked as completed.
+                                </p>
+                            </div>
+
+                            {% elif outcome == 'cancelled' %}
+                            <p class="body-text">
+                                Your appointment with <strong>{{ doctor_name or 'your doctor' }}</strong> has been cancelled.
+                            </p>
+                            <div class="notice-box notice-cancelled">
+                                <p class="notice-text notice-text-cancelled">
+                                    Your appointment scheduled for <strong>{{ appointment_time }}</strong> has been cancelled.
+                                    If you believe this was a mistake, please contact our administration.
+                                </p>
+                            </div>
+
+                            {% elif outcome == 'missed' %}
+                            <p class="body-text">
+                                It appears that your appointment with <strong>{{ doctor_name or 'your doctor' }}</strong> was missed.
+                            </p>
+                            <div class="notice-box notice-missed">
+                                <p class="notice-text notice-text-missed">
+                                    Your appointment on <strong>{{ appointment_time }}</strong> was not attended.
+                                    Please book a new appointment at your earliest convenience.
+                                </p>
+                            </div>
+
+                            {% elif outcome == 'rescheduled' %}
+                            <p class="body-text">
+                                Your appointment with <strong>{{ doctor_name or 'your doctor' }}</strong> has been rescheduled.
+                            </p>
+                            <div class="notice-box notice-rescheduled">
+                                <p class="notice-text notice-text-rescheduled">
+                                    Your appointment has been rescheduled to <strong>{{ appointment_time }}</strong>.
+                                    Please check your dashboard for the updated details.
+                                </p>
+                            </div>
+                            {% endif %}
+
+                            <!-- Appointment Details -->
+                            <table role="presentation" width="100%" cellpadding="8" cellspacing="0" class="details-table">
+                                <tr>
+                                    <td class="details-label details-divider"><strong>Doctor</strong></td>
+                                    <td class="details-value details-divider">
+                                        {{ doctor_name or 'Your Doctor' }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label details-divider"><strong>Date &amp; Time</strong></td>
+                                    <td class="details-value details-divider">{{ appointment_time }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label"><strong>Consultation</strong></td>
+                                    <td class="details-value">{{ appointment.consultation_type|capitalize }}</td>
+                                </tr>
+                            </table>
+
+                            {% if outcome == 'completed' and review_prompt %}
+                            <!-- Review Request -->
+                            <div class="review-box">
+                                <p class="review-title">
+                                    &#11088; We Value Your Feedback!
+                                </p>
+                                <p class="review-text">
+                                    Please take a moment to rate your experience and leave a review. Your feedback helps us improve our services.
+                                </p>
+                                <a href="{{ login_url }}"
+                                   class="btn btn-sm btn-success">
+                                    Leave a Review
+                                </a>
+                            </div>
+                            {% endif %}
+
+                            {% if outcome in ['missed', 'cancelled'] %}
+                            <div class="cta-wrap">
+                                <a href="{{ login_url }}"
+                                   class="btn btn-lg btn-success">
+                                    Book a New Appointment
+                                </a>
+                            </div>
+                            {% elif outcome == 'completed' %}
+                            <div class="cta-wrap">
+                                <a href="{{ login_url }}"
+                                   class="btn btn-lg btn-success">
+                                    Go to Dashboard
+                                </a>
+                            </div>
+                            {% elif outcome == 'rescheduled' %}
+                            <div class="cta-wrap">
+                                <a href="{{ login_url }}"
+                                   class="btn btn-lg btn-primary">
+                                    View Updated Appointment
+                                </a>
+                            </div>
+                            {% endif %}
+
+                            <p class="support-text">
+                                If you have any questions, please contact our administration team.
+                            </p>
+                            <hr class="separator">
+                            <p class="footer-note">
+                                &copy; Makokha Medical Centre &mdash; This is an automated message, please do not reply.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

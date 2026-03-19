@@ -42,6 +42,28 @@
         color: #007bff;
         font-weight: bold;
     }
+    .avatar-wrap-60 {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        overflow: hidden;
+    }
+    .avatar-wrap-40 {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        overflow: hidden;
+    }
+    .avatar-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .patient-avatar-sm {
+        width: 40px;
+        height: 40px;
+        font-size: 1em;
+    }
 </style>
 {% endblock %}
 
@@ -162,14 +184,14 @@
                             </div>
                         </div>
                         <div class="col-md-2">
-                            <select class="form-select" name="status">
+                            <select class="form-select" name="status" title="Filter by status" aria-label="Filter by status">
                                 <option value="">All Status</option>
                                 <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
                                 <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>Inactive</option>
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <select class="form-select" name="blood_type">
+                            <select class="form-select" name="blood_type" title="Filter by blood type" aria-label="Filter by blood type">
                                 <option value="">All Blood Types</option>
                                 <option value="A+" {% if filters.blood_type == 'A+' %}selected{% endif %}>A+</option>
                                 <option value="A-" {% if filters.blood_type == 'A-' %}selected{% endif %}>A-</option>
@@ -215,15 +237,17 @@
                                 {% set pic = patient.profile_picture %}
                             {% endif %}
                             {% if pic %}
-                                <div class="mx-auto mb-3" style="width:60px; height:60px; border-radius:50%; overflow:hidden;">
-                                    {% if pic.startswith('http') %}
-                                        <img src="{{ pic }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                <div class="mx-auto mb-3 avatar-wrap-60">
+                                    {% if pic.startswith('blob://') %}
+                                        <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" alt="Profile" title="Profile" class="avatar-img">
+                                    {% elif pic.startswith('http') %}
+                                        <img src="{{ pic }}" alt="Profile" title="Profile" class="avatar-img">
                                     {% elif pic.endswith('.enc') or 'profile_pictures' in pic %}
-                                        <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                        <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" alt="Profile" title="Profile" class="avatar-img">
                                     {% elif pic.startswith('/') %}
-                                        <img src="{{ pic }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                        <img src="{{ pic }}" alt="Profile" title="Profile" class="avatar-img">
                                     {% else %}
-                                        <img src="{{ url_for('static', filename=pic) }}" alt="Profile" style="width:100%; height:100%; object-fit:cover;">
+                                        <img src="{{ url_for('static', filename=pic) }}" alt="Profile" title="Profile" class="avatar-img">
                                     {% endif %}
                                 </div>
                             {% else %}
@@ -246,7 +270,7 @@
                                     <div class="text-muted small">Age</div>
                                     <div class="fw-bold">
                                         {% if patient.user.date_of_birth %}
-                                            {{ ((now - patient.user.date_of_birth).days / 365)|int }} yrs
+                                            {{ ((now.date() - patient.user.date_of_birth).days / 365)|int }} yrs
                                         {% else %}
                                             N/A
                                         {% endif %}
@@ -347,19 +371,19 @@
                                             {% set lpic = None %}
                                             {% endif %}
                                             {% if lpic %}
-                                            <div class="me-3" style="width: 40px; height: 40px; overflow:hidden; border-radius:50%;">
+                                            <div class="me-3 avatar-wrap-40">
                                                 {% if lpic.startswith('http') %}
-                                                    <img src="{{ lpic }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                    <img src="{{ lpic }}" class="avatar-img" alt="Profile" title="Profile" />
                                                 {% elif lpic.endswith('.enc') or 'profile_pictures' in lpic %}
-                                                    <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                    <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" class="avatar-img" alt="Profile" title="Profile" />
                                                 {% elif lpic.startswith('/') %}
-                                                    <img src="{{ lpic }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                    <img src="{{ lpic }}" class="avatar-img" alt="Profile" title="Profile" />
                                                 {% else %}
-                                                    <img src="{{ url_for('static', filename=lpic) }}" style="width:100%; height:100%; object-fit:cover;" />
+                                                    <img src="{{ url_for('static', filename=lpic) }}" class="avatar-img" alt="Profile" title="Profile" />
                                                 {% endif %}
                                             </div>
                                             {% else %}
-                                            <div class="patient-avatar me-3" style="width: 40px; height: 40px; font-size: 1em;">
+                                            <div class="patient-avatar patient-avatar-sm me-3">
                                                 {{ patient.user.first_name[0] }}{{ patient.user.last_name[0] }}
                                             </div>
                                             {% endif %}
@@ -394,10 +418,14 @@
                                     <td>
                                         <div class="btn-group">
                                             <button class="btn btn-sm btn-outline-primary" 
+                                                    title="View patient"
+                                                    aria-label="View patient"
                                                     onclick="viewPatientDetails('{{ patient.id }}')">
                                                 <i class="fas fa-eye"></i>
                                             </button>
                                             <button class="btn btn-sm btn-outline-info" 
+                                                    title="Edit patient"
+                                                    aria-label="Edit patient"
                                                     onclick="editPatient('{{ patient.id }}')">
                                                 <i class="fas fa-edit"></i>
                                             </button>

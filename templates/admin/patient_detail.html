@@ -2,13 +2,39 @@
 
 {% block title %}Patient Details - Admin{% endblock %}
 
+{% block extra_css %}
+<style>
+    .patient-photo-wrap {
+        width: 100px;
+        height: 100px;
+        overflow: hidden;
+        border-radius: 50%;
+    }
+    .patient-photo {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .patient-initials {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        background: #007bff;
+        color: #fff;
+        font-size: 2rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
                 <div class="card-body d-flex align-items-center">
-                    <div style="width:100px; height:100px; overflow:hidden; border-radius:50%;">
+                    <div class="patient-photo-wrap">
                         {% if patient.user.profile_picture %}
                             {% set ppic = patient.user.profile_picture %}
                         {% elif patient.profile_picture is defined and patient.profile_picture %}
@@ -17,17 +43,19 @@
                             {% set ppic = None %}
                         {% endif %}
                         {% if ppic %}
-                            {% if ppic.startswith('http') %}
-                                <img src="{{ ppic }}" style="width:100%; height:100%; object-fit:cover;">
+                            {% if ppic.startswith('blob://') %}
+                                <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" class="patient-photo" alt="Patient profile picture" title="Patient profile picture">
+                            {% elif ppic.startswith('http') %}
+                                <img src="{{ ppic }}" class="patient-photo" alt="Patient profile picture" title="Patient profile picture">
                             {% elif ppic.endswith('.enc') or 'profile_pictures' in ppic %}
-                                <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" style="width:100%; height:100%; object-fit:cover;">
+                                <img src="{{ url_for('profile_picture', user_id=patient.user.id) }}" class="patient-photo" alt="Patient profile picture" title="Patient profile picture">
                             {% elif ppic.startswith('/') %}
-                                <img src="{{ ppic }}" style="width:100%; height:100%; object-fit:cover;">
+                                <img src="{{ ppic }}" class="patient-photo" alt="Patient profile picture" title="Patient profile picture">
                             {% else %}
-                                <img src="{{ url_for('static', filename=ppic) }}" style="width:100%; height:100%; object-fit:cover;">
+                                <img src="{{ url_for('static', filename=ppic) }}" class="patient-photo" alt="Patient profile picture" title="Patient profile picture">
                             {% endif %}
                         {% else %}
-                            <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; background:#007bff; color:#fff; font-size:2rem;">
+                            <div class="patient-initials">
                                 {{ patient.user.first_name[0] }}{{ patient.user.last_name[0] }}
                             </div>
                         {% endif %}
@@ -78,9 +106,9 @@
                 <div class="card-header">Medical Records</div>
                 <div class="card-body">
                     {% if medical_records %}
-                        <ul class="list-group">
+                        <div class="list-group">
                         {% for rec in medical_records %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
                                     <strong>{{ rec.record_type }}</strong>
                                     <div class="small text-muted">Uploaded: {{ rec.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
@@ -93,9 +121,9 @@
                                         <span class="text-muted">No file</span>
                                     {% endif %}
                                 </div>
-                            </li>
+                            </div>
                         {% endfor %}
-                        </ul>
+                        </div>
                     {% else %}
                         <p class="text-muted">No medical records found.</p>
                     {% endif %}
@@ -106,9 +134,9 @@
                 <div class="card-header">Appointments</div>
                 <div class="card-body">
                     {% if appointments %}
-                        <ul class="list-group">
+                        <div class="list-group">
                         {% for appt, doctor, doctor_user in appointments %}
-                            <li class="list-group-item">
+                            <div class="list-group-item">
                                 <div class="d-flex justify-content-between">
                                     <div>
                                         <strong>Dr. {{ doctor_user.first_name }} {{ doctor_user.last_name }}</strong>
@@ -119,9 +147,9 @@
                                         <a href="{{ url_for('communication_dashboard', appointment_id=appt.id) }}" class="btn btn-sm btn-outline-info">View Messages</a>
                                     </div>
                                 </div>
-                            </li>
+                            </div>
                         {% endfor %}
-                        </ul>
+                        </div>
                     {% else %}
                         <p class="text-muted">No appointments found.</p>
                     {% endif %}
@@ -132,9 +160,9 @@
                 <div class="card-header">Communications</div>
                 <div class="card-body">
                     {% if communications %}
-                        <ul class="list-group">
+                        <div class="list-group">
                         {% for comm in communications %}
-                            <li class="list-group-item">
+                            <div class="list-group-item">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <div><strong>{{ comm.sender.get_display_name() }}</strong> — <span class="small text-muted">{{ comm.timestamp.strftime('%Y-%m-%d %H:%M') }}</span></div>
@@ -148,9 +176,9 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                            </li>
+                            </div>
                         {% endfor %}
-                        </ul>
+                        </div>
                     {% else %}
                         <p class="text-muted">No communications found for this patient.</p>
                     {% endif %}

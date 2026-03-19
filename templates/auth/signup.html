@@ -251,7 +251,7 @@
 
                             <h5 class="mb-3">Create Account with Email</h5>
                             
-                            <form method="POST" id="signupForm">
+                            <form method="POST" id="signupForm" enctype="multipart/form-data">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <!-- Account Information -->
                                 <div class="row">
@@ -278,7 +278,7 @@
                                             <div class="input-group">
                                                 <input type="password" class="form-control password-field" id="password" name="password" 
                                                        placeholder="Create password" required>
-                                                <button class="btn btn-outline-secondary password-toggle" type="button" data-target="password">
+                                                <button class="btn btn-outline-secondary password-toggle" type="button" data-target="password" title="Toggle password visibility" aria-label="Toggle password visibility">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                             </div>
@@ -294,7 +294,7 @@
                                             <div class="input-group">
                                                 <input type="password" class="form-control password-field" id="confirm_password" 
                                                        name="confirm_password" placeholder="Confirm password" required>
-                                                <button class="btn btn-outline-secondary password-toggle" type="button" data-target="confirm_password">
+                                                <button class="btn btn-outline-secondary password-toggle" type="button" data-target="confirm_password" title="Toggle confirm password visibility" aria-label="Toggle confirm password visibility">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                             </div>
@@ -333,6 +333,20 @@
                                         <div class="mb-3">
                                             <label for="date_of_birth" class="form-label">Date of Birth</label>
                                             <input type="date" class="form-control" id="date_of_birth" name="date_of_birth">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Profile Picture -->
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="profile_picture" class="form-label">Profile Picture (optional)</label>
+                                        <input type="file" class="form-control" id="profile_picture" name="profile_picture" accept="image/*">
+                                        <small class="text-muted">JPG, PNG or GIF. Max 5 MB.</small>
+                                    </div>
+                                    <div class="col-md-6 d-flex align-items-center">
+                                        <div id="signupPicPreview" class="signup-pic-preview">
+                                            <i class="fas fa-user text-muted icon-fs-1-5rem"></i>
                                         </div>
                                     </div>
                                 </div>
@@ -450,14 +464,14 @@
                                                     <div class="mb-3">
                                                         <label for="height_cm" class="form-label">Height (cm)</label>
                                                         <input type="number" step="0.1" class="form-control" id="height_cm" name="height_cm" placeholder="e.g. 170">
-                                                        <div class="form-text text-danger" id="signupHeightWarning" style="display:none"></div>
+                                                        <div class="form-text text-danger initially-hidden" id="signupHeightWarning"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-md-3">
                                                     <div class="mb-3">
                                                         <label for="weight_kg" class="form-label">Weight (kg)</label>
                                                         <input type="number" step="0.1" class="form-control" id="weight_kg" name="weight_kg" placeholder="e.g. 68">
-                                                        <div class="form-text text-danger" id="signupWeightWarning" style="display:none"></div>
+                                                        <div class="form-text text-danger initially-hidden" id="signupWeightWarning"></div>
                                                     </div>
                                                 </div>
                                                 <div class="col-md-6">
@@ -503,12 +517,72 @@
                                                     <div class="mb-3">
                                                         <label for="medical_history" class="form-label">Medical History (optional)</label>
                                                         <textarea id="medical_history" name="medical_history" class="form-control" rows="3" placeholder="Past illnesses, surgeries, chronic conditions"></textarea>
-                                                        <div class="form-text text-danger" id="signupDobWarning" style="display:none"></div>
+                                                        <div class="form-text text-danger initially-hidden" id="signupDobWarning"></div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+
+                                <!-- Email OTP Verification -->
+                                <div class="mb-4">
+                                    <div class="card border-0 shadow-sm card-rounded-12">
+                                        <div class="card-header text-white py-3 otp-card-header">
+                                            <i class="fas fa-shield-alt me-2"></i><strong>Email Verification Required</strong>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="text-muted small mb-3">
+                                                <i class="fas fa-info-circle me-1"></i>
+                                                Enter your email above, then click <strong>Send Code</strong> to receive a verification code.
+                                            </p>
+
+                                            <!-- Request OTP -->
+                                            <div id="otpRequestStep">
+                                                <button type="button" class="btn btn-outline-primary w-100" id="sendOtpBtn" onclick="requestSignupOTP()">
+                                                    <i class="fas fa-paper-plane me-2"></i>Send Verification Code to My Email
+                                                </button>
+                                                <div id="otpSendStatus" class="mt-2"></div>
+                                            </div>
+
+                                            <!-- Enter OTP (hidden until sent) -->
+                                            <div id="otpVerifyStep" class="mt-3 initially-hidden">
+                                                <p class="text-success small mb-2">
+                                                    <i class="fas fa-envelope-open me-1"></i>Code sent! Check your inbox (including spam).
+                                                </p>
+                                                <div class="d-flex gap-2 align-items-end">
+                                                    <div class="otp-flex-item">
+                                                        <label class="form-label small fw-semibold">6-digit verification code</label>
+                                                        <input type="text" class="form-control text-center fw-bold otp-code-field"
+                                                               id="otpCodeInput" maxlength="6" pattern="[0-9]{6}"
+                                                               placeholder="0 0 0 0 0 0"
+                                                               title="Enter 6-digit verification code" aria-label="Enter 6-digit verification code">
+                                                    </div>
+                                                    <button type="button" class="btn btn-success px-4" id="verifyOtpBtn" onclick="verifySignupOTP()">
+                                                        <i class="fas fa-check me-1"></i>Verify
+                                                    </button>
+                                                </div>
+                                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                                    <div id="otpVerifyStatus"></div>
+                                                    <button type="button" class="btn btn-link btn-sm text-muted p-0 initially-hidden" id="resendOtpBtn"
+                                                            onclick="requestSignupOTP(true)">
+                                                        <i class="fas fa-redo me-1"></i>Resend code
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <!-- Verified confirmation -->
+                                            <div id="otpVerifiedStep" class="mt-2 initially-hidden">
+                                                <div class="alert alert-success py-2 mb-0">
+                                                    <i class="fas fa-check-circle me-2"></i>
+                                                    <strong>Email verified!</strong> You may now create your account.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Hidden OTP fields submitted with the form -->
+                                <input type="hidden" name="email_otp_challenge_id" id="emailOtpChallengeId" value="">
+                                <input type="hidden" name="email_otp_verified" id="emailOtpVerified" value="false">
 
                                 <!-- Terms and Conditions -->
                                 <div class="mb-4">
@@ -641,11 +715,13 @@
             updateSubmitButton();
         }
 
+        let otpVerified = false;
+
         function updateSubmitButton() {
             const submitBtn = $('#submitBtn');
             const termsChecked = $('#terms').is(':checked');
             
-            if (passwordValid && passwordsMatch && termsChecked) {
+            if (passwordValid && passwordsMatch && termsChecked && otpVerified) {
                 submitBtn.prop('disabled', false).removeClass('btn-secondary').addClass('btn-success');
             } else {
                 submitBtn.prop('disabled', true).removeClass('btn-success').addClass('btn-secondary');
@@ -657,11 +733,30 @@
             updateSubmitButton();
         });
 
+        // When email changes, reset OTP verification
+        $('#email').on('input', function() {
+            if (otpVerified) {
+                otpVerified = false;
+                $('#emailOtpVerified').val('false');
+                $('#emailOtpChallengeId').val('');
+                $('#otpVerifiedStep').hide();
+                $('#otpVerifyStep').hide();
+                $('#otpRequestStep').show();
+                $('#otpSendStatus').html('');
+                updateSubmitButton();
+            }
+        });
+
         // Form submission
         $('#signupForm').on('submit', function(e) {
             if (!passwordValid || !passwordsMatch || !$('#terms').is(':checked')) {
                 e.preventDefault();
                 alert('Please ensure your password meets all requirements, matches the confirmation, and you agree to the terms.');
+                return false;
+            }
+            if (!otpVerified) {
+                e.preventDefault();
+                alert('Please verify your email address with the OTP code before creating your account.');
                 return false;
             }
 
@@ -731,6 +826,138 @@
         $('#height_cm').on('input change', s_validateHeight);
         $('#weight_kg').on('input change', s_validateWeight);
         $('#date_of_birth').on('input change', s_validateDOB);
+
+        // Profile picture preview
+        $('#profile_picture').on('change', function() {
+            const file = this.files[0];
+            const preview = document.getElementById('signupPicPreview');
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(ev) {
+                    preview.innerHTML = '<img src="' + ev.target.result + '" style="width:100%;height:100%;object-fit:cover;">';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.innerHTML = '<i class="fas fa-user text-muted" style="font-size:1.5rem;"></i>';
+            }
+        });
     });
+
+    let _otpResendTimer = null;
+
+    function requestSignupOTP(isResend) {
+        const email = $('#email').val().trim();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            $('#otpSendStatus').html('<span class="text-danger small"><i class="fas fa-exclamation-circle me-1"></i>Please enter a valid email address first.</span>');
+            return;
+        }
+        const firstName = $('#first_name').val().trim();
+        const btn = isResend ? $('#resendOtpBtn') : $('#sendOtpBtn');
+        const statusEl = $('#otpSendStatus');
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Sending...');
+        statusEl.html('');
+
+        fetch('/api/email-otp/request', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': $('input[name=csrf_token]').val()},
+            body: JSON.stringify({email: email, purpose: 'signup', name: firstName || undefined})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                $('#otpRequestStep').find('button').prop('disabled', false).html('<i class="fas fa-paper-plane me-2"></i>Send Verification Code to My Email');
+                $('#otpVerifyStep').show();
+                $('#otpCodeInput').focus();
+                if (isResend) {
+                    statusEl.html('');
+                    $('#otpVerifyStatus').html('<span class="text-success small"><i class="fas fa-check me-1"></i>New code sent to your email.</span>');
+                }
+                // Start resend cooldown
+                if (data.resend_after_seconds) {
+                    startResendCooldown(data.resend_after_seconds);
+                }
+            } else {
+                btn.prop('disabled', false).html(isResend ? '<i class="fas fa-redo me-1"></i>Resend code' : '<i class="fas fa-paper-plane me-2"></i>Send Verification Code to My Email');
+                let msg = 'Failed to send code. Please try again.';
+                if (data.error === 'email_already_registered') msg = 'This email is already registered. <a href="/login">Login instead?</a>';
+                else if (data.error === 'invalid_email') msg = 'Invalid email address.';
+                else if (data.error === 'resend_cooldown') msg = 'Please wait ' + (data.retry_after_seconds || 60) + 's before resending.';
+                else if (data.message) msg = data.message;
+                statusEl.html('<span class="text-danger small"><i class="fas fa-exclamation-circle me-1"></i>' + msg + '</span>');
+            }
+        })
+        .catch(() => {
+            btn.prop('disabled', false).html(isResend ? '<i class="fas fa-redo me-1"></i>Resend code' : '<i class="fas fa-paper-plane me-2"></i>Send Verification Code to My Email');
+            statusEl.html('<span class="text-danger small">Network error. Please try again.</span>');
+        });
+    }
+
+    function verifySignupOTP() {
+        const email = $('#email').val().trim();
+        const code = $('#otpCodeInput').val().trim();
+        if (!code || code.length < 4) {
+            $('#otpVerifyStatus').html('<span class="text-danger small">Please enter the full code.</span>');
+            return;
+        }
+        const btn = $('#verifyOtpBtn');
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Verifying...');
+        $('#otpVerifyStatus').html('');
+
+        fetch('/api/email-otp/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': $('input[name=csrf_token]').val()},
+            body: JSON.stringify({email: email, otp_code: code, purpose: 'signup'})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.verified) {
+                // Store challenge ID and mark verified
+                $('#emailOtpChallengeId').val(data.challenge_id);
+                $('#emailOtpVerified').val('true');
+                otpVerified = true;
+                // Update UI
+                $('#otpVerifyStep').hide();
+                $('#otpVerifiedStep').show();
+                if (_otpResendTimer) clearInterval(_otpResendTimer);
+                updateSubmitButton();
+            } else {
+                btn.prop('disabled', false).html('<i class="fas fa-check me-1"></i>Verify');
+                let msg = 'Incorrect code. Please try again.';
+                if (data.error === 'code_expired') msg = 'Code expired. Please request a new one.';
+                else if (data.error === 'too_many_attempts') msg = 'Too many attempts. Please request a new code.';
+                else if (data.error === 'challenge_not_found') msg = 'No active code found. Please request a new one.';
+                if (data.attempts_remaining !== undefined) msg += ' (' + data.attempts_remaining + ' attempts left)';
+                $('#otpVerifyStatus').html('<span class="text-danger small"><i class="fas fa-times-circle me-1"></i>' + msg + '</span>');
+                // Show resend if expired or too many attempts
+                if (data.error === 'code_expired' || data.error === 'too_many_attempts' || data.error === 'challenge_not_found') {
+                    $('#resendOtpBtn').show();
+                }
+            }
+        })
+        .catch(() => {
+            btn.prop('disabled', false).html('<i class="fas fa-check me-1"></i>Verify');
+            $('#otpVerifyStatus').html('<span class="text-danger small">Network error. Please try again.</span>');
+        });
+    }
+
+    function startResendCooldown(seconds) {
+        $('#resendOtpBtn').hide();
+        if (_otpResendTimer) clearInterval(_otpResendTimer);
+        let remaining = parseInt(seconds) || 60;
+        const timerEl = $('<span class="text-muted small ms-2" id="otpResendTimer"></span>');
+        $('#otpVerifyStatus').append(timerEl);
+        timerEl.text('Resend in ' + remaining + 's');
+        _otpResendTimer = setInterval(function() {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(_otpResendTimer);
+                _otpResendTimer = null;
+                timerEl.remove();
+                $('#resendOtpBtn').show();
+            } else {
+                timerEl.text('Resend in ' + remaining + 's');
+            }
+        }, 1000);
+    }
 </script>
 {% endblock %}

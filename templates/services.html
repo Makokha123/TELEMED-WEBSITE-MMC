@@ -1,36 +1,73 @@
 {% extends "base.html" %}
 
-{% block title %}Services - MAKOKHA MEDICAL CENTRE{% endblock %}
+{% block title %}Services - {{ (site.branding.site_name if site and site.branding and site.branding.site_name else 'MAKOKHA MEDICAL CENTRE') }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .service-icon-circle {
+        width: 50px;
+        height: 50px;
+        flex-shrink: 0;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
+{% set _svc = site.services if site and site.services else {} %}
 <div class="container section-padding">
     <div class="row mb-4">
         <div class="col-12 text-center">
-            <h2 class="section-title">Our Services</h2>
-            <p class="section-subtitle">We offer both remote telemedicine services and in-facility care for patients who can visit us.</p>
+            <h2 class="section-title">{{ _svc.section_title|default('Our Services',true) }}</h2>
+            <p class="section-subtitle">{{ _svc.section_subtitle|default('We offer both remote telemedicine services and in-facility care for patients who can visit us.',true) }}</p>
         </div>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-4 mb-5">
         <div class="col-lg-6">
-            <div class="card p-4">
-                <h4>Telemedicine Services</h4>
-                <ul>
+            <div class="card h-100 border-0 shadow-sm p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3 service-icon-circle">
+                        <i class="fas fa-laptop-medical fa-lg"></i>
+                    </div>
+                    <h4 class="mb-0">{{ _svc.telemedicine_title|default('Telemedicine Services',true) }}</h4>
+                </div>
+                <p class="text-muted mb-3">{{ _svc.telemedicine_description|default('Access quality healthcare from anywhere. Our telemedicine platform connects you with certified doctors for consultations, follow-ups, and prescriptions.',true) }}</p>
+                <div class="mb-4">
                     {% for s in telemedicine_services %}
-                    <li>{{ s }}</li>
+                    <div class="mb-1">• {{ s }}</div>
                     {% endfor %}
-                </ul>
+                </div>
+                {% if current_user.is_authenticated %}
+                    {% if current_user.role == 'patient' %}
+                    <a href="{{ url_for('patient_appointment') }}" class="btn btn-primary mt-auto">
+                        <i class="fas fa-calendar-plus me-1"></i>Book Appointment
+                    </a>
+                    {% endif %}
+                {% else %}
+                <a href="{{ url_for('signup') }}" class="btn btn-primary mt-auto">
+                    <i class="fas fa-user-plus me-1"></i>Sign Up to Book
+                </a>
+                {% endif %}
             </div>
         </div>
 
         <div class="col-lg-6">
-            <div class="card p-4">
-                <h4>In-Facility Services</h4>
-                <ul>
+            <div class="card h-100 border-0 shadow-sm p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center me-3 service-icon-circle">
+                        <i class="fas fa-hospital fa-lg"></i>
+                    </div>
+                    <h4 class="mb-0">{{ _svc.facility_title|default('In-Facility Services',true) }}</h4>
+                </div>
+                <p class="text-muted mb-3">{{ _svc.facility_description|default('Visit our medical centre for hands-on care. Our facility is equipped with modern diagnostic and treatment equipment.',true) }}</p>
+                <div class="mb-4">
                     {% for s in facility_services %}
-                    <li>{{ s }}</li>
+                    <div class="mb-1">• {{ s }}</div>
                     {% endfor %}
-                </ul>
+                </div>
+                <a href="{{ url_for('index') }}#contact" class="btn btn-outline-success mt-auto">
+                    <i class="fas fa-phone me-1"></i>Contact Us to Visit
+                </a>
             </div>
         </div>
     </div>

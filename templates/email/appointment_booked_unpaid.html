@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointment Booked</title>
+    <style>
+        .mail-body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, Helvetica, sans-serif; }
+        .mail-wrap { background-color: #f4f4f4; padding: 40px 0; }
+        .mail-card { background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .mail-head { background-color: #198754; padding: 30px 40px; text-align: center; }
+        .mail-title { color: #ffffff; margin: 0; font-size: 24px; }
+        .mail-subtitle { color: #d4edda; margin: 8px 0 0; font-size: 14px; }
+        .mail-content { padding: 40px; }
+        .mail-greeting { font-size: 16px; color: #333; margin: 0 0 20px; }
+        .mail-text { font-size: 15px; color: #555; margin: 0 0 15px; }
+        .details-table { background-color: #f8f9fa; border-radius: 6px; margin: 20px 0; }
+        .details-k { font-size: 14px; color: #666; border-bottom: 1px solid #e9ecef; width: 40%; }
+        .details-v { font-size: 14px; color: #333; border-bottom: 1px solid #e9ecef; }
+        .details-sub { color: #666; font-size: 12px; }
+        .details-k-last { font-size: 14px; color: #666; }
+        .details-v-last { font-size: 14px; color: #333; }
+        .badge-pending { background-color: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .payment-alert { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px 20px; border-radius: 4px; margin: 25px 0; }
+        .payment-alert-title { font-size: 15px; color: #856404; margin: 0 0 8px; font-weight: bold; }
+        .payment-alert-text { font-size: 14px; color: #856404; margin: 0; }
+        .pay-wrap { text-align: center; margin: 30px 0; }
+        .pay-btn { display: inline-block; background-color: #198754; color: #ffffff; padding: 14px 40px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; }
+        .mail-note { font-size: 14px; color: #666; margin: 0 0 20px; }
+        .mail-sep { border: none; border-top: 1px solid #eee; margin: 30px 0; }
+        .mail-footer { font-size: 12px; color: #999; text-align: center; margin: 0; }
+    </style>
+</head>
+<body class="mail-body">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="mail-wrap">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="mail-card">
+                    <!-- Header -->
+                    <tr>
+                        <td class="mail-head">
+                            <h1 class="mail-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="mail-subtitle">Appointment Booked</p>
+                        </td>
+                    </tr>
+                    <!-- Body -->
+                    <tr>
+                        <td class="mail-content">
+                            <p class="mail-greeting">
+                                Hello <strong>{{ user.title or '' }} {{ user.first_name or user.username }}</strong>,
+                            </p>
+                            <p class="mail-text">
+                                Your appointment has been booked successfully. Below are the details:
+                            </p>
+
+                            <!-- Appointment Details -->
+                            <table role="presentation" width="100%" cellpadding="8" cellspacing="0" class="details-table">
+                                <tr>
+                                    <td class="details-k"><strong>Doctor</strong></td>
+                                    <td class="details-v">
+                                        {{ doctor_user.title or 'Dr.' }} {{ doctor_user.first_name }} {{ doctor_user.last_name }}
+                                        {% if doctor.practitioner_type %}<br><span class="details-sub">{{ doctor.practitioner_type }}</span>{% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k"><strong>Date &amp; Time</strong></td>
+                                    <td class="details-v">{{ appointment.appointment_date.strftime('%A, %d %B %Y at %I:%M %p') }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k"><strong>Consultation</strong></td>
+                                    <td class="details-v">{{ appointment.consultation_type|capitalize }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k"><strong>Urgency</strong></td>
+                                    <td class="details-v">{{ appointment.urgency|capitalize }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k-last"><strong>Status</strong></td>
+                                    <td class="details-v-last">
+                                        <span class="badge-pending">PENDING</span>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Payment Warning -->
+                            <div class="payment-alert">
+                                <p class="payment-alert-title">
+                                    &#9888; Payment Not Yet Received
+                                </p>
+                                <p class="payment-alert-text">
+                                    Your appointment is not confirmed until payment is completed.
+                                    Amount due: <strong>{{ payment.currency }} {{ '%.2f'|format(payment.amount) }}</strong>
+                                </p>
+                            </div>
+
+                            <div class="pay-wrap">
+                                <a href="{{ url_for('payment_by_appointment', appointment_id=appointment.id, _external=True) }}"
+                                   class="pay-btn">
+                                    Pay Now &amp; Confirm
+                                </a>
+                            </div>
+
+                            <p class="mail-note">
+                                If you have any questions, please contact our administration team.
+                            </p>
+                            <hr class="mail-sep">
+                            <p class="mail-footer">
+                                &copy; Makokha Medical Centre &mdash; This is an automated message, please do not reply.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

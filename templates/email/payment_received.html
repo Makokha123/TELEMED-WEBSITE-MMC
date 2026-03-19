@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Confirmed</title>
+    <style>
+        .mail-body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, Helvetica, sans-serif; }
+        .mail-wrap { background-color: #f4f4f4; padding: 40px 0; }
+        .mail-card { background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .mail-head { background-color: #198754; padding: 30px 40px; text-align: center; }
+        .mail-title { color: #ffffff; margin: 0; font-size: 24px; }
+        .mail-subtitle { color: #d4edda; margin: 8px 0 0; font-size: 14px; }
+        .mail-content { padding: 40px; }
+        .mail-greeting { font-size: 16px; color: #333; margin: 0 0 20px; }
+        .mail-text { font-size: 15px; color: #555; margin: 0 0 15px; }
+        .status-confirmed { color: #198754; }
+        .success-box { background-color: #d4edda; border-left: 4px solid #198754; padding: 15px 20px; border-radius: 4px; margin: 20px 0; }
+        .success-text { font-size: 15px; color: #155724; margin: 0; font-weight: bold; }
+        .invoice-wrap { border: 1px solid #dee2e6; border-radius: 6px; margin: 25px 0; overflow: hidden; }
+        .invoice-head { background-color: #343a40; padding: 15px 20px; }
+        .invoice-title { color: #ffffff; margin: 0; font-size: 16px; }
+        .inv-k { font-size: 13px; color: #666; border-bottom: 1px solid #e9ecef; width: 40%; }
+        .inv-v { font-size: 13px; color: #333; border-bottom: 1px solid #e9ecef; }
+        .inv-sub { color: #666; font-size: 11px; }
+        .inv-total-row { background-color: #f8f9fa; }
+        .inv-total-k { font-size: 14px; color: #333; padding: 12px 10px; }
+        .inv-total-v { font-size: 16px; color: #198754; padding: 12px 10px; font-weight: bold; }
+        .section-label { font-size: 14px; color: #555; margin: 20px 0 10px; font-weight: bold; }
+        .details-table { background-color: #f8f9fa; border-radius: 6px; }
+        .details-k { font-size: 14px; color: #666; border-bottom: 1px solid #e9ecef; width: 40%; }
+        .details-v { font-size: 14px; color: #333; border-bottom: 1px solid #e9ecef; }
+        .details-k-last { font-size: 14px; color: #666; }
+        .details-v-last { font-size: 14px; color: #333; }
+        .badge-confirmed { background-color: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .btn-wrap { text-align: center; margin: 30px 0; }
+        .btn-link-success { display: inline-block; background-color: #198754; color: #ffffff; padding: 14px 40px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; }
+        .mail-note { font-size: 14px; color: #666; margin: 0 0 20px; }
+        .mail-sep { border: none; border-top: 1px solid #eee; margin: 30px 0; }
+        .mail-footer { font-size: 12px; color: #999; text-align: center; margin: 0; }
+    </style>
+</head>
+<body class="mail-body">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="mail-wrap">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="mail-card">
+                    <!-- Header -->
+                    <tr>
+                        <td class="mail-head">
+                            <h1 class="mail-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="mail-subtitle">Payment Confirmed</p>
+                        </td>
+                    </tr>
+                    <!-- Body -->
+                    <tr>
+                        <td class="mail-content">
+                            <p class="mail-greeting">
+                                Hello <strong>{{ user.title or '' }} {{ user.first_name or user.username }}</strong>,
+                            </p>
+                            <p class="mail-text">
+                                Thank you for your payment! Your appointment is now <strong class="status-confirmed">confirmed</strong>.
+                            </p>
+
+                            <!-- Success Badge -->
+                            <div class="success-box">
+                                <p class="success-text">
+                                    &#10004; Payment Received Successfully
+                                </p>
+                            </div>
+
+                            <!-- Invoice -->
+                            <div class="invoice-wrap">
+                                <div class="invoice-head">
+                                    <h3 class="invoice-title">INVOICE</h3>
+                                </div>
+                                <table role="presentation" width="100%" cellpadding="10" cellspacing="0">
+                                    <tr>
+                                        <td class="inv-k"><strong>Invoice No.</strong></td>
+                                        <td class="inv-v">INV-{{ payment.id }}-{{ appointment.id }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="inv-k"><strong>Date</strong></td>
+                                        <td class="inv-v">{{ payment.updated_at.strftime('%d %B %Y') if payment.updated_at else payment.created_at.strftime('%d %B %Y') }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="inv-k"><strong>Patient</strong></td>
+                                        <td class="inv-v">{{ user.title or '' }} {{ user.first_name }} {{ user.last_name }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="inv-k"><strong>Doctor</strong></td>
+                                        <td class="inv-v">
+                                            {{ doctor_user.title or 'Dr.' }} {{ doctor_user.first_name }} {{ doctor_user.last_name }}
+                                            {% if doctor.practitioner_type %}<br><span class="inv-sub">{{ doctor.practitioner_type }}</span>{% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="inv-k"><strong>Appointment</strong></td>
+                                        <td class="inv-v">{{ appointment.appointment_date.strftime('%A, %d %B %Y at %I:%M %p') }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="inv-k"><strong>Consultation Type</strong></td>
+                                        <td class="inv-v">{{ appointment.consultation_type|capitalize }}</td>
+                                    </tr>
+                                    <tr class="inv-total-row">
+                                        <td class="inv-total-k"><strong>Amount Paid</strong></td>
+                                        <td class="inv-total-v">{{ payment.currency }} {{ '%.2f'|format(payment.amount) }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <!-- Appointment Details -->
+                            <p class="section-label">Appointment Details:</p>
+                            <table role="presentation" width="100%" cellpadding="8" cellspacing="0" class="details-table">
+                                <tr>
+                                    <td class="details-k"><strong>Status</strong></td>
+                                    <td class="details-v">
+                                        <span class="badge-confirmed">CONFIRMED</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k"><strong>Date &amp; Time</strong></td>
+                                    <td class="details-v">{{ appointment.appointment_date.strftime('%A, %d %B %Y at %I:%M %p') }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k-last"><strong>Urgency</strong></td>
+                                    <td class="details-v-last">{{ appointment.urgency|capitalize }}</td>
+                                </tr>
+                            </table>
+
+                            <div class="btn-wrap">
+                                <a href="{{ url_for('patient_dashboard', _external=True) }}"
+                                   class="btn-link-success">
+                                    View My Appointments
+                                </a>
+                            </div>
+
+                            <p class="mail-note">
+                                Please keep this email as your payment receipt. If you have any questions, contact our administration team.
+                            </p>
+                            <hr class="mail-sep">
+                            <p class="mail-footer">
+                                &copy; Makokha Medical Centre &mdash; This is an automated message, please do not reply.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

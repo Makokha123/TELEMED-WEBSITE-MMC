@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Verify Your Email{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow">
+                <div class="card-body p-4">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-envelope-open-text fa-3x text-primary mb-3"></i>
+                        <h4>Verify Your Email</h4>
+                        <p class="text-muted">
+                            We sent a 6-digit verification code to your email address. Enter it below to activate your account.
+                        </p>
+                    </div>
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" title="Close" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST" action="{{ url_for('verify_email', user_id=user.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label for="otp" class="form-label">Verification Code</label>
+                            <input type="text" class="form-control form-control-lg text-center otp-verify-letter-space" 
+                                   id="otp" name="otp" maxlength="6" pattern="[0-9]{6}"
+                                   placeholder="000000" required autofocus
+                                   title="Enter 6-digit verification code" aria-label="Enter 6-digit verification code">
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">Verify Email</button>
+                        </div>
+                    </form>
+
+                    <div class="text-center mt-3">
+                        <p class="text-muted mb-1">Didn't receive the code?</p>
+                        <form method="POST" action="{{ url_for('resend_otp', user_id=user.id) }}" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-link">Resend OTP</button>
+                        </form>
+                    </div>
+
+                    <div class="text-center mt-2">
+                        <a href="{{ url_for('login') }}" class="text-muted">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Login
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

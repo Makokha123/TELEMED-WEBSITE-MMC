@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+{% block title %}Messages – MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Layout ─────────────────────────────────────────────── */
+.chat-app{display:flex;height:calc(100vh - 70px);background:#fff;overflow:hidden}
+.sidebar{width:340px;min-width:260px;background:#f0f2f5;border-right:1px solid #e5e5e5;display:flex;flex-direction:column}
+.sidebar-header{padding:16px;border-bottom:1px solid #e5e5e5}
+.sidebar-header h5{margin:0;font-size:20px;font-weight:700;color:#111b21}
+.sidebar-search{padding:8px 12px}
+.sidebar-search input{width:100%;border:none;border-radius:20px;padding:8px 16px;background:#fff;font-size:14px;outline:none;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.appointments-list{flex:1;overflow-y:auto}
+
+/* ── Appointment Items ──────────────────────────────────── */
+.appt-item{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:background .15s}
+.appt-item:hover{background:#e9edef}
+.appt-item.active{background:#d9fdd3}
+.appt-avatar{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;flex-shrink:0;overflow:hidden}
+.appt-avatar img{width:100%;height:100%;object-fit:cover}
+.appt-info{flex:1;min-width:0}
+.appt-name{font-weight:600;font-size:15px;color:#111b21;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appt-last{font-size:13px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appt-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.appt-time{font-size:11px;color:#667781}
+.unread-badge{background:#25d366;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.unread-badge.d-none{display:none!important}
+
+/* ── Chat Panel ─────────────────────────────────────────── */
+.chat-panel{flex:1;display:flex;flex-direction:column;background:#efeae2;position:relative}
+.chat-panel.d-none{display:none!important}
+.chat-bg{position:absolute;inset:0;opacity:.06;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000' fill-opacity='.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;pointer-events:none;z-index:0}
+
+/* Chat header */
+.chat-header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#f0f2f5;border-bottom:1px solid #e5e5e5;z-index:2;position:relative}
+.chat-header-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden}
+.chat-header-avatar img{width:100%;height:100%;object-fit:cover}
+.chat-header-info{flex:1}
+.chat-header-name{font-weight:600;font-size:16px;color:#111b21}
+.presence-row{display:flex;align-items:center;gap:6px}
+.presence-dot{width:8px;height:8px;border-radius:50%}
+.presence-dot.online{background:#25d366}
+.presence-dot.offline{background:#aaa}
+#presence-text{font-size:12px;color:#667781}
+#connection-status{font-size:11px;color:#e74c3c;min-height:14px}
+#connection-status.connected{display:none}
+
+/* Chat body */
+.chat-body{flex:1;overflow-y:auto;padding:16px 60px;position:relative;z-index:1;display:flex;flex-direction:column}
+
+/* Messages */
+.message-bubble{max-width:65%;padding:8px 12px;border-radius:8px;margin-bottom:4px;position:relative;word-wrap:break-word;animation:fadeIn .2s ease}
+.message-bubble.sent{background:#d9fdd3;align-self:flex-end;border-top-right-radius:0}
+.message-bubble.received{background:#fff;align-self:flex-start;border-top-left-radius:0}
+.message-bubble.pending{opacity:.7}
+.message-bubble.failed{border:1px solid #e74c3c}
+.msg-sender{font-size:12px;font-weight:600;color:#00a884;margin-bottom:2px}
+.msg-text{font-size:14px;color:#111b21;line-height:1.4;white-space:pre-wrap}
+.msg-text a{color:#027eb5;text-decoration:underline}
+.msg-meta{display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:2px}
+.msg-time{font-size:11px;color:#667781}
+.msg-tick{font-size:12px;color:#667781}
+.msg-tick-read{font-size:12px;color:#53bdeb}
+.pending-icon{font-size:11px;color:#aaa}
+.msg-image img{max-width:300px;max-height:300px;border-radius:6px;cursor:pointer}
+.msg-voice audio{max-width:250px;height:36px}
+.msg-file{display:flex;align-items:center;gap:8px;padding:6px 0}
+.msg-file i{font-size:20px;color:#667781}
+.msg-file a{color:#027eb5;text-decoration:none;font-size:14px}
+
+/* Reply preview (inside bubble) */
+.reply-preview{background:rgba(0,0,0,.05);border-left:3px solid #25d366;border-radius:4px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px}
+.reply-sender{font-weight:600;color:#00a884;display:block;font-size:11px}
+.reply-text{color:#667781}
+
+/* Message actions (hover) */
+.msg-actions{position:absolute;top:4px;right:-32px;display:none}
+.message-bubble:hover .msg-actions{display:block}
+.message-bubble.received .msg-actions{right:auto;left:-32px}
+.btn-reply{background:none;border:none;color:#8696a0;cursor:pointer;font-size:14px;padding:4px}
+.btn-reply:hover{color:#00a884}
+.retry-btn{font-size:12px;margin-top:4px}
+
+/* System message */
+.system-message{text-align:center;margin:8px auto;background:#ffecd2;color:#865c2c;padding:4px 12px;border-radius:8px;font-size:12px;max-width:80%}
+
+/* Highlight on scroll-to */
+.message-bubble.highlight{box-shadow:0 0 0 2px #00a884;transition:box-shadow .3s}
+
+/* ── Typing indicator ───────────────────────────────────── */
+.typing-indicator{padding:4px 16px 4px 76px;font-size:13px;color:#00a884;display:flex;align-items:center;gap:6px;z-index:2;position:relative}
+.typing-dots{display:inline-flex;gap:3px}
+.typing-dots span{width:6px;height:6px;background:#00a884;border-radius:50%;animation:typingDot 1.2s infinite ease-in-out}
+.typing-dots span:nth-child(2){animation-delay:.2s}
+.typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes typingDot{0%,80%,100%{transform:scale(.6);opacity:.5}40%{transform:scale(1);opacity:1}}
+
+/* ── Reply bar ──────────────────────────────────────────── */
+.reply-bar{background:#f0f2f5;border-top:1px solid #e5e5e5;padding:8px 16px;display:flex;align-items:center;gap:8px;z-index:2;position:relative}
+.reply-bar.d-none{display:none!important}
+.reply-bar-content{flex:1;border-left:3px solid #25d366;padding:2px 8px;min-width:0}
+.reply-bar-name{font-weight:600;font-size:12px;color:#00a884}
+.reply-bar-text{font-size:13px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reply-bar-close{background:none;border:none;color:#8696a0;cursor:pointer;font-size:16px}
+
+/* ── Input area ─────────────────────────────────────────── */
+.chat-input{display:flex;align-items:flex-end;gap:8px;padding:8px 16px;background:#f0f2f5;z-index:2;position:relative}
+.input-actions{display:flex;gap:4px}
+.input-actions button{background:none;border:none;color:#54656f;font-size:20px;cursor:pointer;padding:6px;border-radius:50%;transition:background .15s}
+.input-actions button:hover{background:#e9edef}
+.input-actions button.recording{color:#e74c3c;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.msg-input-wrap{flex:1;position:relative}
+#msg-input{width:100%;border:none;border-radius:20px;padding:10px 16px;font-size:14px;outline:none;resize:none;max-height:120px;line-height:1.4;background:#fff}
+#send-btn{background:#00a884;color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;flex-shrink:0}
+#send-btn:hover{background:#008f72}
+
+/* ── Scroll down button ─────────────────────────────────── */
+#scroll-down-btn{position:absolute;bottom:80px;right:24px;background:#fff;border:none;border-radius:50%;width:36px;height:36px;box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center;font-size:16px;color:#54656f}
+
+/* ── Empty state ────────────────────────────────────────── */
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#667781;background:#f0f2f5}
+.empty-state i{font-size:72px;color:#ccc;margin-bottom:16px}
+.empty-state h4{font-weight:600;color:#41525d}
+.empty-state p{font-size:14px}
+
+/* ── Payment overlay ────────────────────────────────────── */
+.payment-overlay{position:absolute;inset:0;background:rgba(255,255,255,.95);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px}
+.payment-overlay i{font-size:48px;color:#f0ad4e;margin-bottom:16px}
+.payment-overlay h5{font-weight:600;color:#111b21}
+.payment-overlay p{color:#667781;margin-bottom:16px}
+
+/* ── Emoji picker ───────────────────────────────────────── */
+.emoji-picker-panel{position:absolute;bottom:60px;left:0;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.15);padding:12px;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;z-index:10;width:220px}
+.emoji-item{background:none;border:none;font-size:24px;cursor:pointer;padding:4px;border-radius:6px}
+.emoji-item:hover{background:#f0f2f5}
+
+/* ── Image viewer ───────────────────────────────────────── */
+.image-viewer{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center}
+.image-viewer.d-none{display:none!important}
+.image-viewer-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.85);cursor:pointer}
+.image-viewer-img{max-width:90vw;max-height:90vh;border-radius:8px;z-index:1;position:relative}
+.image-viewer-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:28px;cursor:pointer;width:40px;height:40px;border-radius:50%;z-index:2}
+
+/* ── Animations ─────────────────────────────────────────── */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ── Mobile ─────────────────────────────────────────────── */
+@media(max-width:768px){
+  .chat-app{flex-direction:column;height:100vh}
+  .sidebar{width:100%;height:auto;max-height:40vh;border-right:none;border-bottom:1px solid #e5e5e5}
+  .sidebar.chat-open{display:none}
+  .chat-panel{height:60vh}
+  .chat-body{padding:12px 16px}
+  .message-bubble{max-width:85%}
+  .msg-actions{display:block!important;position:static;margin-top:2px}
+  .chat-header .back-btn{display:inline-flex!important}
+}
+@media(min-width:769px){
+  .chat-header .back-btn{display:none!important}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-app" id="chat-app">
+  <!-- ═══ Sidebar ═══ -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h5><i class="fas fa-comments me-2"></i>Messages</h5>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" id="sidebar-search" placeholder="Search conversations..." autocomplete="off">
+    </div>
+    <div class="appointments-list" id="appointments-list">
+      {% for appt in appointments %}
+      {% set other = appt.patient.user if current_user.role == 'doctor' else appt.doctor.user %}
+      <div class="appt-item {% if appointment and appt.id == appointment.id %}active{% endif %}"
+           data-appointment-id="{{ appt.id }}"
+           data-name="{{ other.get_display_name() if other else 'Unknown' }}">
+        <div class="appt-avatar">
+          {% if other and other.id %}
+          <img src="{{ url_for('profile_picture', user_id=other.id) }}" alt=""
+               onerror="this.style.display='none';this.parentElement.textContent='{{ other.get_display_name()[0]|upper }}'">
+          {% else %}
+          ?
+          {% endif %}
+        </div>
+        <div class="appt-info">
+          <div class="appt-name">{{ other.get_display_name() if other else 'Unknown' }}</div>
+          <div class="appt-last">{{ appt.appointment_date.strftime('%b %d, %Y') if appt.appointment_date else '' }}</div>
+        </div>
+        <div class="appt-meta">
+          <span class="appt-time">{{ appt.status or '' }}</span>
+          <span class="unread-badge d-none" data-badge>0</span>
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if not appointments %}
+      <div class="text-center text-muted p-4">
+        <i class="fas fa-calendar-times fa-2x mb-2 d-block"></i>
+        No appointments yet
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ═══ Chat Panel ═══ -->
+  {% if appointment %}
+  <div class="chat-panel" id="chat-panel">
+    <div class="chat-bg"></div>
+
+    <!-- Payment overlay (hidden by default, shown if needed) -->
+    {% if payment_required %}
+    <div class="payment-overlay" id="payment-overlay">
+      <i class="fas fa-lock"></i>
+      <h5>Payment Required</h5>
+      <p>Please complete payment for this appointment to start messaging your doctor.</p>
+      {% if payment_url %}
+      <a href="{{ payment_url }}" class="btn btn-success btn-lg">
+        <i class="fas fa-credit-card me-2"></i>Complete Payment
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Header -->
+    <div class="chat-header" id="chat-header">
+      <button class="back-btn btn btn-sm btn-light" onclick="document.getElementById('sidebar').classList.remove('chat-open')"
+              style="display:none">
+        <i class="fas fa-arrow-left"></i>
+      </button>
+      {% set other_user = appointment.patient.user if current_user.role == 'doctor' else appointment.doctor.user %}
+      <div class="chat-header-avatar">
+        {% if other_user and other_user.id %}
+        <img src="{{ url_for('profile_picture', user_id=other_user.id) }}" alt=""
+             onerror="this.style.display='none';this.parentElement.textContent='{{ other_user.get_display_name()[0]|upper }}'">
+        {% else %}?{% endif %}
+      </div>
+      <div class="chat-header-info">
+        <div class="chat-header-name">{{ other_user.get_display_name() if other_user else 'Unknown' }}</div>
+        <div class="presence-row">
+          <span class="presence-dot offline" id="presence-dot"></span>
+          <span id="presence-text">Offline</span>
+        </div>
+        <div id="connection-status" class="connected"></div>
+      </div>
+    <div class="chat-header-actions" style="display:flex;align-items:center;gap:6px">
+      <a href="{{ url_for('voice_call_page', appointment_id=appointment.id) }}?action=call" class="btn btn-sm btn-outline-success" id="voiceCallBtn" title="Voice call" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;text-decoration:none">
+        <i class="fas fa-phone" style="font-size:13px"></i>
+      </a>
+      <a href="{{ url_for('consultation_room', appointment_id=appointment.id) }}" class="btn btn-sm btn-outline-secondary" id="consultationRoomBtn" title="Consultation room" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;text-decoration:none">
+        <i class="fas fa-door-open" style="font-size:13px"></i>
+      </a>
+      <button class="btn btn-sm btn-outline-secondary" id="openCallLogsHeaderBtn" title="Call logs" data-bs-toggle="modal" data-bs-target="#callLogsModal" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center">
+        <i class="fas fa-phone-alt" style="font-size:13px"></i>
+      </button>
+      <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." style="width:160px;border-radius:16px;font-size:13px">
+    </div>
+    </div>
+
+    <!-- Chat body -->
+    <div class="chat-body" id="chat-body">
+      {% for msg in messages %}
+      {% set is_mine = (msg.sender_id == current_user.id) %}
+      {% if msg.message_type == 'system' %}
+      <div class="system-message" data-message-id="{{ msg.id }}"{% if '📵' in (msg.content or '') or '📞' in (msg.content or '') %} style="cursor:pointer" title="View call logs" onclick="(function(){var m=document.getElementById('callLogsModal');if(m)new bootstrap.Modal(m).show()})()"{% endif %}>
+        {{ msg.content or '' }}
+      </div>
+      {% else %}
+      <div class="message-bubble {{ 'sent' if is_mine else 'received' }}"
+           data-message-id="{{ msg.id }}" data-sender-id="{{ msg.sender_id }}">
+        {% if not is_mine %}
+        <div class="msg-sender">{{ msg.sender.get_display_name() if msg.sender else 'Unknown' }}</div>
+        {% endif %}
+
+        {% if msg.message_type == 'image' and (msg.encrypted_file_path or msg.encrypted_file_blob) %}
+        <div class="msg-image">
+          <img src="{{ url_for('messaging.download_file', message_id=msg.id) }}" alt="Image" loading="lazy"
+               onclick="Messaging.viewImage('{{ url_for('messaging.download_file', message_id=msg.id) }}')">
+        </div>
+        {% elif msg.message_type == 'voice_note' and (msg.encrypted_file_path or msg.encrypted_file_blob) %}
+        <div class="msg-voice">
+          <audio controls preload="none" src="{{ url_for('messaging.download_file', message_id=msg.id) }}"></audio>
+        </div>
+        {% elif msg.message_type == 'document' and (msg.encrypted_file_path or msg.encrypted_file_blob) %}
+        <div class="msg-file">
+          <i class="fas fa-file"></i>
+          <a href="{{ url_for('messaging.download_file', message_id=msg.id) }}" target="_blank">
+            {{ msg.content or 'Download' }}
+          </a>
+        </div>
+        {% else %}
+        <div class="msg-text">{{ msg.content or '' }}</div>
+        {% endif %}
+
+        <div class="msg-meta">
+          <span class="msg-time">
+            {{ msg.timestamp.strftime('%I:%M %p') if msg.timestamp else '' }}
+          </span>
+          {% if is_mine %}
+          <span class="msg-status" data-msg-status="{{ msg.id }}">
+            {% if msg.message_status == 'read' %}
+            <i class="fas fa-check-double msg-tick-read"></i>
+            {% elif msg.message_status == 'delivered' %}
+            <i class="fas fa-check-double msg-tick"></i>
+            {% else %}
+            <i class="fas fa-check msg-tick"></i>
+            {% endif %}
+          </span>
+          {% endif %}
+        </div>
+
+        <div class="msg-actions">
+          <button class="btn-reply" onclick="Messaging.setReply({{ msg.id }}, '{{ msg.sender.get_display_name() if msg.sender else 'Unknown' }}', '{{ (msg.content or '')[:80]|e }}')" title="Reply">
+            <i class="fas fa-reply"></i>
+          </button>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <!-- Scroll down -->
+    <button id="scroll-down-btn" class="d-none" title="Scroll to bottom"><i class="fas fa-chevron-down"></i></button>
+
+    <!-- Typing indicator -->
+    <div class="typing-indicator d-none" id="typing-indicator">
+      <span class="typing-name"></span>
+      <span class="typing-text">is typing</span>
+      <span class="typing-dots"><span></span><span></span><span></span></span>
+    </div>
+
+    <!-- Reply bar -->
+    <div class="reply-bar d-none" id="reply-bar">
+      <div class="reply-bar-content">
+        <div class="reply-bar-name"></div>
+        <div class="reply-bar-text"></div>
+      </div>
+      <button class="reply-bar-close" id="close-reply"><i class="fas fa-times"></i></button>
+    </div>
+
+    <!-- Input -->
+    {% if not payment_required %}
+    <div class="chat-input">
+      <div class="input-actions" style="position:relative">
+        <button id="emoji-btn" title="Emoji"><i class="far fa-smile"></i></button>
+        <button onclick="document.getElementById('file-input').click()" title="Attach file"><i class="fas fa-paperclip"></i></button>
+        <input type="file" id="file-input" class="d-none"
+               accept="image/*,.pdf,.doc,.docx,audio/*">
+      </div>
+      <div class="msg-input-wrap">
+        <textarea id="msg-input" rows="1" placeholder="Type a message..." autocomplete="off"></textarea>
+      </div>
+      <button id="record-btn" title="Record voice note"><i class="fas fa-microphone"></i></button>
+      <button id="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
+    </div>
+    {% else %}
+    <div class="chat-input" style="justify-content:center;color:#667781;font-size:14px;padding:16px">
+      <i class="fas fa-lock me-2"></i> Complete payment to send messages
+    </div>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <!-- Empty state (no appointment selected) -->
+  <div class="empty-state" id="empty-state">
+    <i class="far fa-comments"></i>
+    <h4>Welcome to Messages</h4>
+    <p>Select a conversation from the sidebar to start chatting</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Hidden data elements -->
+<input type="hidden" id="currentUserId" value="{{ current_user.id }}">
+<input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
+<input type="hidden" id="remoteUserId" value="{{ other_user.id if appointment and other_user else '' }}">
+<input type="hidden" id="appointmentId" value="{{ appointment.id if appointment else '' }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+
+
+<!-- Call Logs Panel -->
+{% include 'communication/_call_logs_panel.html' %}
+
+<!-- Socket.IO -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+        integrity="sha384-ERIFOycl5Hy6bJwSh8bIKH9KPzcDzCLORBBAnGvOIuUyGJEjM/kW0l8+BbwCL2Q"
+        crossorigin="anonymous"></script>
+<!-- Messaging module -->
+<script src="{{ url_for('static', filename='js/messaging.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  Messaging.init({
+    appointmentId: {{ appointment.id if appointment else 'null' }},
+    userId:        {{ current_user.id }},
+    userRole:      '{{ current_user.role }}',
+    csrfToken:     '{{ csrf_token() }}',
+    socketUrl:     window.location.origin,
+  });
+
+  // Auto-scroll to bottom on initial load
+  const chatBody = document.getElementById('chat-body');
+  if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+
+  // Auto-grow textarea
+  const input = document.getElementById('msg-input');
+  if (input) {
+    input.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+  }
+
+  // Mobile: show chat on appointment click
+  const apptList = document.getElementById('appointments-list');
+  if (apptList && window.innerWidth <= 768) {
+    apptList.addEventListener('click', function(e) {
+      const item = e.target.closest('[data-appointment-id]');
+      if (item) {
+        document.getElementById('sidebar').classList.add('chat-open');
+      }
+    });
+  }
+
+  // Sidebar search
+  const sidebarSearch = document.getElementById('sidebar-search');
+  if (sidebarSearch) {
+    sidebarSearch.addEventListener('input', function() {
+      const q = this.value.toLowerCase();
+      document.querySelectorAll('.appt-item').forEach(el => {
+        const name = (el.dataset.name || '').toLowerCase();
+        el.style.display = name.includes(q) ? '' : 'none';
+      });
+    });
+  }
+
+  // Mark messages as read when window gains focus
+  window.addEventListener('focus', function() {
+    const aid = {{ appointment.id if appointment else 'null' }};
+    if (aid) {
+      fetch('/api/messaging/read/' + aid, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+        credentials: 'same-origin',
+      }).catch(() => {});
+    }
+  });
+});
+</script>
+
+<!-- Incoming call handler -->
+<script src="{{ url_for('static', filename='js/incoming-call-modal.js') }}"></script>
+
+<script>
+(function(){
+  const appointmentId = {{ appointment.id if appointment else 'null' }};
+  if (!appointmentId) return;
+
+  // Listen for incoming voice calls on the messaging socket and redirect to voice call page
+  function setupIncoming() {
+    const sock = window._msgSocket;
+    if (!sock) return;
+    sock.on('incoming_voice_call', function(data) {
+      // Redirect to voice call page in answer mode
+      const apptId = data.appointment_id || appointmentId;
+      const callId = data.call_id || '';
+      window.location.href = '/voice-call/' + apptId + '?action=answer&call_id=' + callId;
+    });
+  }
+  setTimeout(setupIncoming, 1500);
+  setTimeout(setupIncoming, 4000);
+})();
+</script>
+{% endblock %}

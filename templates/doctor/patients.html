@@ -122,9 +122,13 @@
                             <div class="card-body">
                                 <div class="row align-items-center">
                                     <div class="col-auto">
+                                        {% if appointment.patient.user.profile_picture_blob or appointment.patient.user.profile_picture %}
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.patient.user.id) }}" alt="{{ appointment.patient.user.first_name }}" class="patient-avatar user-avatar-50">
+                                        {% else %}
                                         <div class="patient-avatar">
                                             {{ appointment.patient.user.first_name[0] }}{{ appointment.patient.user.last_name[0] }}
                                         </div>
+                                        {% endif %}
                                     </div>
                                     <div class="col">
                                         <h5 class="card-title mb-1">
@@ -198,9 +202,13 @@
                             <div class="card-body">
                                 <div class="row align-items-center">
                                     <div class="col-auto">
+                                        {% if appointment.patient.user.profile_picture_blob or appointment.patient.user.profile_picture %}
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.patient.user.id) }}" alt="{{ appointment.patient.user.first_name }}" class="patient-avatar user-avatar-50">
+                                        {% else %}
                                         <div class="patient-avatar">
                                             {{ appointment.patient.user.first_name[0] }}{{ appointment.patient.user.last_name[0] }}
                                         </div>
+                                        {% endif %}
                                     </div>
                                     <div class="col">
                                         <h5 class="card-title mb-1">
@@ -273,9 +281,13 @@
                         <div class="card patient-card">
                             <div class="card-body">
                                 <div class="text-center mb-3">
+                                    {% if appointment.patient.user.profile_picture_blob or appointment.patient.user.profile_picture %}
+                                    <img src="{{ url_for('profile_picture', user_id=appointment.patient.user.id) }}" alt="{{ appointment.patient.user.first_name }}" class="patient-avatar mx-auto mb-3 user-avatar-60">
+                                    {% else %}
                                     <div class="patient-avatar mx-auto mb-3">
                                         {{ appointment.patient.user.first_name[0] }}{{ appointment.patient.user.last_name[0] }}
                                     </div>
+                                    {% endif %}
                                     <h5 class="card-title mb-1">
                                         {{ appointment.patient.user.first_name }} {{ appointment.patient.user.last_name }}
                                     </h5>
@@ -339,9 +351,13 @@
                             <div class="card-body">
                                 <div class="row align-items-center">
                                     <div class="col-auto">
+                                        {% if appointment.patient.user.profile_picture_blob or appointment.patient.user.profile_picture %}
+                                        <img src="{{ url_for('profile_picture', user_id=appointment.patient.user.id) }}" alt="{{ appointment.patient.user.first_name }}" class="patient-avatar user-avatar-50">
+                                        {% else %}
                                         <div class="patient-avatar">
                                             {{ appointment.patient.user.first_name[0] }}{{ appointment.patient.user.last_name[0] }}
                                         </div>
+                                        {% endif %}
                                     </div>
                                     <div class="col">
                                         <h5 class="card-title mb-1">
@@ -399,7 +415,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add New Patient</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="addPatientForm">

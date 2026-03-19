@@ -60,6 +60,9 @@
         border-radius: 10px;
         padding: 20px;
     }
+    .progress-thin { height: 8px; }
+    .progress-w-76 { width: 76%; }
+    .hidden-display { display: none; }
 </style>
 {% endblock %}
 
@@ -125,8 +128,8 @@
                         <small>15.2 GB of 20 GB used</small>
                         <small>76%</small>
                     </div>
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar bg-success" style="width: 76%"></div>
+                    <div class="progress progress-thin">
+                        <div class="progress-bar bg-success progress-w-76"></div>
                     </div>
                 </div>
 
@@ -155,7 +158,7 @@
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <select class="form-select">
+                    <select class="form-select" title="Filter by file type" aria-label="Filter by file type">
                         <option>All File Types</option>
                         <option>PDF</option>
                         <option>Images</option>
@@ -164,7 +167,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <select class="form-select">
+                    <select class="form-select" title="Sort documents" aria-label="Sort documents">
                         <option>Sort by Date</option>
                         <option>Sort by Name</option>
                         <option>Sort by Size</option>
@@ -190,16 +193,16 @@
                         </div>
                         <div class="card-footer bg-transparent">
                             <div class="btn-group w-100 action-buttons">
-                                <button class="btn btn-outline-primary btn-sm" onclick="viewDocument(1)">
+                                <button class="btn btn-outline-primary btn-sm" title="View document" aria-label="View document" onclick="viewDocument(1)">
                                     <i class="fas fa-eye"></i>
                                 </button>
-                                <button class="btn btn-outline-success btn-sm" onclick="downloadDocument(1)">
+                                <button class="btn btn-outline-success btn-sm" title="Download document" aria-label="Download document" onclick="downloadDocument(1)">
                                     <i class="fas fa-download"></i>
                                 </button>
-                                <button class="btn btn-outline-info btn-sm" onclick="shareDocument(1)">
+                                <button class="btn btn-outline-info btn-sm" title="Share document" aria-label="Share document" onclick="shareDocument(1)">
                                     <i class="fas fa-share"></i>
                                 </button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="deleteDocument(1)">
+                                <button class="btn btn-outline-danger btn-sm" title="Delete document" aria-label="Delete document" onclick="deleteDocument(1)">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -222,16 +225,16 @@
                         </div>
                         <div class="card-footer bg-transparent">
                             <div class="btn-group w-100 action-buttons">
-                                <button class="btn btn-outline-primary btn-sm" onclick="viewDocument(2)">
+                                <button class="btn btn-outline-primary btn-sm" title="View document" aria-label="View document" onclick="viewDocument(2)">
                                     <i class="fas fa-eye"></i>
                                 </button>
-                                <button class="btn btn-outline-success btn-sm" onclick="downloadDocument(2)">
+                                <button class="btn btn-outline-success btn-sm" title="Download document" aria-label="Download document" onclick="downloadDocument(2)">
                                     <i class="fas fa-download"></i>
                                 </button>
-                                <button class="btn btn-outline-info btn-sm" onclick="shareDocument(2)">
+                                <button class="btn btn-outline-info btn-sm" title="Share document" aria-label="Share document" onclick="shareDocument(2)">
                                     <i class="fas fa-share"></i>
                                 </button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="deleteDocument(2)">
+                                <button class="btn btn-outline-danger btn-sm" title="Delete document" aria-label="Delete document" onclick="deleteDocument(2)">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -254,16 +257,16 @@
                         </div>
                         <div class="card-footer bg-transparent">
                             <div class="btn-group w-100 action-buttons">
-                                <button class="btn btn-outline-primary btn-sm" onclick="viewDocument(3)">
+                                <button class="btn btn-outline-primary btn-sm" title="View document" aria-label="View document" onclick="viewDocument(3)">
                                     <i class="fas fa-eye"></i>
                                 </button>
-                                <button class="btn btn-outline-success btn-sm" onclick="downloadDocument(3)">
+                                <button class="btn btn-outline-success btn-sm" title="Download document" aria-label="Download document" onclick="downloadDocument(3)">
                                     <i class="fas fa-download"></i>
                                 </button>
-                                <button class="btn btn-outline-info btn-sm" onclick="shareDocument(3)">
+                                <button class="btn btn-outline-info btn-sm" title="Share document" aria-label="Share document" onclick="shareDocument(3)">
                                     <i class="fas fa-share"></i>
                                 </button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="deleteDocument(3)">
+                                <button class="btn btn-outline-danger btn-sm" title="Delete document" aria-label="Delete document" onclick="deleteDocument(3)">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -286,16 +289,16 @@
                         </div>
                         <div class="card-footer bg-transparent">
                             <div class="btn-group w-100 action-buttons">
-                                <button class="btn btn-outline-primary btn-sm" onclick="viewDocument(4)">
+                                <button class="btn btn-outline-primary btn-sm" title="View document" aria-label="View document" onclick="viewDocument(4)">
                                     <i class="fas fa-eye"></i>
                                 </button>
-                                <button class="btn btn-outline-success btn-sm" onclick="downloadDocument(4)">
+                                <button class="btn btn-outline-success btn-sm" title="Download document" aria-label="Download document" onclick="downloadDocument(4)">
                                     <i class="fas fa-download"></i>
                                 </button>
-                                <button class="btn btn-outline-info btn-sm" onclick="shareDocument(4)">
+                                <button class="btn btn-outline-info btn-sm" title="Share document" aria-label="Share document" onclick="shareDocument(4)">
                                     <i class="fas fa-share"></i>
                                 </button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="deleteDocument(4)">
+                                <button class="btn btn-outline-danger btn-sm" title="Delete document" aria-label="Delete document" onclick="deleteDocument(4)">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -327,7 +330,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Upload Medical Document</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" title="Close" aria-label="Close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="uploadForm" enctype="multipart/form-data">
@@ -337,12 +340,12 @@
                         <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
                         <h5>Drag & Drop Files Here</h5>
                         <p class="text-muted">or click to browse</p>
-                        <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx" style="display: none;">
+                        <input type="file" id="fileInput" class="d-none" title="Choose files" aria-label="Choose files" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx">
                         <small class="text-muted">Max file size: 10MB • Supported: PDF, DOC, JPG, PNG, XLS</small>
                     </div>
 
                     <!-- Selected Files Preview -->
-                    <div id="filePreview" class="mt-4" style="display: none;">
+                    <div id="filePreview" class="mt-4 hidden-display">
                         <h6>Selected Files:</h6>
                         <div id="fileList" class="list-group"></div>
                     </div>
@@ -352,7 +355,7 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Document Category</label>
-                                <select class="form-select" name="category" required>
+                                <select class="form-select" name="category" title="Document category" aria-label="Document category" required>
                                     <option value="">Select Category</option>
                                     <option value="prescription">Prescription</option>
                                     <option value="lab_results">Lab Results</option>
@@ -366,7 +369,7 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Privacy Level</label>
-                                <select class="form-select" name="privacy">
+                                <select class="form-select" name="privacy" title="Privacy level" aria-label="Privacy level">
                                     <option value="private">Private (Only Me)</option>
                                     <option value="doctors">My Doctors</option>
                                     <option value="shared">Shared with Specific</option>

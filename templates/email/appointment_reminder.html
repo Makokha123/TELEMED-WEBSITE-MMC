@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointment Reminder</title>
+    <style>
+        .mail-body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, Helvetica, sans-serif; }
+        .mail-wrap { background-color: #f4f4f4; padding: 40px 0; }
+        .mail-card { background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .mail-head { background-color: #0d6efd; padding: 30px 40px; text-align: center; }
+        .mail-title { color: #ffffff; margin: 0; font-size: 24px; }
+        .mail-subtitle { color: #cfe2ff; margin: 8px 0 0; font-size: 14px; }
+        .mail-content { padding: 40px; }
+        .mail-greeting { font-size: 16px; color: #333; margin: 0 0 20px; }
+        .mail-text { font-size: 15px; color: #555; margin: 0 0 15px; }
+        .details-table { background-color: #f8f9fa; border-radius: 6px; margin: 20px 0; }
+        .details-k { font-size: 14px; color: #666; border-bottom: 1px solid #e9ecef; width: 40%; }
+        .details-v { font-size: 14px; color: #333; border-bottom: 1px solid #e9ecef; }
+        .details-sub { color: #666; font-size: 12px; }
+        .details-time { font-size: 14px; color: #333; border-bottom: 1px solid #e9ecef; font-weight: bold; }
+        .details-k-last { font-size: 14px; color: #666; }
+        .details-v-last { font-size: 14px; color: #333; }
+        .badge-status { background-color: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .info-alert { background-color: #cfe2ff; border-left: 4px solid #0d6efd; padding: 15px 20px; border-radius: 4px; margin: 25px 0; }
+        .info-alert-text { font-size: 14px; color: #084298; margin: 0; }
+        .btn-wrap { text-align: center; margin: 30px 0; }
+        .btn-primary-link { display: inline-block; background-color: #0d6efd; color: #ffffff; padding: 14px 40px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; }
+        .mail-note { font-size: 14px; color: #666; margin: 0 0 20px; }
+        .mail-sep { border: none; border-top: 1px solid #eee; margin: 30px 0; }
+        .mail-footer { font-size: 12px; color: #999; text-align: center; margin: 0; }
+    </style>
+</head>
+<body class="mail-body">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="mail-wrap">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="mail-card">
+                    <!-- Header -->
+                    <tr>
+                        <td class="mail-head">
+                            <h1 class="mail-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="mail-subtitle">&#128276; Appointment Reminder</p>
+                        </td>
+                    </tr>
+                    <!-- Body -->
+                    <tr>
+                        <td class="mail-content">
+                            <p class="mail-greeting">
+                                Hello <strong>{{ user.title or '' }} {{ user.first_name or user.username }}</strong>,
+                            </p>
+                            <p class="mail-text">
+                                This is a friendly reminder that you have an appointment <strong>today</strong>.
+                            </p>
+
+                            <!-- Appointment Details -->
+                            <table role="presentation" width="100%" cellpadding="8" cellspacing="0" class="details-table">
+                                <tr>
+                                    <td class="details-k"><strong>Doctor</strong></td>
+                                    <td class="details-v">
+                                        {{ doctor_user.title or 'Dr.' }} {{ doctor_user.first_name }} {{ doctor_user.last_name }}
+                                        {% if doctor.practitioner_type %}<br><span class="details-sub">{{ doctor.practitioner_type }}</span>{% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k"><strong>Time</strong></td>
+                                    <td class="details-time">{{ appointment.appointment_date.strftime('%I:%M %p') }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k"><strong>Consultation</strong></td>
+                                    <td class="details-v">{{ appointment.consultation_type|capitalize }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-k-last"><strong>Status</strong></td>
+                                    <td class="details-v-last">
+                                        <span class="badge-status">{{ appointment.status|upper }}</span>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Reminder CTA -->
+                            <div class="info-alert">
+                                <p class="info-alert-text">
+                                    Please ensure you are available at the scheduled time. For <strong>{{ appointment.consultation_type }}</strong> consultations, make sure your device is ready and your internet connection is stable.
+                                </p>
+                            </div>
+
+                            <div class="btn-wrap">
+                                <a href="{{ url_for('patient_dashboard', _external=True) }}"
+                                   class="btn-primary-link">
+                                    Go to Dashboard
+                                </a>
+                            </div>
+
+                            <p class="mail-note">
+                                If you need to cancel or reschedule, please do so as soon as possible through your dashboard.
+                            </p>
+                            <hr class="mail-sep">
+                            <p class="mail-footer">
+                                &copy; Makokha Medical Centre &mdash; This is an automated message, please do not reply.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

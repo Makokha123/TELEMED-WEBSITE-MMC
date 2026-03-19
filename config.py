@@ -3,13 +3,12 @@ from datetime import timedelta
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'your-secret-key-here-change-in-production'
-    # Database - Use Neon PostgreSQL
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 
-        'postgresql://neondb_owner:npg_tBcr3dVmolJ6@ep-square-scene-aesfpdul4-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require')
+    # Database — DATABASE_URL is required (no fallback, no hardcoded credentials)
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_recycle': 300,
-        'pool_pre_ping': True
+        'pool_recycle': 280,
+        'pool_pre_ping': True,
     }
     
     # Security
@@ -40,3 +39,7 @@ class Config:
     # Application feature flags
     PROFILE_REDIRECT_REQUIRE_DOB_ONLY = False
     STRICT_PROFILE_VALIDATION = os.environ.get('STRICT_PROFILE_VALIDATION', 'False').lower() == 'true'
+    
+    # Voice/Video call timeouts (seconds)
+    CALL_RING_TIMEOUT = int(os.environ.get('CALL_RING_TIMEOUT', 60))
+    CALL_OFFLINE_TIMEOUT = int(os.environ.get('CALL_OFFLINE_TIMEOUT', 90))

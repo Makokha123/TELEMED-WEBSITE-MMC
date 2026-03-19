@@ -1,0 +1,643 @@
+/**
+ * Chat Enhancements Module
+ * Shared across doctor, patient, and communication dashboard templates.
+ * Features: context menu, reply/quote, edit, delete, read-receipt live update,
+ *           sound notifications, auto-link URLs, smart scroll, message search.
+ */
+const ChatEnhancements = (function () {
+    'use strict';
+
+    /* ─── state ─── */
+    let cfg = {};
+    let replyTo = null;          // { id, senderName, content, type }
+    let isUserScrolledUp = false;
+    let newMsgCount = 0;
+    let searchOpen = false;
+    let audioCtx = null;
+
+    /* ═══════════════════════════════════════════════
+       INIT
+       ═══════════════════════════════════════════════ */
+    function init(opts) {
+        cfg = {
+            messagesId:    opts.messagesId    || 'chatMessages',
+            inputId:       opts.inputId       || 'messageInput',
+            inputAreaId:   opts.inputAreaId   || 'chatInputArea',
+            currentUserId: opts.currentUserId || 0,
+            csrfToken:     opts.csrfToken     || '',
+            getSocket:     opts.getSocket     || function () { return window.socket; },
+            getApptId:     opts.getApptId     || function () { return null; },
+            getSendBtn:    opts.getSendBtn    || function () { return document.getElementById('sendMessageBtn'); },
+        };
+
+        _injectCSS();
+        _injectHTML();
+        _setupContextMenu();
+        _setupReplyUI();
+        _setupSmartScroll();
+        _setupSearch();
+        _setupSocketListeners();
+    }
+
+    /* ═══════════════════════════════════════════════
+       CSS INJECTION
+       ═══════════════════════════════════════════════ */
+    function _injectCSS() {
+        if (document.getElementById('chat-enhancements-css')) return;
+        const style = document.createElement('style');
+        style.id = 'chat-enhancements-css';
+        style.textContent = `
+/* ── Context Menu ── */
+.ce-ctx-menu{position:fixed;z-index:9999;background:#fff;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.18);min-width:170px;overflow:hidden;display:none;animation:ceMenuIn .15s ease}
+@keyframes ceMenuIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+.ce-ctx-item{padding:10px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:14px;color:#333;transition:background .12s}
+.ce-ctx-item:hover{background:#f0f2f5}
+.ce-ctx-item i{width:18px;text-align:center;color:#667781}
+.ce-ctx-item.danger{color:#e74c3c}
+.ce-ctx-item.danger i{color:#e74c3c}
+.ce-ctx-sep{height:1px;background:#e5e5e5;margin:2px 0}
+
+/* ── Reply Preview ── */
+.ce-reply-bar{display:none;padding:8px 12px;background:#f0f2f5;border-left:4px solid #00a884;margin:0;align-items:center;gap:10px;border-top:1px solid #ddd;animation:ceSlideUp .15s ease}
+@keyframes ceSlideUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.ce-reply-bar.active{display:flex}
+.ce-reply-info{flex:1;min-width:0}
+.ce-reply-name{font-size:12px;font-weight:600;color:#00a884;display:block}
+.ce-reply-text{font-size:13px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:350px}
+.ce-reply-close{background:none;border:none;font-size:20px;color:#667781;cursor:pointer;padding:0 4px;line-height:1}
+.ce-reply-close:hover{color:#333}
+
+/* ── Reply Quote inside bubble ── */
+.ce-quoted{background:rgba(0,0,0,.05);border-left:3px solid #00a884;border-radius:4px;padding:4px 8px;margin-bottom:4px;font-size:12px;cursor:pointer}
+.ce-quoted-name{font-weight:600;color:#00a884}
+.ce-quoted-text{color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;display:block}
+
+/* ── Edited tag ── */
+.ce-edited{font-size:11px;color:#667781;margin-left:4px;font-style:italic}
+
+/* ── New Messages Pill ── */
+.ce-new-pill{position:absolute;bottom:75px;left:50%;transform:translateX(-50%);background:#00a884;color:#fff;padding:6px 16px;border-radius:20px;font-size:13px;cursor:pointer;display:none;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.18);z-index:100;animation:ceSlideUp .2s ease}
+.ce-new-pill:hover{background:#008f72}
+
+/* ── Search Bar ── */
+.ce-search-bar{display:none;padding:8px 12px;background:#f0f2f5;border-bottom:1px solid #e5e5e5;align-items:center;gap:8px}
+.ce-search-bar.active{display:flex}
+.ce-search-bar input{flex:1;border:1px solid #ddd;border-radius:20px;padding:6px 14px;font-size:13px;outline:none}
+.ce-search-bar input:focus{border-color:#00a884}
+.ce-search-bar button{background:none;border:none;font-size:18px;cursor:pointer;color:#667781}
+.ce-search-bar button:hover{color:#333}
+.ce-search-highlight{background:#ffd54f;border-radius:2px;padding:0 1px}
+.ce-search-hidden{display:none !important}
+
+/* ── Inline Edit ── */
+.ce-edit-input{width:100%;border:1px solid #00a884;border-radius:6px;padding:6px 10px;font-size:14px;outline:none;resize:none;font-family:inherit}
+.ce-edit-actions{display:flex;gap:6px;margin-top:4px}
+.ce-edit-actions button{border:none;padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer}
+.ce-edit-save{background:#00a884;color:#fff}
+.ce-edit-save:hover{background:#008f72}
+.ce-edit-cancel{background:#e5e5e5;color:#333}
+.ce-edit-cancel:hover{background:#d5d5d5}
+
+/* ── Message deleted style ── */
+.ce-deleted .message-text{color:#8696a0;font-style:italic}
+`;
+        document.head.appendChild(style);
+    }
+
+    /* ═══════════════════════════════════════════════
+       HTML INJECTION
+       ═══════════════════════════════════════════════ */
+    function _injectHTML() {
+        // Context menu
+        if (!document.getElementById('ceContextMenu')) {
+            const menu = document.createElement('div');
+            menu.id = 'ceContextMenu';
+            menu.className = 'ce-ctx-menu';
+            menu.innerHTML = `
+                <div class="ce-ctx-item" data-action="reply"><i class="fas fa-reply"></i>Reply</div>
+                <div class="ce-ctx-item" data-action="copy"><i class="fas fa-copy"></i>Copy</div>
+                <div class="ce-ctx-item" data-action="edit"><i class="fas fa-pen"></i>Edit</div>
+                <div class="ce-ctx-item danger" data-action="delete"><i class="fas fa-trash"></i>Delete</div>
+            `;
+            document.body.appendChild(menu);
+        }
+
+        // Reply preview bar — insert before the chat input area
+        const inputArea = document.getElementById(cfg.inputAreaId);
+        if (inputArea && !document.getElementById('ceReplyBar')) {
+            const bar = document.createElement('div');
+            bar.id = 'ceReplyBar';
+            bar.className = 'ce-reply-bar';
+            bar.innerHTML = `
+                <div class="ce-reply-info">
+                    <span class="ce-reply-name"></span>
+                    <span class="ce-reply-text"></span>
+                </div>
+                <button class="ce-reply-close" title="Cancel reply">&times;</button>
+            `;
+            inputArea.parentNode.insertBefore(bar, inputArea);
+        }
+
+        // New messages pill — inside messages container's parent
+        const msgsEl = document.getElementById(cfg.messagesId);
+        if (msgsEl && !document.getElementById('ceNewPill')) {
+            const pill = document.createElement('div');
+            pill.id = 'ceNewPill';
+            pill.className = 'ce-new-pill';
+            pill.innerHTML = '<i class="fas fa-arrow-down"></i> <span id="ceNewCount">0</span> new messages';
+            const parent = msgsEl.parentNode;
+            if (parent) {
+                parent.style.position = parent.style.position || 'relative';
+                parent.appendChild(pill);
+            }
+        }
+
+        // Search bar — before messages container
+        if (msgsEl && !document.getElementById('ceSearchBar')) {
+            const bar = document.createElement('div');
+            bar.id = 'ceSearchBar';
+            bar.className = 'ce-search-bar';
+            bar.innerHTML = `
+                <i class="fas fa-search" style="color:#667781"></i>
+                <input type="text" id="ceSearchInput" placeholder="Search messages..." autocomplete="off">
+                <button id="ceSearchClose" title="Close search">&times;</button>
+            `;
+            msgsEl.parentNode.insertBefore(bar, msgsEl);
+        }
+    }
+
+    /* ═══════════════════════════════════════════════
+       1.  CONTEXT MENU
+       ═══════════════════════════════════════════════ */
+    let _ctxTarget = null;   // the .message-wrapper of the right-clicked message
+    let _longPressTimer = null;
+
+    function _setupContextMenu() {
+        const msgsEl = document.getElementById(cfg.messagesId);
+        if (!msgsEl) return;
+        const menu = document.getElementById('ceContextMenu');
+        if (!menu) return;
+
+        // Right-click / long-press on a message bubble
+        msgsEl.addEventListener('contextmenu', function (e) {
+            const wrapper = e.target.closest('.message-wrapper');
+            if (!wrapper) return;
+            e.preventDefault();
+            _showCtxMenu(wrapper, e.clientX, e.clientY);
+        });
+
+        // Touchstart for long-press on mobile
+        msgsEl.addEventListener('touchstart', function (e) {
+            const wrapper = e.target.closest('.message-wrapper');
+            if (!wrapper) return;
+            _longPressTimer = setTimeout(function () {
+                var touch = e.touches[0];
+                _showCtxMenu(wrapper, touch.clientX, touch.clientY);
+            }, 500);
+        }, { passive: true });
+        msgsEl.addEventListener('touchend', function () { clearTimeout(_longPressTimer); }, { passive: true });
+        msgsEl.addEventListener('touchmove', function () { clearTimeout(_longPressTimer); }, { passive: true });
+
+        // Close on outside click
+        document.addEventListener('click', function (e) {
+            if (!menu.contains(e.target)) _hideCtxMenu();
+        });
+
+        // Action handler
+        menu.addEventListener('click', function (e) {
+            const item = e.target.closest('.ce-ctx-item');
+            if (!item || !_ctxTarget) return;
+            const action = item.dataset.action;
+
+            if (action === 'reply')  _startReply(_ctxTarget);
+            if (action === 'copy')   _copyMessage(_ctxTarget);
+            if (action === 'edit')   _editMessage(_ctxTarget);
+            if (action === 'delete') _deleteMessage(_ctxTarget);
+
+            _hideCtxMenu();
+        });
+    }
+
+    function _showCtxMenu(wrapper, x, y) {
+        _ctxTarget = wrapper;
+        const menu = document.getElementById('ceContextMenu');
+        const isSent = wrapper.classList.contains('sent');
+        const hasText = !!wrapper.querySelector('.message-text');
+
+        const editItem = menu.querySelector('[data-action="edit"]');
+        const deleteItem = menu.querySelector('[data-action="delete"]');
+        if (editItem) editItem.style.display = (isSent && hasText) ? 'flex' : 'none';
+        if (deleteItem) deleteItem.style.display = isSent ? 'flex' : 'none';
+
+        // Position
+        menu.style.display = 'block';
+        var mw = menu.offsetWidth, mh = menu.offsetHeight;
+        var nx = x + mw > window.innerWidth ? x - mw : x;
+        var ny = y + mh > window.innerHeight ? y - mh : y;
+        menu.style.left = Math.max(0, nx) + 'px';
+        menu.style.top = Math.max(0, ny) + 'px';
+    }
+
+    function _hideCtxMenu() {
+        var menu = document.getElementById('ceContextMenu');
+        if (menu) menu.style.display = 'none';
+        _ctxTarget = null;
+    }
+
+    /* ── Copy ── */
+    function _copyMessage(wrapper) {
+        var textEl = wrapper.querySelector('.message-text');
+        var text = textEl ? textEl.textContent : '';
+        if (text && navigator.clipboard) {
+            navigator.clipboard.writeText(text);
+        }
+    }
+
+    function _editMessage(wrapper) {
+        var messageId = wrapper.getAttribute('data-message-id');
+        var textEl = wrapper.querySelector('.message-text');
+        if (!messageId || !textEl) return;
+
+        var originalText = textEl.textContent || '';
+        var bubble = wrapper.querySelector('.message-bubble');
+        if (!bubble) return;
+
+        var editor = document.createElement('div');
+        editor.className = 'ce-edit-wrap';
+        editor.innerHTML = '' +
+            '<textarea class="ce-edit-input" rows="3"></textarea>' +
+            '<div class="ce-edit-actions">' +
+                '<button type="button" class="ce-edit-save">Save</button>' +
+                '<button type="button" class="ce-edit-cancel">Cancel</button>' +
+            '</div>';
+
+        var input = editor.querySelector('.ce-edit-input');
+        input.value = originalText;
+
+        var restore = function () {
+            editor.remove();
+            textEl.style.display = '';
+        };
+
+        editor.querySelector('.ce-edit-cancel').addEventListener('click', restore);
+        editor.querySelector('.ce-edit-save').addEventListener('click', function () {
+            var nextText = (input.value || '').trim();
+            if (!nextText || nextText === originalText) {
+                restore();
+                return;
+            }
+
+            fetch('/api/messages/' + encodeURIComponent(messageId) + '/edit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': cfg.csrfToken
+                },
+                body: JSON.stringify({ content: nextText })
+            }).then(function (res) {
+                return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+            }).then(function (result) {
+                if (!result.ok || !result.body || !result.body.success) {
+                    throw new Error((result.body && result.body.error) || 'edit_failed');
+                }
+                textEl.textContent = nextText;
+                _appendEditedTag(wrapper);
+                restore();
+            }).catch(function (err) {
+                console.error('Edit failed', err);
+                alert('Unable to edit message right now.');
+            });
+        });
+
+        textEl.style.display = 'none';
+        bubble.appendChild(editor);
+        input.focus();
+    }
+
+    function _deleteMessage(wrapper) {
+        var messageId = wrapper.getAttribute('data-message-id');
+        if (!messageId) return;
+
+        if (!confirm('Delete this message?')) {
+            return;
+        }
+
+        fetch('/api/messages/' + encodeURIComponent(messageId) + '/delete', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': cfg.csrfToken
+            }
+        }).then(function (res) {
+            return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+        }).then(function (result) {
+            if (!result.ok || !result.body || !result.body.success) {
+                throw new Error((result.body && result.body.error) || 'delete_failed');
+            }
+            _applyDeletedState(messageId);
+        }).catch(function (err) {
+            console.error('Delete failed', err);
+            alert('Unable to delete message right now.');
+        });
+    }
+
+    function _appendEditedTag(wrapper) {
+        var timeEl = wrapper.querySelector('.message-time');
+        if (!timeEl) return;
+        if (timeEl.querySelector('.ce-edited')) return;
+        var tag = document.createElement('span');
+        tag.className = 'ce-edited';
+        tag.textContent = '(edited)';
+        timeEl.appendChild(tag);
+    }
+
+    function _applyDeletedState(messageId) {
+        var wrapper = document.querySelector('.message-wrapper[data-message-id="' + String(messageId) + '"]');
+        if (!wrapper) return;
+        var textEl = wrapper.querySelector('.message-text');
+        if (textEl) {
+            textEl.textContent = '[Message deleted]';
+        }
+        wrapper.classList.add('ce-deleted');
+    }
+
+    /* ═══════════════════════════════════════════════
+       2.  REPLY / QUOTE
+       ═══════════════════════════════════════════════ */
+    function _setupReplyUI() {
+        var closeBtn = document.querySelector('#ceReplyBar .ce-reply-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', clearReply);
+        }
+    }
+
+    function _startReply(wrapper) {
+        var msgId = wrapper.getAttribute('data-message-id');
+        var textEl = wrapper.querySelector('.message-text');
+        var content = textEl ? textEl.textContent : '[Media]';
+        var isSent = wrapper.classList.contains('sent');
+        var senderName = isSent ? 'You' : 'Them';
+
+        replyTo = { id: msgId, senderName: senderName, content: content };
+
+        var bar = document.getElementById('ceReplyBar');
+        if (bar) {
+            bar.querySelector('.ce-reply-name').textContent = senderName;
+            bar.querySelector('.ce-reply-text').textContent = content.length > 80 ? content.substring(0, 80) + '…' : content;
+            bar.classList.add('active');
+        }
+        // Focus input
+        var input = document.getElementById(cfg.inputId);
+        if (input) input.focus();
+    }
+
+    function clearReply() {
+        replyTo = null;
+        var bar = document.getElementById('ceReplyBar');
+        if (bar) bar.classList.remove('active');
+    }
+
+    /** Call from template's sendMessage to get the reply_to_message_id (or null). */
+    function getReplyToId() {
+        if (!replyTo) return null;
+        var id = replyTo.id;
+        clearReply();
+        return id;
+    }
+
+    /**
+     * Render a quoted block inside a bubble for a replied message.
+     * Called from template's createMessageElement when message.reply_to data exists.
+     * Returns an HTML string.
+     */
+    function renderQuotedHTML(replyData) {
+        if (!replyData) return '';
+        var name = replyData.sender_name || 'Unknown';
+        var text = replyData.content || '[Media]';
+        if (text.length > 80) text = text.substring(0, 80) + '…';
+        return '<div class="ce-quoted" data-reply-id="' + _escAttr(replyData.id) + '">' +
+               '<span class="ce-quoted-name">' + _esc(name) + '</span>' +
+               '<span class="ce-quoted-text">' + _esc(text) + '</span></div>';
+    }
+
+    /* ═══════════════════════════════════════════════
+       5.  READ-RECEIPT LIVE UPDATE  (fixed)
+       ═══════════════════════════════════════════════
+       The templates now set data-message-id on wrappers,
+       so updateMessageStatus in each template looks up by
+       that attribute. This module adds a socket listener as well. */
+    // (handled via socket listener below)
+
+    /* ═══════════════════════════════════════════════
+       6.  SOUND NOTIFICATION
+       ═══════════════════════════════════════════════ */
+    function _playNotifSound() {
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            var osc = audioCtx.createOscillator();
+            var gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+            osc.start(audioCtx.currentTime);
+            osc.stop(audioCtx.currentTime + 0.4);
+        } catch (e) { /* silent */ }
+    }
+
+    /* ═══════════════════════════════════════════════
+       7.  AUTO-LINK URLs
+       ═══════════════════════════════════════════════ */
+    var _urlRe = /((https?:\/\/)[^\s<]+)/gi;
+
+    /**
+     * Process text content: auto-link URLs.
+     * Call this in createMessageElement after escaping HTML.
+     */
+    function autoLink(escapedHTML) {
+        return escapedHTML.replace(_urlRe, function (url) {
+            // Extra sanitisation: ensure the URL is http/https
+            if (!/^https?:\/\//i.test(url)) return url;
+            return '<a href="' + _escAttr(url) + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+        });
+    }
+
+    /* ═══════════════════════════════════════════════
+       8.  SMART SCROLL
+       ═══════════════════════════════════════════════ */
+    function _setupSmartScroll() {
+        var msgsEl = document.getElementById(cfg.messagesId);
+        if (!msgsEl) return;
+
+        msgsEl.addEventListener('scroll', function () {
+            var threshold = 120;
+            isUserScrolledUp = (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight) > threshold;
+            if (!isUserScrolledUp) {
+                newMsgCount = 0;
+                _updatePill();
+            }
+        });
+
+        var pill = document.getElementById('ceNewPill');
+        if (pill) {
+            pill.addEventListener('click', function () {
+                msgsEl.scrollTop = msgsEl.scrollHeight;
+                newMsgCount = 0;
+                _updatePill();
+            });
+        }
+    }
+
+    /** Call after addMessageToUI for messages from others. Returns true if scroll was suppressed. */
+    function onNewIncomingMessage() {
+        if (!isUserScrolledUp) return false;
+        newMsgCount++;
+        _updatePill();
+        return true; // caller should NOT force-scroll
+    }
+
+    function _updatePill() {
+        var pill = document.getElementById('ceNewPill');
+        if (!pill) return;
+        if (newMsgCount > 0) {
+            pill.style.display = 'flex';
+            document.getElementById('ceNewCount').textContent = newMsgCount;
+        } else {
+            pill.style.display = 'none';
+        }
+    }
+
+    /* ═══════════════════════════════════════════════
+       9.  MESSAGE SEARCH
+       ═══════════════════════════════════════════════ */
+    function _setupSearch() {
+        var searchInput = document.getElementById('ceSearchInput');
+        var closeBtn = document.getElementById('ceSearchClose');
+        if (!searchInput || !closeBtn) return;
+
+        searchInput.addEventListener('input', function () {
+            _doSearch(searchInput.value.trim());
+        });
+        closeBtn.addEventListener('click', toggleSearch);
+    }
+
+    function toggleSearch() {
+        searchOpen = !searchOpen;
+        var bar = document.getElementById('ceSearchBar');
+        if (bar) bar.classList.toggle('active', searchOpen);
+        if (!searchOpen) _clearSearch();
+        else {
+            var inp = document.getElementById('ceSearchInput');
+            if (inp) { inp.value = ''; inp.focus(); }
+        }
+    }
+
+    function _doSearch(query) {
+        var msgsEl = document.getElementById(cfg.messagesId);
+        if (!msgsEl) return;
+        var wrappers = msgsEl.querySelectorAll('.message-wrapper');
+
+        // Reset
+        wrappers.forEach(function (w) {
+            w.classList.remove('ce-search-hidden');
+            var textEl = w.querySelector('.message-text');
+            if (textEl) {
+                // Remove old highlights
+                textEl.innerHTML = textEl.innerHTML.replace(/<span class="ce-search-highlight">([^<]*)<\/span>/g, '$1');
+            }
+        });
+
+        if (!query) return;
+        var lower = query.toLowerCase();
+
+        wrappers.forEach(function (w) {
+            var textEl = w.querySelector('.message-text');
+            if (!textEl) { w.classList.add('ce-search-hidden'); return; }
+            var text = textEl.textContent;
+            if (text.toLowerCase().indexOf(lower) === -1) {
+                w.classList.add('ce-search-hidden');
+            } else {
+                // Highlight
+                var esc = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                textEl.innerHTML = textEl.innerHTML.replace(new RegExp('(' + esc + ')', 'gi'),
+                    '<span class="ce-search-highlight">$1</span>');
+            }
+        });
+    }
+
+    function _clearSearch() {
+        var msgsEl = document.getElementById(cfg.messagesId);
+        if (!msgsEl) return;
+        msgsEl.querySelectorAll('.message-wrapper').forEach(function (w) {
+            w.classList.remove('ce-search-hidden');
+            var textEl = w.querySelector('.message-text');
+            if (textEl) textEl.innerHTML = textEl.innerHTML.replace(/<span class="ce-search-highlight">([^<]*)<\/span>/g, '$1');
+        });
+    }
+
+    /* ═══════════════════════════════════════════════
+       10.  SOCKET LISTENERS (edit, delete, sound)
+       ═══════════════════════════════════════════════ */
+    function _setupSocketListeners() {
+        // We poll for socket availability (templates create it lazily)
+        var attempts = 0;
+        function tryAttach() {
+            var sock = cfg.getSocket();
+            if (!sock) {
+                if (++attempts < 30) setTimeout(tryAttach, 500);
+                return;
+            }
+            _attachSocketListeners(sock);
+        }
+        tryAttach();
+    }
+
+    function _attachSocketListeners(sock) {
+        // ── Sound on incoming message ──
+        sock.on('message_received', function (data) {
+            if (data.sender_id && data.sender_id !== cfg.currentUserId) {
+                _playNotifSound();
+            }
+        });
+
+        sock.on('message_edited', function (data) {
+            if (!data || !data.message_id) return;
+            var wrapper = document.querySelector('.message-wrapper[data-message-id="' + String(data.message_id) + '"]');
+            if (!wrapper) return;
+            var textEl = wrapper.querySelector('.message-text');
+            if (textEl && typeof data.content === 'string') {
+                textEl.textContent = data.content;
+            }
+            _appendEditedTag(wrapper);
+        });
+
+        sock.on('message_deleted', function (data) {
+            if (!data || !data.message_id) return;
+            _applyDeletedState(data.message_id);
+        });
+    }
+
+    /* ═══════════════════════════════════════════════
+       HELPERS
+       ═══════════════════════════════════════════════ */
+    function _esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function _escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    /** Expose for the search toggle button in templates */
+    function isSearchOpen() { return searchOpen; }
+
+    /* ═══════════════════════════════════════════════
+       PUBLIC API
+       ═══════════════════════════════════════════════ */
+    return {
+        init: init,
+        getReplyToId: getReplyToId,
+        clearReply: clearReply,
+        renderQuotedHTML: renderQuotedHTML,
+        autoLink: autoLink,
+        onNewIncomingMessage: onNewIncomingMessage,
+        toggleSearch: toggleSearch,
+        isSearchOpen: isSearchOpen,
+    };
+})();

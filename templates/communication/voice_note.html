@@ -165,6 +165,8 @@
         padding: 0.25rem 0.75rem;
         font-size: 0.875rem;
     }
+
+    .hidden-display { display: none; }
 </style>
 {% endblock %}
 
@@ -202,16 +204,16 @@
                     <button class="btn btn-danger" id="recordButton" title="Start Recording">
                         <i class="fas fa-microphone"></i>
                     </button>
-                    <button class="btn btn-info" id="pauseButton" style="display: none;" title="Pause">
+                    <button class="btn btn-info hidden-display" id="pauseButton" title="Pause">
                         <i class="fas fa-pause"></i>
                     </button>
-                    <button class="btn btn-info" id="resumeButton" style="display: none;" title="Resume">
+                    <button class="btn btn-info hidden-display" id="resumeButton" title="Resume">
                         <i class="fas fa-play"></i>
                     </button>
-                    <button class="btn btn-success" id="saveButton" style="display: none;" title="Save">
+                    <button class="btn btn-success hidden-display" id="saveButton" title="Save">
                         <i class="fas fa-check"></i>
                     </button>
-                    <button class="btn btn-secondary" id="cancelButton" style="display: none;" title="Cancel">
+                    <button class="btn btn-secondary hidden-display" id="cancelButton" title="Cancel">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -248,7 +250,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Save Voice Note</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" title="Close" aria-label="Close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="saveNoteForm">
@@ -259,7 +261,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Category</label>
-                        <select class="form-select" required>
+                        <select class="form-select" title="Voice note category" aria-label="Voice note category" required>
                             <option value="">Select Category</option>
                             <option value="consultation">Consultation Notes</option>
                             <option value="symptoms">Symptom Descriptions</option>
@@ -274,7 +276,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Sharing</label>
-                        <select class="form-select">
+                        <select class="form-select" title="Sharing options" aria-label="Sharing options">
                             <option value="private">Private (Only Me)</option>
                             <option value="doctor">Share with My Doctor</option>
                             <option value="careteam">Share with Care Team</option>

@@ -423,6 +423,266 @@
     .btn-block:hover {
         background: #fecaca;
     }
+
+    /* ── Message Monitor Panel ── */
+    .msg-monitor-grid {
+        display: grid;
+        grid-template-columns: 240px 280px 1fr;
+        gap: 16px;
+        min-height: 420px;
+    }
+    .msg-panel {
+        background: #f9fafb;
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        overflow-y: auto;
+        max-height: 480px;
+    }
+    .msg-panel-title {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #65676b;
+        padding: 12px 14px 8px;
+        border-bottom: 1px solid #e5e5e5;
+        background: #fff;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    .msg-list-item {
+        padding: 10px 14px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f2f5;
+        font-size: 13px;
+        transition: background .15s;
+    }
+    .msg-list-item:hover, .msg-list-item.active {
+        background: #e8f5e9;
+    }
+    .msg-list-item .name { font-weight: 600; color: #111b21; }
+    .msg-list-item .sub { color: #65676b; font-size: 12px; margin-top: 2px; }
+
+    .msg-bubble-area {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow-y: auto;
+        max-height: 440px;
+    }
+    .msg-bubble {
+        max-width: 80%;
+        padding: 8px 12px;
+        border-radius: 12px;
+        font-size: 13px;
+        line-height: 1.4;
+    }
+    .msg-bubble.doctor {
+        background: #dbeafe;
+        color: #1e40af;
+        align-self: flex-start;
+    }
+    .msg-bubble.patient {
+        background: #d4f5e8;
+        color: #065f46;
+        align-self: flex-end;
+    }
+    .msg-bubble.admin {
+        background: #fef3c7;
+        color: #92400e;
+        align-self: center;
+    }
+    .msg-bubble .meta {
+        font-size: 10px;
+        color: #888;
+        margin-top: 3px;
+    }
+
+    /* ── Live Rooms Grid ── */
+    .live-rooms-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+    }
+    .live-room-card {
+        background: #fff;
+        border: 2px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 18px;
+        position: relative;
+        transition: all .2s;
+    }
+    .live-room-card:hover {
+        border-color: #00a884;
+        box-shadow: 0 4px 12px rgba(0,168,132,.15);
+    }
+    .live-room-card .live-dot {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #31a24c;
+        animation: pulse 2s infinite;
+    }
+    .live-room-card .room-names {
+        font-weight: 700;
+        font-size: 15px;
+        color: #111b21;
+        margin-bottom: 6px;
+    }
+    .live-room-card .room-meta {
+        font-size: 12px;
+        color: #65676b;
+        margin-bottom: 12px;
+    }
+    .live-room-card .room-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .btn-observe {
+        background: #00a884;
+        color: #fff;
+        border: none;
+        padding: 6px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .btn-observe:hover { background: #008066; }
+
+    /* ── Consultation History Table ── */
+    .history-detail-row td {
+        background: #f9fafb;
+        padding: 16px;
+    }
+    .rating-stars { color: #f59e0b; letter-spacing: 2px; }
+
+    /* ── Tab navigation ── */
+    .admin-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #e5e5e5;
+        overflow-x: auto;
+    }
+    .admin-tab {
+        padding: 10px 20px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        color: #65676b;
+        border-bottom: 3px solid transparent;
+        transition: all .2s;
+        white-space: nowrap;
+        background: none;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+    }
+    .admin-tab:hover { color: #111b21; }
+    .admin-tab.active {
+        color: #00a884;
+        border-bottom-color: #00a884;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+
+    .muted-top-text {
+        color: #65676b;
+        margin-top: 4px;
+    }
+    .icon-gap-6 {
+        margin-right: 6px;
+    }
+    .section-tight {
+        margin-bottom: 20px;
+        padding: 20px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .mb-16 {
+        margin-bottom: 16px;
+    }
+    .text-muted-14 {
+        color: #65676b;
+        margin-bottom: 16px;
+        font-size: 14px;
+    }
+    .settings-row {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .settings-col {
+        flex: 1;
+        min-width: 220px;
+    }
+    .settings-label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+        font-size: 14px;
+    }
+    .settings-select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    .save-settings-btn {
+        padding: 8px 24px;
+    }
+    .settings-feedback {
+        margin-top: 10px;
+        font-size: 13px;
+        display: none;
+    }
+    .icon-gap-8 {
+        margin-right: 8px;
+    }
+    .text-muted-13 {
+        color: #65676b;
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+    .empty-state-sm {
+        padding: 20px;
+        font-size: 13px;
+    }
+    .empty-state-md {
+        padding: 40px;
+        font-size: 13px;
+    }
+    .history-pagination {
+        margin-top: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+    }
+    .history-page-info {
+        font-size: 13px;
+        color: #65676b;
+    }
+    .grid-col-span {
+        grid-column: 1 / -1;
+    }
+
+    @media (max-width: 900px) {
+        .msg-monitor-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -432,16 +692,56 @@
     <div class="header-section">
         <div>
             <h1>Communication Monitoring</h1>
-            <p style="color: #65676b; margin-top: 4px;">Real-time call metrics and user presence tracking</p>
+            <p class="muted-top-text">Real-time call metrics and user presence tracking</p>
         </div>
         <div class="header-controls">
             <button class="btn btn-primary" onclick="refreshMetrics()">
-                <span style="margin-right: 6px;">🔄</span>Refresh
+                <span class="icon-gap-6">🔄</span>Refresh
             </button>
             <button class="btn btn-secondary" onclick="exportReport()">
-                <span style="margin-right: 6px;">📥</span>Export
+                <span class="icon-gap-6">📥</span>Export
             </button>
         </div>
+    </div>
+
+    <!-- Consultation Room Settings -->
+    <div class="section section-tight">
+        <h2 class="section-title mb-16">
+            <span class="icon-gap-8">🏥</span>Consultation Room Settings
+        </h2>
+        <p class="text-muted-14">Control when consultation rooms open before and close after the appointment time.</p>
+        <div class="settings-row">
+            <div class="settings-col">
+                <label for="openBeforeMinutes" class="settings-label">Open Room Before Appointment</label>
+                <select id="openBeforeMinutes" class="form-control settings-select">
+                    <option value="0">No Limit</option>
+                    <option value="5">5 minutes before</option>
+                    <option value="10">10 minutes before</option>
+                    <option value="15">15 minutes before</option>
+                    <option value="30">30 minutes before</option>
+                    <option value="45">45 minutes before</option>
+                    <option value="60">1 hour before</option>
+                </select>
+            </div>
+            <div class="settings-col">
+                <label for="openAfterMinutes" class="settings-label">Keep Room Open After Appointment</label>
+                <select id="openAfterMinutes" class="form-control settings-select">
+                    <option value="0">No Limit</option>
+                    <option value="15">15 minutes after</option>
+                    <option value="30">30 minutes after</option>
+                    <option value="45">45 minutes after</option>
+                    <option value="60">1 hour after</option>
+                    <option value="90">1 hour 30 min after</option>
+                    <option value="120">2 hours after</option>
+                </select>
+            </div>
+            <div>
+                <button class="btn btn-primary save-settings-btn" onclick="saveConsultationSettings()" id="saveSettingsBtn">
+                    <span class="icon-gap-6">💾</span>Save Settings
+                </button>
+            </div>
+        </div>
+        <div id="settingsFeedback" class="settings-feedback"></div>
     </div>
 
     <!-- Statistics Cards -->
@@ -462,22 +762,189 @@
             <div class="stat-change">Last 24 hours</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">System Health</div>
-            <div class="stat-value" id="systemHealth">--</div>
-            <div class="stat-change" id="healthStatus">Good</div>
+            <div class="stat-label">Live Rooms</div>
+            <div class="stat-value" id="liveRoomCount">0</div>
+            <div class="stat-change">Active now</div>
         </div>
     </div>
 
-    <div class="grid-2col">
-        <!-- Active Calls Section -->
+    <!-- Tab Navigation -->
+    <div class="admin-tabs">
+        <button class="admin-tab active" onclick="switchTab('overview')">Overview</button>
+        <button class="admin-tab" onclick="switchTab('messages')">💬 Message Monitor</button>
+        <button class="admin-tab" onclick="switchTab('liverooms')">🟢 Live Rooms</button>
+        <button class="admin-tab" onclick="switchTab('history')">📋 Consultation History</button>
+        <button class="admin-tab" onclick="switchTab('calls')">📞 Call History</button>
+        <button class="admin-tab" onclick="switchTab('quality')">📊 Quality Metrics</button>
+    </div>
+
+    <!-- TAB: Overview -->
+    <div class="tab-content active" id="tab-overview">
+        <div class="grid-2col">
+            <!-- Active Calls Section -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="live-indicator icon-gap-8"></span>
+                    Active Calls
+                </h2>
+                <div class="table-container">
+                    <table id="activeCallsTable">
+                        <thead>
+                            <tr>
+                                <th>Call ID</th>
+                                <th>Caller</th>
+                                <th>Callee</th>
+                                <th>Type</th>
+                                <th>Duration</th>
+                                <th>Quality</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activeCallsBody">
+                            <tr><td colspan="6" class="empty-state">No active calls</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Online Users Section -->
+            <div class="section">
+                <h2 class="section-title">Online Users</h2>
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>Filter by Role</label>
+                        <select id="userRoleFilter" title="Filter online users by role" aria-label="Filter online users by role" onchange="filterOnlineUsers()">
+                            <option value="">All Roles</option>
+                            <option value="doctor">Doctors</option>
+                            <option value="patient">Patients</option>
+                            <option value="admin">Admins</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="onlineUsersTable">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Last Seen</th>
+                                <th>Device</th>
+                            </tr>
+                        </thead>
+                        <tbody id="onlineUsersBody">
+                            <tr><td colspan="5" class="empty-state">Loading users...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: Message Monitor -->
+    <div class="tab-content" id="tab-messages">
+        <div class="section">
+            <h2 class="section-title">💬 Message Monitor</h2>
+            <p class="text-muted-13">Select a doctor, then an appointment to view all messages in that consultation.</p>
+            <div class="msg-monitor-grid">
+                <div class="msg-panel" id="doctorListPanel">
+                    <div class="msg-panel-title">Doctors</div>
+                    <div id="doctorList"><div class="empty-state empty-state-sm">Loading...</div></div>
+                </div>
+                <div class="msg-panel" id="appointmentListPanel">
+                    <div class="msg-panel-title">Appointments</div>
+                    <div id="appointmentList"><div class="empty-state empty-state-sm">Select a doctor</div></div>
+                </div>
+                <div class="msg-panel" id="messageViewPanel">
+                    <div class="msg-panel-title">Messages</div>
+                    <div class="msg-bubble-area" id="messageView">
+                        <div class="empty-state empty-state-md">Select an appointment to view messages</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: Live Rooms -->
+    <div class="tab-content" id="tab-liverooms">
         <div class="section">
             <h2 class="section-title">
-                <span class="live-indicator" style="margin-right: 8px;"></span>
-                Active Calls
+                <span class="live-indicator icon-gap-8"></span>
+                Live Consultation Rooms
             </h2>
-            
+            <p class="text-muted-13">Monitor active consultation rooms. Join silently as an observer — participants won't know you're watching.</p>
+            <div class="live-rooms-grid" id="liveRoomsGrid">
+                <div class="empty-state grid-col-span">Loading live rooms...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: Consultation History -->
+    <div class="tab-content" id="tab-history">
+        <div class="section">
+            <h2 class="section-title">📋 Consultation History</h2>
+            <p class="text-muted-13">Completed consultations with doctor/patient details, timing, recordings, and reviews.</p>
             <div class="table-container">
-                <table id="activeCallsTable">
+                <table id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>Doctor</th>
+                            <th>Patient</th>
+                            <th>Booked</th>
+                            <th>Started</th>
+                            <th>Ended</th>
+                            <th>Duration</th>
+                            <th>Rating</th>
+                            <th>Recording</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody">
+                        <tr><td colspan="9" class="empty-state">Loading consultation history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="history-pagination">
+                <button class="btn btn-secondary" id="historyPrev" onclick="loadHistory(historyPage-1)" disabled>&laquo; Previous</button>
+                <span id="historyPageInfo" class="history-page-info">Page 1</span>
+                <button class="btn btn-secondary" id="historyNext" onclick="loadHistory(historyPage+1)" disabled>Next &raquo;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: Call History -->
+    <div class="tab-content" id="tab-calls">
+        <div class="section">
+            <h2 class="section-title">Call History</h2>
+            <div class="filters">
+                <div class="filter-group">
+                    <label>Call Type</label>
+                    <select id="callTypeFilter" onchange="filterCallHistory()">
+                        <option value="">All Types</option>
+                        <option value="video">Video</option>
+                        <option value="voice">Voice</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status</label>
+                    <select id="callStatusFilter" onchange="filterCallHistory()">
+                        <option value="">All Status</option>
+                        <option value="completed">Completed</option>
+                        <option value="missed">Missed</option>
+                        <option value="declined">Declined</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>From Date</label>
+                    <input type="date" id="dateFromFilter" onchange="filterCallHistory()">
+                </div>
+                <div class="filter-group">
+                    <label>To Date</label>
+                    <input type="date" id="dateToFilter" onchange="filterCallHistory()">
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="callHistoryTable">
                     <thead>
                         <tr>
                             <th>Call ID</th>
@@ -485,151 +952,69 @@
                             <th>Callee</th>
                             <th>Type</th>
                             <th>Duration</th>
+                            <th>Date/Time</th>
+                            <th>Status</th>
+                            <th>Quality</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="callHistoryBody">
+                        <tr><td colspan="9" class="empty-state">Loading call history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: Quality Metrics -->
+    <div class="tab-content" id="tab-quality">
+        <div class="section">
+            <h2 class="section-title">Network Quality Metrics</h2>
+            <div class="filters">
+                <div class="filter-group">
+                    <label>Quality Level</label>
+                    <select id="qualityFilter" onchange="filterQualityMetrics()">
+                        <option value="">All Levels</option>
+                        <option value="excellent">Excellent</option>
+                        <option value="good">Good</option>
+                        <option value="fair">Fair</option>
+                        <option value="poor">Poor</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Min Packet Loss %</label>
+                    <input type="number" id="packetLossFilter" min="0" max="100" placeholder="0" onchange="filterQualityMetrics()">
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="qualityMetricsTable">
+                    <thead>
+                        <tr>
+                            <th>Call ID</th>
+                            <th>User</th>
+                            <th>RTT (ms)</th>
+                            <th>Packet Loss %</th>
+                            <th>Jitter (ms)</th>
+                            <th>Audio Bitrate</th>
+                            <th>Video Bitrate</th>
                             <th>Quality</th>
                         </tr>
                     </thead>
-                    <tbody id="activeCallsBody">
-                        <tr><td colspan="6" class="empty-state">No active calls</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Online Users Section -->
-        <div class="section">
-            <h2 class="section-title">Online Users</h2>
-            
-            <div class="filters">
-                <div class="filter-group">
-                    <label>Filter by Role</label>
-                    <select id="userRoleFilter" onchange="filterOnlineUsers()">
-                        <option value="">All Roles</option>
-                        <option value="doctor">Doctors</option>
-                        <option value="patient">Patients</option>
-                        <option value="admin">Admins</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="table-container">
-                <table id="onlineUsersTable">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Role</th>
-                            <th>Status</th>
-                            <th>Last Seen</th>
-                            <th>Device</th>
-                        </tr>
-                    </thead>
-                    <tbody id="onlineUsersBody">
-                        <tr><td colspan="5" class="empty-state">Loading users...</td></tr>
+                    <tbody id="qualityMetricsBody">
+                        <tr><td colspan="8" class="empty-state">Loading quality metrics...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- Call History Section -->
-    <div class="section">
-        <h2 class="section-title">Call History</h2>
-        
-        <div class="filters">
-            <div class="filter-group">
-                <label>Call Type</label>
-                <select id="callTypeFilter" onchange="filterCallHistory()">
-                    <option value="">All Types</option>
-                    <option value="video">Video</option>
-                    <option value="voice">Voice</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label>Status</label>
-                <select id="callStatusFilter" onchange="filterCallHistory()">
-                    <option value="">All Status</option>
-                    <option value="completed">Completed</option>
-                    <option value="missed">Missed</option>
-                    <option value="failed">Failed</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label>From Date</label>
-                <input type="date" id="dateFromFilter" onchange="filterCallHistory()">
-            </div>
-            <div class="filter-group">
-                <label>To Date</label>
-                <input type="date" id="dateToFilter" onchange="filterCallHistory()">
-            </div>
-        </div>
-        
-        <div class="table-container">
-            <table id="callHistoryTable">
-                <thead>
-                    <tr>
-                        <th>Call ID</th>
-                        <th>Caller</th>
-                        <th>Callee</th>
-                        <th>Type</th>
-                        <th>Duration</th>
-                        <th>Date/Time</th>
-                        <th>Status</th>
-                        <th>Quality</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="callHistoryBody">
-                    <tr><td colspan="9" class="empty-state">Loading call history...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Quality Metrics Section -->
-    <div class="section">
-        <h2 class="section-title">Network Quality Metrics</h2>
-        
-        <div class="filters">
-            <div class="filter-group">
-                <label>Quality Level</label>
-                <select id="qualityFilter" onchange="filterQualityMetrics()">
-                    <option value="">All Levels</option>
-                    <option value="excellent">Excellent</option>
-                    <option value="good">Good</option>
-                    <option value="fair">Fair</option>
-                    <option value="poor">Poor</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label>Min Packet Loss %</label>
-                <input type="number" id="packetLossFilter" min="0" max="100" placeholder="0" onchange="filterQualityMetrics()">
-            </div>
-        </div>
-        
-        <div class="table-container">
-            <table id="qualityMetricsTable">
-                <thead>
-                    <tr>
-                        <th>Call ID</th>
-                        <th>User</th>
-                        <th>RTT (ms)</th>
-                        <th>Packet Loss %</th>
-                        <th>Jitter (ms)</th>
-                        <th>Audio Bitrate</th>
-                        <th>Video Bitrate</th>
-                        <th>Quality</th>
-                    </tr>
-                </thead>
-                <tbody id="qualityMetricsBody">
-                    <tr><td colspan="8" class="empty-state">Loading quality metrics...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
 </div>
 
 <!-- JavaScript Section -->
 <script>
 const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+let historyPage = 1;
+let liveRoomInterval = null;
 
 // Load data on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -637,110 +1022,297 @@ document.addEventListener('DOMContentLoaded', function() {
     loadOnlineUsers();
     loadCallHistory();
     loadQualityMetrics();
-    
-    // Refresh every 10 seconds
+    loadConsultationSettings();
+    loadLiveRooms();
+    loadDoctorList();
+    loadHistory(1);
+
     setInterval(loadActiveMetrics, 10000);
     setInterval(loadOnlineUsers, 15000);
+    liveRoomInterval = setInterval(loadLiveRooms, 8000);
 });
 
-// Load active calls and statistics
+/* ═══════════════════════════════════════════════════════════════
+   TAB SWITCHING
+═══════════════════════════════════════════════════════════════ */
+function switchTab(tabName) {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    const el = document.getElementById('tab-' + tabName);
+    if (el) el.classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CONSULTATION ROOM SETTINGS
+═══════════════════════════════════════════════════════════════ */
+async function loadConsultationSettings() {
+    try {
+        const resp = await fetch('/admin/consultation-settings', {
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            document.getElementById('openBeforeMinutes').value = data.open_before_minutes || 0;
+            document.getElementById('openAfterMinutes').value = data.open_after_minutes || 0;
+        }
+    } catch (e) { console.error('Failed to load consultation settings', e); }
+}
+
+async function saveConsultationSettings() {
+    const btn = document.getElementById('saveSettingsBtn');
+    const fb = document.getElementById('settingsFeedback');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+        const resp = await fetch('/admin/consultation-settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({
+                open_before_minutes: parseInt(document.getElementById('openBeforeMinutes').value),
+                open_after_minutes: parseInt(document.getElementById('openAfterMinutes').value)
+            })
+        });
+        const data = await resp.json();
+        fb.style.display = 'block';
+        if (data.success) { fb.style.color = '#2e7d32'; fb.textContent = '✅ Settings saved successfully.'; }
+        else { fb.style.color = '#c62828'; fb.textContent = '❌ Failed to save settings.'; }
+    } catch (e) {
+        fb.style.display = 'block'; fb.style.color = '#c62828'; fb.textContent = '❌ Error saving settings.';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span style="margin-right: 6px;">💾</span>Save Settings';
+        setTimeout(() => { fb.style.display = 'none'; }, 4000);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MESSAGE MONITOR
+═══════════════════════════════════════════════════════════════ */
+let selectedDoctorId = null;
+let selectedMsgApptId = null;
+
+async function loadDoctorList() {
+    try {
+        const resp = await fetch('/admin/api/doctors', { headers: { 'X-CSRFToken': csrfToken } });
+        const data = await resp.json();
+        if (!data.success) return;
+        const list = document.getElementById('doctorList');
+        if (!data.doctors.length) { list.innerHTML = '<div class="empty-state" style="padding:20px;font-size:13px;">No doctors found</div>'; return; }
+        list.innerHTML = data.doctors.map(d => `
+            <div class="msg-list-item" onclick="selectDoctor(${d.doctor_id}, this)">
+                <div class="name">Dr. ${escH(d.name)}</div>
+                <div class="sub">${escH(d.specialization || 'General')} · ${d.appointment_count} appointments</div>
+            </div>
+        `).join('');
+    } catch (e) { console.error('Error loading doctors:', e); }
+}
+
+async function selectDoctor(doctorId, el) {
+    selectedDoctorId = doctorId;
+    selectedMsgApptId = null;
+    document.querySelectorAll('#doctorList .msg-list-item').forEach(i => i.classList.remove('active'));
+    if (el) el.classList.add('active');
+    document.getElementById('messageView').innerHTML = '<div class="empty-state" style="padding:40px;font-size:13px;">Select an appointment to view messages</div>';
+
+    try {
+        const resp = await fetch(`/admin/api/doctor/${doctorId}/appointments`, { headers: { 'X-CSRFToken': csrfToken } });
+        const data = await resp.json();
+        if (!data.success) return;
+        const list = document.getElementById('appointmentList');
+        if (!data.appointments.length) { list.innerHTML = '<div class="empty-state" style="padding:20px;font-size:13px;">No appointments</div>'; return; }
+        list.innerHTML = data.appointments.map(a => `
+            <div class="msg-list-item" onclick="selectMsgAppointment(${a.id}, this)">
+                <div class="name">${escH(a.patient_name)}</div>
+                <div class="sub">${a.appointment_date ? new Date(a.appointment_date).toLocaleDateString() : 'N/A'} · <span class="badge ${a.status === 'completed' ? 'badge-success' : 'badge-info'}">${a.status}</span></div>
+            </div>
+        `).join('');
+    } catch (e) { console.error('Error loading appointments:', e); }
+}
+
+async function selectMsgAppointment(appointmentId, el) {
+    selectedMsgApptId = appointmentId;
+    document.querySelectorAll('#appointmentList .msg-list-item').forEach(i => i.classList.remove('active'));
+    if (el) el.classList.add('active');
+
+    try {
+        const resp = await fetch(`/admin/api/appointment/${appointmentId}/messages`, { headers: { 'X-CSRFToken': csrfToken } });
+        const data = await resp.json();
+        const view = document.getElementById('messageView');
+        if (!data.success || !data.messages.length) {
+            view.innerHTML = '<div class="empty-state" style="padding:40px;font-size:13px;">No messages for this appointment</div>';
+            return;
+        }
+        view.innerHTML = data.messages.map(m => `
+            <div class="msg-bubble ${m.sender_role}">
+                <strong>${escH(m.sender_name)}</strong> <span style="font-size:11px;color:#888;">(${m.sender_role})</span>
+                <div style="margin-top:4px;">${escH(m.content)}</div>
+                <div class="meta">${m.timestamp ? new Date(m.timestamp).toLocaleString() : ''}</div>
+            </div>
+        `).join('');
+        view.scrollTop = view.scrollHeight;
+    } catch (e) { console.error('Error loading messages:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LIVE CONSULTATION ROOMS
+═══════════════════════════════════════════════════════════════ */
+async function loadLiveRooms() {
+    try {
+        const resp = await fetch('/admin/api/live-rooms', { headers: { 'X-CSRFToken': csrfToken } });
+        if (resp.status === 401) return;
+        const data = await resp.json();
+        if (!data.success) return;
+
+        document.getElementById('liveRoomCount').textContent = data.rooms.length;
+        const grid = document.getElementById('liveRoomsGrid');
+        if (!data.rooms.length) {
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:40px;">No active consultation rooms right now</div>';
+            return;
+        }
+        grid.innerHTML = data.rooms.map(r => {
+            const elapsed = r.started_at ? formatDuration(Math.floor((Date.now() - new Date(r.started_at).getTime()) / 1000)) : '--:--';
+            return `
+            <div class="live-room-card">
+                <div class="live-dot"></div>
+                <div class="room-names">Dr. ${escH(r.doctor_name)} ↔ ${escH(r.patient_name)}</div>
+                <div class="room-meta">
+                    <span class="badge ${r.status === 'active' ? 'badge-success' : 'badge-warning'}">${r.status}</span>
+                    · ${r.participant_count} participant${r.participant_count !== 1 ? 's' : ''}
+                    · Elapsed: ${elapsed}
+                </div>
+                <div class="room-actions">
+                    <button class="btn-observe" onclick="joinAsObserver(${r.appointment_id})">
+                        👁 Silent Join
+                    </button>
+                    <button class="btn btn-secondary" style="font-size:13px;padding:6px 12px;" onclick="viewRoomDetail(${r.appointment_id})">
+                        ℹ Details
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) { console.error('Error loading live rooms:', e); }
+}
+
+function joinAsObserver(appointmentId) {
+    window.open(`/consultation-room/${appointmentId}?observer=1`, '_blank', 'noopener,noreferrer');
+}
+
+function viewRoomDetail(appointmentId) {
+    alert('Room appointment #' + appointmentId + ' — use Silent Join to observe the live session.');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CONSULTATION HISTORY
+═══════════════════════════════════════════════════════════════ */
+async function loadHistory(page) {
+    if (page < 1) return;
+    historyPage = page;
+    try {
+        const resp = await fetch(`/admin/api/consultation-history?page=${page}&per_page=20`, {
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        const data = await resp.json();
+        if (!data.success) return;
+
+        const tbody = document.getElementById('historyBody');
+        if (!data.history.length) {
+            tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No completed consultations found</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.history.map(h => {
+            const dur = h.duration_seconds > 0 ? formatDuration(h.duration_seconds) : '--';
+            const stars = h.review_rating ? '★'.repeat(h.review_rating) + '☆'.repeat(5 - h.review_rating) : '—';
+            const recBtn = h.has_recording
+                ? `<a href="/admin/api/recording/${h.recording_id}/download" class="btn-view" style="text-decoration:none;padding:4px 8px;">⬇ Download</a>`
+                : '<span style="color:#999;font-size:12px;">None</span>';
+            return `
+            <tr>
+                <td><strong>${escH(h.doctor_name)}</strong></td>
+                <td>${escH(h.patient_name)}</td>
+                <td>${h.appointment_booked_at ? new Date(h.appointment_booked_at).toLocaleDateString() : '—'}</td>
+                <td>${h.started_at ? new Date(h.started_at).toLocaleString() : '—'}</td>
+                <td>${h.ended_at ? new Date(h.ended_at).toLocaleString() : '—'}</td>
+                <td>${dur}</td>
+                <td><span class="rating-stars">${stars}</span>${h.review_content ? '<br><small style="color:#65676b;">' + escH(h.review_content).substring(0,60) + '</small>' : ''}</td>
+                <td>${recBtn}</td>
+                <td>${h.session_notes ? '<button class="btn-view" onclick="alert(\'' + escH((h.session_notes||'').substring(0,200).replace(/'/g,"\\'")) + '\')">Notes</button>' : '—'}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('historyPageInfo').textContent = `Page ${page} of ${data.pages}`;
+        document.getElementById('historyPrev').disabled = page <= 1;
+        document.getElementById('historyNext').disabled = page >= data.pages;
+    } catch (e) { console.error('Error loading history:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ACTIVE METRICS / ONLINE USERS / CALL HISTORY / QUALITY (existing)
+═══════════════════════════════════════════════════════════════ */
 async function loadActiveMetrics() {
     try {
-        const response = await fetch('/api/call-history?per_page=10', {
-            headers: { 'X-CSRFToken': csrfToken }
-        });
-        const data = await response.json();
-        
-        if (data.success && data.data) {
-            updateActiveCallsUI(data.data.calls || []);
-            updateStats(data.data);
-        }
-    } catch (error) {
-        console.error('Error loading active metrics:', error);
-    }
+        const [logsResp, statsResp] = await Promise.all([
+            fetch('/api/call-logs?per_page=10&status=connected', { headers: { 'X-CSRFToken': csrfToken } }),
+            fetch('/api/call-statistics', { headers: { 'X-CSRFToken': csrfToken } })
+        ]);
+        if (logsResp.status === 401 || statsResp.status === 401) return;
+        const logsData = await logsResp.json();
+        const statsData = await statsResp.json();
+        if (logsData.success) { updateActiveCallsUI(logsData.call_logs || []); }
+        if (statsData.success) { updateStats(statsData.statistics || {}); }
+    } catch (error) { console.error('Error loading active metrics:', error); }
 }
 
-// Load online users
 async function loadOnlineUsers() {
     try {
-        const response = await fetch('/api/presence/online-users', {
-            headers: { 'X-CSRFToken': csrfToken }
-        });
+        const response = await fetch('/api/presence/online-users', { headers: { 'X-CSRFToken': csrfToken } });
+        if (response.status === 401) return;
         const data = await response.json();
-        
-        if (data.success && data.data) {
-            updateOnlineUsersUI(data.data);
-        }
-    } catch (error) {
-        console.error('Error loading online users:', error);
-    }
+        if (data.success && data.data) { updateOnlineUsersUI(data.data); }
+    } catch (error) { console.error('Error loading online users:', error); }
 }
 
-// Load call history
 async function loadCallHistory() {
     try {
-        const callType = document.getElementById('callTypeFilter').value;
-        const status = document.getElementById('callStatusFilter').value;
-        const dateFrom = document.getElementById('dateFromFilter').value;
-        const dateTo = document.getElementById('dateToFilter').value;
-        
-        let url = '/api/call-history?page=1&per_page=50';
-        if (callType) url += `&call_type=${callType}`;
-        if (status) url += `&status=${status}`;
-        if (dateFrom) url += `&date_from=${dateFrom}`;
-        if (dateTo) url += `&date_to=${dateTo}`;
-        
-        const response = await fetch(url, {
-            headers: { 'X-CSRFToken': csrfToken }
-        });
+        const callType = document.getElementById('callTypeFilter')?.value || '';
+        const status = document.getElementById('callStatusFilter')?.value || '';
+        const dateFrom = document.getElementById('dateFromFilter')?.value || '';
+        const dateTo = document.getElementById('dateToFilter')?.value || '';
+        let url = '/api/call-logs?page=1&per_page=50';
+        if (callType) url += `&call_type=${encodeURIComponent(callType)}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
+        if (dateFrom) url += `&start_date=${encodeURIComponent(dateFrom)}`;
+        if (dateTo) url += `&end_date=${encodeURIComponent(dateTo)}`;
+        const response = await fetch(url, { headers: { 'X-CSRFToken': csrfToken } });
         const data = await response.json();
-        
-        if (data.success && data.data) {
-            updateCallHistoryUI(data.data.calls || []);
-        }
-    } catch (error) {
-        console.error('Error loading call history:', error);
-    }
+        if (data.success) { updateCallHistoryUI(data.call_logs || []); }
+    } catch (error) { console.error('Error loading call history:', error); }
 }
 
-// Load quality metrics
 async function loadQualityMetrics() {
     try {
-        const qualityLevel = document.getElementById('qualityFilter').value;
-        const packetLoss = document.getElementById('packetLossFilter').value;
-        
+        const qualityLevel = document.getElementById('qualityFilter')?.value || '';
+        const packetLoss = document.getElementById('packetLossFilter')?.value || '';
         let url = '/api/calls/quality-metrics?limit=50';
-        if (qualityLevel) url += `&quality=${qualityLevel}`;
-        if (packetLoss) url += `&min_packet_loss=${packetLoss}`;
-        
-        const response = await fetch(url, {
-            headers: { 'X-CSRFToken': csrfToken }
-        });
+        if (qualityLevel) url += `&quality=${encodeURIComponent(qualityLevel)}`;
+        if (packetLoss) url += `&min_packet_loss=${encodeURIComponent(packetLoss)}`;
+        const response = await fetch(url, { headers: { 'X-CSRFToken': csrfToken } });
         const data = await response.json();
-        
-        if (data.success && data.data) {
-            updateQualityMetricsUI(data.data || []);
-        }
-    } catch (error) {
-        console.error('Error loading quality metrics:', error);
-    }
+        if (data.success && data.data) { updateQualityMetricsUI(data.data || []); }
+    } catch (error) { console.error('Error loading quality metrics:', error); }
 }
 
-// Update UI for active calls
 function updateActiveCallsUI(calls) {
     const tbody = document.getElementById('activeCallsBody');
-    
     if (!calls || calls.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No active calls</td></tr>';
         document.getElementById('activeCalls').textContent = '0';
         return;
     }
-    
     document.getElementById('activeCalls').textContent = calls.length;
-    
     tbody.innerHTML = calls.map(call => `
         <tr>
-            <td><code style="font-size: 11px; background: #f0f2f5; padding: 4px 8px; border-radius: 4px;">${call.call_id.substring(0, 12)}</code></td>
+            <td><code style="font-size:11px;background:#f0f2f5;padding:4px 8px;border-radius:4px;">${call.call_id.substring(0, 12)}</code></td>
             <td><div class="user-info"><div class="user-avatar">${(call.caller_name || 'U').charAt(0).toUpperCase()}</div><div>${call.caller_name || 'Unknown'}</div></div></td>
             <td><div class="user-info"><div class="user-avatar">${(call.callee_name || 'U').charAt(0).toUpperCase()}</div><div>${call.callee_name || 'Unknown'}</div></div></td>
             <td><span class="badge ${call.call_type === 'video' ? 'badge-info' : 'badge-success'}">${call.call_type}</span></td>
@@ -750,18 +1322,14 @@ function updateActiveCallsUI(calls) {
     `).join('');
 }
 
-// Update UI for online users
 function updateOnlineUsersUI(users) {
     const tbody = document.getElementById('onlineUsersBody');
-    
     if (!users || users.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No users online</td></tr>';
         document.getElementById('onlineUsers').textContent = '0';
         return;
     }
-    
     document.getElementById('onlineUsers').textContent = users.length;
-    
     tbody.innerHTML = users.map(user => `
         <tr>
             <td><div class="user-info"><div class="user-avatar">${(user.name || 'U').charAt(0).toUpperCase()}</div><div>${user.name || 'Unknown'}</div></div></td>
@@ -773,42 +1341,36 @@ function updateOnlineUsersUI(users) {
     `).join('');
 }
 
-// Update UI for call history
 function updateCallHistoryUI(calls) {
     const tbody = document.getElementById('callHistoryBody');
-    
     if (!calls || calls.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No call history found</td></tr>';
         return;
     }
-    
     tbody.innerHTML = calls.map(call => `
         <tr>
-            <td><code style="font-size: 11px; background: #f0f2f5; padding: 4px 8px; border-radius: 4px;">${call.call_id.substring(0, 12)}</code></td>
-            <td>${call.caller_name || 'Unknown'}</td>
-            <td>${call.callee_name || 'Unknown'}</td>
+            <td><code style="font-size:11px;background:#f0f2f5;padding:4px 8px;border-radius:4px;">${(call.call_id || '').substring(0, 12)}</code></td>
+            <td>${escH(call.caller_name || call.remote_user_name || 'Unknown')}</td>
+            <td>${escH(call.callee_name || 'Unknown')}</td>
             <td><span class="badge ${call.call_type === 'video' ? 'badge-info' : 'badge-success'}">${call.call_type}</span></td>
             <td>${formatDuration(call.duration || 0)}</td>
             <td>${call.initiated_at ? formatDateTime(new Date(call.initiated_at)) : 'N/A'}</td>
             <td><span class="badge ${getStatusBadgeClass(call.status)}">${call.status}</span></td>
             <td><div class="quality-bar"><div class="quality-fill ${getQualityClass(call.quality_assessment || 'good')}"></div></div></td>
-            <td><div class="action-buttons"><button class="btn-view" onclick="viewCallDetails('${call.call_id}')">View</button></div></td>
+            <td><div class="action-buttons"><button class="btn-view" onclick="viewCallDetails(${call.id})">View</button></div></td>
         </tr>
     `).join('');
 }
 
-// Update UI for quality metrics
 function updateQualityMetricsUI(metrics) {
     const tbody = document.getElementById('qualityMetricsBody');
-    
     if (!metrics || metrics.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No quality metrics available</td></tr>';
         return;
     }
-    
     tbody.innerHTML = metrics.map(metric => `
         <tr>
-            <td><code style="font-size: 11px;">${metric.call_id.substring(0, 12)}</code></td>
+            <td><code style="font-size:11px;">${metric.call_id.substring(0, 12)}</code></td>
             <td>${metric.user_name || 'Unknown'}</td>
             <td>${metric.rtt || 0}</td>
             <td>${metric.packet_loss || 0}%</td>
@@ -820,14 +1382,15 @@ function updateQualityMetricsUI(metrics) {
     `).join('');
 }
 
-// Update statistics
 function updateStats(data) {
     if (data.total_calls !== undefined) {
         document.getElementById('avgDuration').textContent = formatDuration(data.avg_duration || 0);
     }
 }
 
-// Helper functions
+/* ═══════════════════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════════════════ */
 function formatDuration(seconds) {
     if (!seconds) return '00:00';
     const hrs = Math.floor(seconds / 3600);
@@ -840,7 +1403,6 @@ function formatTime(date) {
     const now = new Date();
     const diff = now - date;
     const seconds = Math.floor(diff / 1000);
-    
     if (seconds < 60) return 'just now';
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -849,8 +1411,13 @@ function formatTime(date) {
     return date.toLocaleDateString();
 }
 
-function formatDateTime(date) {
-    return date.toLocaleString();
+function formatDateTime(date) { return date.toLocaleString(); }
+
+function escH(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
 }
 
 function getQualityClass(quality) {
@@ -866,42 +1433,42 @@ function getStatusBadgeClass(status) {
     return 'badge-warning';
 }
 
-// Filter functions
 function filterOnlineUsers() { loadOnlineUsers(); }
 function filterCallHistory() { loadCallHistory(); }
 function filterQualityMetrics() { loadQualityMetrics(); }
 
-// Utility functions
 function refreshMetrics() {
     loadActiveMetrics();
     loadOnlineUsers();
     loadCallHistory();
     loadQualityMetrics();
+    loadLiveRooms();
+    loadHistory(historyPage);
 }
 
-async function exportReport() {
-    alert('Export feature coming soon');
-}
+async function exportReport() { alert('Export feature coming soon'); }
 
 async function viewCallDetails(callId) {
     try {
-        const response = await fetch(`/api/call-history/${callId}`, {
-            headers: { 'X-CSRFToken': csrfToken }
-        });
+        const response = await fetch(`/api/call-logs/${callId}`, { headers: { 'X-CSRFToken': csrfToken } });
         const data = await response.json();
-        
-        if (data.success) {
-            showCallDetailsModal(data.data);
+        if (data.success && data.call) {
+            const c = data.call;
+            const details = [
+                `Call ID: ${c.call_id || '—'}`,
+                `Caller: ${c.caller_name || 'Unknown'}`,
+                `Callee: ${c.callee_name || 'Unknown'}`,
+                `Type: ${c.call_type || '—'}`,
+                `Status: ${c.status || '—'}`,
+                `End Reason: ${c.end_reason || '—'}`,
+                `Duration: ${formatDuration(c.duration || 0)}`,
+                `Started: ${c.initiated_at ? formatDateTime(new Date(c.initiated_at)) : '—'}`,
+                `Connected: ${c.connected_at ? formatDateTime(new Date(c.connected_at)) : '—'}`,
+                `Ended: ${c.ended_at ? formatDateTime(new Date(c.ended_at)) : '—'}`,
+            ].join('\n');
+            alert('Call Details:\n\n' + details);
         }
-    } catch (error) {
-        console.error('Error loading call details:', error);
-        alert('Failed to load call details');
-    }
-}
-
-function showCallDetailsModal(call) {
-    const details = JSON.stringify(call, null, 2);
-    alert('Call Details:\n\n' + details.substring(0, 500) + '...');
+    } catch (error) { console.error('Error loading call details:', error); alert('Failed to load call details'); }
 }
 </script>
 {% endblock %}

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointment Booking Confirmation - Makokha Medical Centre</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .email-shell {
+            background-color: #f4f4f4;
+            padding: 40px 0;
+        }
+
+        .email-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .email-header {
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        .header-paid {
+            background-color: #198754;
+        }
+
+        .header-pending {
+            background-color: #0d6efd;
+        }
+
+        .header-title {
+            color: #ffffff;
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .header-subtitle {
+            margin: 8px 0 0;
+            font-size: 14px;
+        }
+
+        .subtitle-paid {
+            color: #d4edda;
+        }
+
+        .subtitle-pending {
+            color: #cfe2ff;
+        }
+
+        .email-body {
+            padding: 40px;
+        }
+
+        .greeting {
+            font-size: 16px;
+            color: #333333;
+            margin: 0 0 20px;
+        }
+
+        .body-text {
+            font-size: 15px;
+            color: #555555;
+            margin: 0 0 15px;
+        }
+
+        .text-success {
+            color: #198754;
+        }
+
+        .text-primary {
+            color: #0d6efd;
+        }
+
+        .notice-box {
+            padding: 14px 18px;
+            border-radius: 4px;
+            margin: 20px 0;
+            border-left: 4px solid transparent;
+        }
+
+        .notice-success {
+            background-color: #d4edda;
+            border-left-color: #198754;
+        }
+
+        .notice-warning {
+            background-color: #fff3cd;
+            border-left-color: #ffc107;
+        }
+
+        .notice-text {
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .notice-text-success {
+            color: #155724;
+            font-weight: bold;
+        }
+
+        .notice-text-warning {
+            color: #856404;
+        }
+
+        .details-table {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            margin: 25px 0;
+            overflow: hidden;
+        }
+
+        .details-head {
+            background-color: #f8f9fa;
+        }
+
+        .details-head-cell {
+            padding: 12px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #333333;
+        }
+
+        .details-label,
+        .details-value {
+            font-size: 13px;
+            padding: 10px 15px;
+        }
+
+        .details-label {
+            color: #666666;
+            width: 40%;
+        }
+
+        .details-value {
+            color: #333333;
+        }
+
+        .details-divider {
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .value-bold {
+            font-weight: bold;
+        }
+
+        .cta-wrap {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 14px 30px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: bold;
+            margin: 0 8px 10px;
+        }
+
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+
+        .btn-primary {
+            background-color: #0d6efd;
+            color: #ffffff;
+        }
+
+        .reference-text {
+            font-size: 13px;
+            color: #6c757d;
+            margin: 20px 0 0;
+            text-align: center;
+        }
+
+        .separator {
+            border: none;
+            border-top: 1px solid #eeeeee;
+            margin: 30px 0;
+        }
+
+        .footer-note {
+            font-size: 12px;
+            color: #999999;
+            text-align: center;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-shell">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="email-card">
+                    <!-- Header -->
+                    <tr>
+                        {% if payment_status == 'paid' %}
+                        <td class="email-header header-paid">
+                            <h1 class="header-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle subtitle-paid">&#10003; Appointment Confirmed &amp; Paid</p>
+                        </td>
+                        {% else %}
+                        <td class="email-header header-pending">
+                            <h1 class="header-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle subtitle-pending">&#128203; Appointment Booked - Payment Pending</p>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    <!-- Body -->
+                    <tr>
+                        <td class="email-body">
+                            <p class="greeting">
+                                Hello <strong>{{ patient_name or 'Patient' }}</strong>,
+                            </p>
+
+                            {% if payment_status == 'paid' %}
+                            <p class="body-text">
+                                Your appointment has been <strong class="text-success">booked and payment confirmed</strong>. Here are your appointment details:
+                            </p>
+                            <div class="notice-box notice-success">
+                                <p class="notice-text notice-text-success">
+                                    &#10004; Payment of {{ currency }} {{ '%.2f'|format(amount) if amount else '—' }} received.
+                                </p>
+                            </div>
+                            {% else %}
+                            <p class="body-text">
+                                Your appointment has been <strong class="text-primary">booked successfully</strong>.
+                                Payment is still pending — please complete your payment to confirm your slot.
+                            </p>
+                            <div class="notice-box notice-warning">
+                                <p class="notice-text notice-text-warning">
+                                    &#9888; Action required: Complete payment to secure your appointment.
+                                    {% if amount %}Consultation fee: <strong>{{ currency }} {{ '%.2f'|format(amount) }}</strong>.{% endif %}
+                                </p>
+                            </div>
+                            {% endif %}
+
+                            <!-- Appointment Details -->
+                            <table role="presentation" width="100%" cellpadding="10" cellspacing="0" class="details-table">
+                                <tr class="details-head">
+                                    <td colspan="2" class="details-head-cell">Appointment Details</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label details-divider"><strong>Doctor</strong></td>
+                                    <td class="details-value details-divider">{{ doctor_name or 'To be assigned' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label details-divider"><strong>Date &amp; Time</strong></td>
+                                    <td class="details-value details-divider value-bold">{{ appointment_time }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label details-divider"><strong>Consultation Type</strong></td>
+                                    <td class="details-value details-divider">{{ appointment.consultation_type|capitalize if appointment.consultation_type else 'Consultation' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label"><strong>Reference No.</strong></td>
+                                    <td class="details-value">#{{ appointment.id }}</td>
+                                </tr>
+                            </table>
+
+                            <!-- CTA Buttons -->
+                            <div class="cta-wrap">
+                                {% if payment_status != 'paid' and payment_url %}
+                                <a href="{{ payment_url }}"
+                                   class="btn btn-warning">
+                                    &#128179; Complete Payment
+                                </a>
+                                {% endif %}
+                                <a href="{{ login_url }}"
+                                   class="btn btn-primary">
+                                    View My Appointments
+                                </a>
+                            </div>
+
+                            <p class="reference-text">
+                                If you have any questions, please contact us and quote reference #{{ appointment.id }}.
+                            </p>
+
+                            <hr class="separator">
+                            <p class="footer-note">
+                                &copy; Makokha Medical Centre &mdash; This is an automated message, please do not reply.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

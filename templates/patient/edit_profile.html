@@ -2,6 +2,22 @@
 
 {% block title %}Edit Profile - Patient{% endblock %}
 
+{% block extra_css %}
+<style>
+    .profile-preview-img {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid #ddd;
+    }
+
+    .hidden {
+        display: none;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <div class="row">
@@ -17,11 +33,11 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Username</label>
-                                <input class="form-control" value="{{ user.username }}" readonly>
+                                <input class="form-control" value="{{ user.username }}" readonly title="Username">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Email</label>
-                                <input class="form-control" value="{{ user.email }}" readonly>
+                                <input class="form-control" value="{{ user.email }}" readonly title="Email address">
                             </div>
                         </div>
 
@@ -33,14 +49,14 @@
                                         <h6 class="card-title mb-3">Profile Picture</h6>
                                         <div class="row align-items-center">
                                             <div class="col-md-3 text-center">
-                                                <img id="profilePreview" src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Profile" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:2px solid #ddd;">
+                                                <img id="profilePreview" src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Profile" class="profile-preview-img">
                                             </div>
                                             <div class="col-md-9">
                                                 <label for="profile_picture" class="form-label">Upload New Picture</label>
                                                 <input type="file" id="profile_picture" class="form-control" accept="image/*">
                                                 <div class="form-text">Accepted formats: JPG, PNG, GIF (max 5MB)</div>
                                                 <div id="uploadStatus" class="mt-2"></div>
-                                                <button type="button" id="uploadProfileBtn" class="btn btn-sm btn-primary mt-2" style="display:none;">Upload Picture</button>
+                                                <button type="button" id="uploadProfileBtn" class="btn btn-sm btn-primary mt-2 hidden">Upload Picture</button>
                                             </div>
                                         </div>
                                     </div>
@@ -67,7 +83,7 @@
                             <div class="col-md-6 mb-3">
                                 <label for="date_of_birth" class="form-label">Date of birth</label>
                                 <input id="date_of_birth" name="date_of_birth" type="date" class="form-control" value="{{ user.date_of_birth }}">
-                                <div class="form-text text-danger" id="dobWarning" style="display:none;"></div>
+                                <div class="form-text text-danger hidden" id="dobWarning"></div>
                             </div>
                         </div>
 
@@ -147,12 +163,12 @@
                             <div class="col-md-3 mb-3">
                                 <label for="height_cm" class="form-label">Height (cm)</label>
                                 <input id="height_cm" name="height_cm" type="number" step="0.1" class="form-control" value="{{ patient.height_cm }}">
-                                <div class="form-text text-danger" id="heightWarning" style="display:none;"></div>
+                                <div class="form-text text-danger hidden" id="heightWarning"></div>
                             </div>
                             <div class="col-md-3 mb-3">
                                 <label for="weight_kg" class="form-label">Weight (kg)</label>
                                 <input id="weight_kg" name="weight_kg" type="number" step="0.1" class="form-control" value="{{ patient.weight_kg }}">
-                                <div class="form-text text-danger" id="weightWarning" style="display:none;"></div>
+                                <div class="form-text text-danger hidden" id="weightWarning"></div>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="id_number" class="form-label">ID / Passport #</label>

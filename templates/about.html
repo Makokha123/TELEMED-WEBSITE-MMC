@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}About - MAKOKHA MEDICAL CENTRE{% endblock %}
+{% block title %}About - {{ (site.branding.site_name if site and site.branding and site.branding.site_name else 'MAKOKHA MEDICAL CENTRE') }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -18,28 +18,35 @@
 {% endblock %}
 
 {% block content %}
+{% set _a = site.about if site and site.about else {} %}
 <section class="about-hero text-center">
     <div class="container">
-        <h1 class="display-5">About MAKOKHA MEDICAL CENTRE</h1>
-        <p class="lead mt-3">Delivering trusted telemedicine services with compassion and clinical excellence.</p>
+        <h1 class="display-5">{{ _a.hero_title|default('About MAKOKHA MEDICAL CENTRE',true) }}</h1>
+        <p class="lead mt-3">{{ _a.hero_subtitle|default('Delivering trusted telemedicine services with compassion and clinical excellence.',true) }}</p>
     </div>
 </section>
 
 <section class="about-content">
     <div class="container">
-        <h2>Our Mission</h2>
-        <p class="text-muted">To make quality healthcare accessible to everyone by combining experienced clinicians, patient-centred care, and secure telemedicine technology.</p>
+        <h2>{{ _a.mission_title|default('Our Mission',true) }}</h2>
+        <p class="text-muted">{{ _a.mission_text|default('To make quality healthcare accessible to everyone by combining experienced clinicians, patient-centred care, and secure telemedicine technology.',true) }}</p>
 
-        <h2 class="mt-4">What We Offer</h2>
-        <ul>
-            <li>Video and voice consultations with certified doctors</li>
-            <li>Secure messaging and medical record sharing</li>
-            <li>Prescription delivery and follow-up care</li>
-            <li>Specialist referrals and continuity of care</li>
-        </ul>
+        <h2 class="mt-4">{{ _a.offer_title|default('What We Offer',true) }}</h2>
+        <div>
+            {% if _a.offer_items %}
+                {% for item in _a.offer_items if item %}
+                    <div>• {{ item }}</div>
+                {% endfor %}
+            {% else %}
+                <div>• Video and voice consultations with certified doctors</div>
+                <div>• Secure messaging and medical record sharing</div>
+                <div>• Prescription delivery and follow-up care</div>
+                <div>• Specialist referrals and continuity of care</div>
+            {% endif %}
+        </div>
 
-        <h2 class="mt-4">Our Values</h2>
-        <p class="text-muted">Quality, Privacy, Accessibility, and Compassion guide every interaction we have with our patients.</p>
+        <h2 class="mt-4">{{ _a.values_title|default('Our Values',true) }}</h2>
+        <p class="text-muted">{{ _a.values_text|default('Quality, Privacy, Accessibility, and Compassion guide every interaction we have with our patients.',true) }}</p>
 
         <div class="mt-4">
             <a href="{{ url_for('signup') }}" class="btn btn-primary me-2">Sign Up</a>

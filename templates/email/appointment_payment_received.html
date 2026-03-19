@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Received - Makokha Medical Centre</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .email-shell {
+            background-color: #f4f4f4;
+            padding: 40px 0;
+        }
+
+        .email-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .email-header {
+            background-color: #198754;
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        .header-title {
+            color: #ffffff;
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .header-subtitle {
+            color: #d4edda;
+            margin: 8px 0 0;
+            font-size: 14px;
+        }
+
+        .email-body {
+            padding: 40px;
+        }
+
+        .greeting {
+            font-size: 16px;
+            color: #333333;
+            margin: 0 0 20px;
+        }
+
+        .body-text {
+            font-size: 15px;
+            color: #555555;
+            margin: 0 0 15px;
+        }
+
+        .text-success {
+            color: #198754;
+        }
+
+        .success-box {
+            background-color: #d4edda;
+            border-left: 4px solid #198754;
+            padding: 14px 18px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .success-text {
+            font-size: 14px;
+            color: #155724;
+            margin: 0;
+            font-weight: bold;
+        }
+
+        .ref-text {
+            font-weight: normal;
+        }
+
+        .details-table {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            margin: 25px 0;
+            overflow: hidden;
+        }
+
+        .details-head {
+            background-color: #f8f9fa;
+        }
+
+        .details-head-cell {
+            padding: 12px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #333333;
+        }
+
+        .details-label,
+        .details-value {
+            font-size: 13px;
+            padding: 10px 15px;
+        }
+
+        .details-label {
+            color: #666666;
+            width: 40%;
+        }
+
+        .details-value {
+            color: #333333;
+        }
+
+        .details-divider {
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .value-bold {
+            font-weight: bold;
+        }
+
+        .cta-wrap {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .cta-btn {
+            display: inline-block;
+            background-color: #198754;
+            color: #ffffff;
+            padding: 14px 40px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .separator {
+            border: none;
+            border-top: 1px solid #eeeeee;
+            margin: 30px 0;
+        }
+
+        .footer-note {
+            font-size: 12px;
+            color: #999999;
+            text-align: center;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-shell">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="email-card">
+                    <!-- Header -->
+                    <tr>
+                        <td class="email-header">
+                            <h1 class="header-title">MAKOKHA MEDICAL CENTRE</h1>
+                            <p class="header-subtitle">&#10003; Payment Received - Thank You!</p>
+                        </td>
+                    </tr>
+                    <!-- Body -->
+                    <tr>
+                        <td class="email-body">
+                            <p class="greeting">
+                                Hello <strong>{{ patient_name or 'Patient' }}</strong>,
+                            </p>
+                            <p class="body-text">
+                                We have received your payment. Your appointment is now <strong class="text-success">fully confirmed</strong>.
+                            </p>
+
+                            <!-- Success Badge -->
+                            <div class="success-box">
+                                <p class="success-text">
+                                    &#10004; Payment Confirmed
+                                    {% if amount %} &mdash; {{ currency }} {{ '%.2f'|format(amount) }}{% endif %}
+                                    {% if provider_reference %}<br><span class="ref-text">Reference: {{ provider_reference }}</span>{% endif %}
+                                </p>
+                            </div>
+
+                            <!-- Appointment Details -->
+                            <table role="presentation" width="100%" cellpadding="10" cellspacing="0" class="details-table">
+                                <tr class="details-head">
+                                    <td colspan="2" class="details-head-cell">Appointment Details</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label details-divider"><strong>Doctor</strong></td>
+                                    <td class="details-value details-divider">{{ doctor_name or 'Assigned Doctor' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label details-divider"><strong>Date &amp; Time</strong></td>
+                                    <td class="details-value details-divider value-bold">{{ appointment_time }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="details-label"><strong>Consultation Type</strong></td>
+                                    <td class="details-value">{{ appointment.consultation_type|capitalize if appointment.consultation_type else 'Consultation' }}</td>
+                                </tr>
+                            </table>
+
+                            <div class="cta-wrap">
+                                <a href="{{ login_url }}"
+                                   class="cta-btn">
+                                    View My Appointments
+                                </a>
+                            </div>
+
+                            <hr class="separator">
+                            <p class="footer-note">
+                                &copy; Makokha Medical Centre &mdash; This is an automated message, please do not reply.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

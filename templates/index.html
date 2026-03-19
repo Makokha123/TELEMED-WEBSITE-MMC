@@ -1,666 +1,27 @@
 {% extends "base.html" %}
 
-{% block title %}MAKOKHA MEDICAL CENTRE - Telemedicine & Healthcare Services{% endblock %}
+{% block title %}{{ (site.branding.site_name if site and site.branding) | default('MAKOKHA MEDICAL CENTRE',true) }} - Telemedicine & Healthcare Services{% endblock %}
 
 {% block extra_css %}
-<style>
-    :root {
-        --primary: #2563eb;
-        --primary-dark: #1d4ed8;
-        --primary-light: #3b82f6;
-        --secondary: #10b981;
-        --secondary-dark: #059669;
-        --accent: #8b5cf6;
-        --dark: #1e293b;
-        --light: #f8fafc;
-        --gray: #64748b;
-        --gray-light: #e2e8f0;
-        --danger: #ef4444;
-        --danger-dark: #dc2626;
-        --success: #10b981;
-        --warning: #f59e0b;
-    }
-    
-    /* Base Styles */
-    body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        line-height: 1.6;
-        color: var(--dark);
-    }
-    
-    .section-padding {
-        padding: 80px 0;
-    }
-    
-    .section-title {
-        font-weight: 700;
-        color: var(--dark);
-        margin-bottom: 1rem;
-    }
-    
-    .section-subtitle {
-        color: var(--gray);
-        font-size: 1.1rem;
-        max-width: 600px;
-        margin: 0 auto 3rem;
-    }
-    
-    /* Quick Navigation */
-    .quick-nav {
-        background: var(--light);
-        padding: 15px 0;
-        border-bottom: 1px solid var(--gray-light);
-    }
-    
-    .quick-nav-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--gray);
-        text-decoration: none;
-        font-weight: 500;
-        transition: color 0.3s ease;
-    }
-    
-    .quick-nav-item:hover {
-        color: var(--primary);
-    }
-    
-    /* Hero Section */
-    .hero-section {
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-        color: white;
-        padding: 120px 0 100px;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .hero-section::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
-        opacity: 0.1;
-    }
-    
-    .hero-content {
-        position: relative;
-        z-index: 2;
-    }
-    
-    .hero-badge {
-        background: rgba(255, 255, 255, 0.15);
-        padding: 10px 24px;
-        border-radius: 50px;
-        font-size: 0.9em;
-        display: inline-block;
-        margin-bottom: 24px;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    
-    .hero-title {
-        font-weight: 800;
-        line-height: 1.1;
-        margin-bottom: 1.5rem;
-    }
-    
-    .hero-subtitle {
-        font-size: 1.25rem;
-        opacity: 0.9;
-        margin-bottom: 2.5rem;
-        max-width: 600px;
-    }
-    
-    .hero-image-container {
-        position: relative;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        transform: perspective(1000px) rotateY(-5deg) rotateX(5deg);
-        transition: transform 0.5s ease;
-    }
-    
-    .hero-image-container:hover {
-        transform: perspective(1000px) rotateY(0) rotateX(0);
-    }
-    
-    .hero-image-container::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-        z-index: 1;
-    }
-    
-    .hero-image {
-        width: 100%;
-        height: 500px;
-        object-fit: cover;
-    }
-    
-    .live-badge {
-        position: absolute;
-        top: 20px;
-        left: 20px;
-        z-index: 2;
-        background: var(--success);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 50px;
-        font-weight: 600;
-        font-size: 0.875rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Button Styles */
-    .btn-hero {
-        padding: 12px 32px;
-        border-radius: 50px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-    
-    .btn-hero-primary {
-        background: white;
-        color: var(--primary);
-        border: none;
-    }
-    
-    .btn-hero-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        background: white;
-        color: var(--primary-dark);
-    }
-    
-    .btn-hero-outline {
-        background: transparent;
-        color: white;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-    }
-    
-    .btn-hero-outline:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.5);
-        color: white;
-        transform: translateY(-2px);
-    }
-    
-    /* Stats Section */
-    .stats-section {
-        background: var(--light);
-        padding: 80px 0;
-    }
-    
-    .stat-item {
-        text-align: center;
-        padding: 30px;
-    }
-    
-    .stat-number {
-        font-size: 3rem;
-        font-weight: 800;
-        color: var(--primary);
-        margin-bottom: 10px;
-        line-height: 1;
-    }
-    
-    .stat-label {
-        color: var(--gray);
-        font-weight: 500;
-    }
-    
-    /* Features Section */
-    .feature-card {
-        border: none;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        transition: all 0.3s ease;
-        height: 100%;
-        overflow: hidden;
-        background: white;
-    }
-    
-    .feature-card:hover {
-        transform: translateY(-10px);
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    }
-    
-    .feature-icon {
-        width: 80px;
-        height: 80px;
-        border-radius: 20px;
-        background: linear-gradient(135deg, var(--primary), var(--accent));
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 2rem;
-        margin: 0 auto 24px;
-        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
-    }
-    
-    .feature-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-    
-    .feature-list li {
-        padding: 8px 0;
-        display: flex;
-        align-items: center;
-    }
-    
-    .feature-list i {
-        color: var(--success);
-        margin-right: 12px;
-        font-size: 0.875rem;
-    }
-    
-    /* How It Works Section */
-    .steps-section {
-        background: var(--light);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .step-card {
-        text-align: center;
-        padding: 40px 20px;
-        position: relative;
-        z-index: 1;
-    }
-    
-    .step-number {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: var(--primary);
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-        font-size: 1.5rem;
-        margin: 0 auto 20px;
-        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
-    }
-    
-    .step-connector {
-        position: absolute;
-        top: 30px;
-        left: 50%;
-        width: 100%;
-        height: 2px;
-        background: var(--gray-light);
-        z-index: 0;
-    }
-    
-    .step-connector::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 0;
-        height: 100%;
-        background: var(--primary);
-        transition: width 1s ease;
-    }
-    
-    .steps-section.in-view .step-connector::after {
-        width: 100%;
-    }
-    
-    /* Services Section */
-    .service-card {
-        border: none;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        transition: all 0.3s ease;
-        height: 100%;
-        background: white;
-    }
-    
-    .service-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    }
-    
-    .service-icon {
-        font-size: 3rem;
-        margin-bottom: 20px;
-        color: var(--primary);
-        background: linear-gradient(135deg, var(--primary), var(--accent));
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    
-    /* Doctors Section */
-    .doctor-card {
-        border: none;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        transition: all 0.3s ease;
-        height: 100%;
-        background: white;
-    }
-    
-    .doctor-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    }
-    
-    .doctor-image {
-        width: 100%;
-        height: 250px;
-        object-fit: cover;
-    }
-    
-    .doctor-specialty {
-        color: var(--primary);
-        font-weight: 600;
-        font-size: 0.9rem;
-    }
-    
-    .doctor-experience {
-        color: var(--gray);
-        font-size: 0.875rem;
-    }
-    
-    /* Testimonials */
-    .testimonials-section {
-        background: var(--light);
-    }
-    
-    .testimonial-card {
-        border: none;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        padding: 30px;
-        background: white;
-        height: 100%;
-    }
-    
-    .testimonial-avatar {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--primary), var(--accent));
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        font-size: 1.2rem;
-        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
-    }
-    
-    .testimonial-text {
-        position: relative;
-    }
-    
-    .testimonial-text::before {
-        content: '"';
-        font-size: 4rem;
-        color: var(--gray-light);
-        position: absolute;
-        top: -20px;
-        left: -10px;
-        line-height: 1;
-        z-index: 0;
-    }
-    
-    /* CTA Section */
-    .cta-section {
-        background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-dark) 100%);
-        color: white;
-        padding: 100px 0;
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .cta-section::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
-        opacity: 0.1;
-    }
-    
-    .cta-content {
-        position: relative;
-        z-index: 2;
-    }
-    
-    /* FAQ Section */
-    .faq-section {
-        background: white;
-    }
-    
-    .accordion-item {
-        border: none;
-        border-radius: 12px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-        overflow: hidden;
-    }
-    
-    .accordion-button {
-        background: white;
-        color: var(--dark);
-        font-weight: 600;
-        padding: 20px 24px;
-        border: none;
-        box-shadow: none;
-    }
-    
-    .accordion-button:not(.collapsed) {
-        background: var(--primary);
-        color: white;
-    }
-    
-    .accordion-button:focus {
-        box-shadow: none;
-        border: none;
-    }
-    
-    .accordion-body {
-        padding: 20px 24px;
-        color: var(--gray);
-    }
-    
-    /* About Section */
-    .about-section {
-        background: var(--light);
-    }
-    
-    .about-image {
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Emergency Banner */
-    .emergency-banner {
-        background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%);
-        color: white;
-        padding: 16px 0;
-        text-align: center;
-        margin-bottom: 0;
-        font-weight: 500;
-    }
-    
-    .emergency-btn {
-        background: white;
-        color: var(--danger);
-        border: none;
-        border-radius: 50px;
-        padding: 8px 20px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-    
-    .emergency-btn:hover {
-        background: rgba(255, 255, 255, 0.9);
-        color: var(--danger-dark);
-        transform: translateY(-2px);
-    }
-    
-    /* Animation Classes */
-    .fade-in {
-        opacity: 0;
-        transform: translateY(30px);
-        transition: all 0.6s ease;
-    }
-    
-    .fade-in.visible {
-        opacity: 1;
-        transform: translateY(0);
-    }
-    
-    /* Trust Badges */
-    .trust-badges {
-        display: flex;
-        justify-content: center;
-        gap: 30px;
-        margin-top: 40px;
-        flex-wrap: wrap;
-    }
-    
-    .trust-badge {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        color: var(--gray);
-        font-size: 0.9rem;
-    }
-    
-    .trust-badge i {
-        color: var(--success);
-        font-size: 1.2rem;
-    }
-    
-    /* Mobile Responsive */
-    @media (max-width: 768px) {
-        .hero-section {
-            padding: 100px 0 60px;
-            text-align: center;
-        }
-        
-        .hero-title {
-            font-size: 2.5rem;
-        }
-        
-        .hero-image-container {
-            transform: none;
-            margin-top: 40px;
-        }
-        
-        .stat-number {
-            font-size: 2.5rem;
-        }
-        
-        .step-connector {
-            display: none;
-        }
-        
-        .trust-badges {
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .quick-nav {
-            display: none;
-        }
-    }
-    
-    @media (max-width: 576px) {
-        .hero-title {
-            font-size: 2rem;
-        }
-        
-        .section-padding {
-            padding: 60px 0;
-        }
-        
-        .btn-hero {
-            width: 100%;
-            margin-bottom: 10px;
-        }
-    }
-</style>
+<!-- Index page styles are in static/css/style.css -->
 {% endblock %}
 
+{% set _h = site.hero if site and site.hero else {} %}
 {% block content %}
-<!-- Quick Navigation -->
-<div class="quick-nav d-none d-md-block">
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-auto">
-                <a href="#about" class="quick-nav-item">
-                    <i class="fas fa-info-circle"></i> About Us
-                </a>
-            </div>
-            <div class="col-auto">
-                <a href="#services" class="quick-nav-item">
-                    <i class="fas fa-stethoscope"></i> Services
-                </a>
-            </div>
-            <div class="col-auto">
-                <a href="#doctors" class="quick-nav-item">
-                    <i class="fas fa-user-md"></i> Our Doctors
-                </a>
-            </div>
-            <div class="col-auto">
-                <a href="#how-it-works" class="quick-nav-item">
-                    <i class="fas fa-play-circle"></i> How It Works
-                </a>
-            </div>
-            <div class="col-auto">
-                <a href="#testimonials" class="quick-nav-item">
-                    <i class="fas fa-comments"></i> Testimonials
-                </a>
-            </div>
-            <div class="col-auto">
-                <a href="#faq" class="quick-nav-item">
-                    <i class="fas fa-question-circle"></i> FAQ
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Hero Section -->
 <section class="hero-section">
     <div class="container">
         <div class="row align-items-center">
             <div class="col-lg-6 hero-content">
                 <span class="hero-badge">
-                    <i class="fas fa-shield-alt me-2"></i>Secure Telemedicine Platform
+                    <i class="fas fa-shield-alt me-2"></i>{{ _h.badge_text|default('Secure Telemedicine Platform',true) }}
                 </span>
-                <h1 class="hero-title display-4 fw-bold">Quality Healthcare From The Comfort Of Your Home</h1>
-                <p class="hero-subtitle">MAKOKHA MEDICAL CENTRE brings expert medical care to you through our advanced telemedicine platform. Connect with certified healthcare professionals anytime, anywhere.</p>
+                <h1 class="hero-title display-4 fw-bold">{{ _h.title|default('Quality Healthcare From The Comfort Of Your Home',true) }}</h1>
+                <p class="hero-subtitle">{{ _h.subtitle|default('MAKOKHA MEDICAL CENTRE brings expert medical care to you through our advanced telemedicine platform. Connect with certified healthcare professionals anytime, anywhere.',true) }}</p>
                 <div class="d-flex flex-wrap gap-3 mb-4">
                     {% if not current_user.is_authenticated %}
                     <a href="{{ url_for('signup') }}" class="btn btn-hero btn-hero-primary">
-                        <i class="fas fa-user-plus me-2"></i>Get Started Free
+                        <i class="fas fa-user-plus me-2"></i>{{ _h.cta_primary_text|default('Get Started Free',true) }}
                     </a>
                     <a href="{{ url_for('login') }}" class="btn btn-hero btn-hero-outline">
                         <i class="fas fa-sign-in-alt me-2"></i>Patient Login
@@ -671,36 +32,70 @@
                         <i class="fas fa-tachometer-alt me-2"></i>Go to Dashboard
                     </a>
                     {% endif %}
-                    <a href="#how-it-works" class="btn btn-hero btn-hero-outline">
-                        <i class="fas fa-play-circle me-2"></i>How It Works
+                    <a href="{{ url_for('about') }}" class="btn btn-hero btn-hero-outline">
+                        <i class="fas fa-play-circle me-2"></i>{{ _h.cta_secondary_text|default('How It Works',true) }}
                     </a>
                 </div>
                 <div class="trust-badges">
                     <div class="trust-badge">
                         <i class="fas fa-check-circle"></i>
-                        <span>No registration fees</span>
+                        <span>{{ _h.trust_badge_1|default('No registration fees',true) }}</span>
                     </div>
                     <div class="trust-badge">
                         <i class="fas fa-shield-alt"></i>
-                        <span>HIPAA compliant</span>
+                        <span>{{ _h.trust_badge_2|default('HIPAA compliant',true) }}</span>
                     </div>
                     <div class="trust-badge">
                         <i class="fas fa-clock"></i>
-                        <span>24/7 Support</span>
+                        <span>{{ _h.trust_badge_3|default('24/7 Support',true) }}</span>
                     </div>
                 </div>
             </div>
             <div class="col-lg-6">
-                <div class="hero-image-container fade-in">
-                    <img src="{{ url_for('static', filename='images/hero-telemedicine.jpg') }}"
-                        data-fallback="{{ url_for('static', filename='images/hero-telemedicine.svg') }}"
-                        data-remote="https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-                        alt="Telemedicine Consultation"
-                        class="hero-image"
-                        onerror="this.onerror=null;this.src=this.dataset.fallback;">
-                    <div class="live-badge">
-                        <i class="fas fa-video me-1"></i>Live Now
+                <div id="heroCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="5000">
+                    <div class="carousel-indicators">
+                        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="0" class="active" title="Slide 1" aria-label="Slide 1"></button>
+                        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="1" title="Slide 2" aria-label="Slide 2"></button>
+                        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="2" title="Slide 3" aria-label="Slide 3"></button>
                     </div>
+                    <div class="carousel-inner carousel-inner-rounded">
+                        <div class="carousel-item active">
+                            <img src="{% if _h.carousel_image_1 %}{{ url_for('static', filename=_h.carousel_image_1) }}{% else %}{{ url_for('static', filename='images/hero-telemedicine.jpg') }}{% endif %}"
+                                data-fallback="{{ url_for('static', filename='images/hero-telemedicine.svg') }}"
+                                data-remote="https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                                alt="Telemedicine Consultation"
+                                class="d-block w-100 carousel-img-hero"
+                                onerror="this.onerror=null;this.src=this.dataset.fallback;">
+                            <div class="carousel-caption d-none d-md-block carousel-caption-overlay">
+                                <h5><i class="fas fa-video me-2"></i>{{ _h.carousel_caption_1_title|default('Video Consultations',true) }}</h5>
+                                <p class="mb-0">{{ _h.carousel_caption_1_text|default('Connect face-to-face with certified doctors from home',true) }}</p>
+                            </div>
+                        </div>
+                        <div class="carousel-item">
+                            <div class="d-flex align-items-center justify-content-center w-100 hero-slide-purple">
+                                <div class="text-center text-white p-4">
+                                    <i class="fas fa-prescription-bottle-alt fa-4x mb-3"></i>
+                                    <h4>{{ _h.carousel_caption_2_title|default('E-Prescriptions',true) }}</h4>
+                                    <p class="mb-0">{{ _h.carousel_caption_2_text|default('Get prescriptions sent directly to your pharmacy',true) }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="carousel-item">
+                            <div class="d-flex align-items-center justify-content-center w-100 hero-slide-green">
+                                <div class="text-center text-white p-4">
+                                    <i class="fas fa-calendar-check fa-4x mb-3"></i>
+                                    <h4>{{ _h.carousel_caption_3_title|default('Easy Scheduling',true) }}</h4>
+                                    <p class="mb-0">{{ _h.carousel_caption_3_text|default('Book appointments in minutes, see a doctor today',true) }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="carousel-control-prev" type="button" data-bs-target="#heroCarousel" data-bs-slide="prev" title="Previous slide" aria-label="Previous slide">
+                        <span class="carousel-control-prev-icon"></span>
+                    </button>
+                    <button class="carousel-control-next" type="button" data-bs-target="#heroCarousel" data-bs-slide="next" title="Next slide" aria-label="Next slide">
+                        <span class="carousel-control-next-icon"></span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -769,6 +164,7 @@ setInterval(fetchTestimonials, 20000);
 </script>
 
 <!-- Stats Section -->
+{% set _s = site.stats if site and site.stats else {} %}
 <section class="stats-section">
     <div class="container">
         <div class="row text-center">
@@ -785,71 +181,22 @@ setInterval(fetchTestimonials, 20000);
                 <div class="stat-label">Appointments</div>
             </div>
             <div class="col-md-3 col-6 stat-item fade-in">
-                <div class="stat-number" data-count="{{ stats.satisfaction_rate }}">0</div>
+                <div class="stat-number" data-count="{{ _s.satisfaction_rate|default(stats.satisfaction_rate,true) }}">0</div>
                 <div class="stat-label">% Satisfaction</div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- About Section -->
-<section id="about" class="about-section section-padding">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-lg-6 mb-5 mb-lg-0">
-                <div class="about-image fade-in">
-                    <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" 
-                         alt="MAKOKHA MEDICAL CENTRE" 
-                         class="img-fluid">
-                </div>
-            </div>
-            <div class="col-lg-6">
-                <div class="ps-lg-5">
-                    <h2 class="section-title">About MAKOKHA MEDICAL CENTRE</h2>
-                    <p class="text-muted mb-4">
-                        Founded with a vision to make quality healthcare accessible to everyone, MAKOKHA MEDICAL CENTRE has been serving the community with excellence in medical care for over 15 years.
-                    </p>
-                    <p class="text-muted mb-4">
-                        Our telemedicine platform represents our commitment to innovation in healthcare delivery, ensuring that patients receive timely, professional medical attention regardless of their location.
-                    </p>
-                    <div class="row">
-                        <div class="col-sm-6">
-                            <div class="d-flex align-items-center mb-3">
-                                <div class="feature-icon me-3" style="width: 50px; height: 50px; font-size: 1.2rem;">
-                                    <i class="fas fa-award"></i>
-                                </div>
-                                <div>
-                                    <h6 class="mb-1">Certified Excellence</h6>
-                                    <small class="text-muted">Accredited healthcare facility</small>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6">
-                            <div class="d-flex align-items-center mb-3">
-                                <div class="feature-icon me-3" style="width: 50px; height: 50px; font-size: 1.2rem;">
-                                    <i class="fas fa-users"></i>
-                                </div>
-                                <div>
-                                    <h6 class="mb-1">Expert Team</h6>
-                                    <small class="text-muted">Qualified medical professionals</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <a href="{{ url_for('about') }}" class="btn btn-primary mt-3">Learn More About Us</a>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
 
 <!-- Features Section -->
+{% set _feat = site.features if site and site.features else {} %}
 <section class="section-padding">
     <div class="container">
         <div class="row mb-5">
             <div class="col-12 text-center">
-                <h2 class="section-title">Why Choose Our Telemedicine Platform?</h2>
-                <p class="section-subtitle">Experience healthcare that comes to you with our comprehensive telemedicine solutions</p>
+                <h2 class="section-title">{{ _feat.section_title|default('Why Choose Our Telemedicine Platform?',true) }}</h2>
+                <p class="section-subtitle">{{ _feat.section_subtitle|default('Experience healthcare that comes to you with our comprehensive telemedicine solutions',true) }}</p>
             </div>
         </div>
         <div class="row g-4">
@@ -857,11 +204,11 @@ setInterval(fetchTestimonials, 20000);
                 <div class="card feature-card fade-in">
                     <div class="card-body text-center p-4">
                         <div class="feature-icon">
-                            <i class="fas fa-video"></i>
+                            <i class="{{ _feat.feature_1_icon|default('fas fa-video',true) }}"></i>
                         </div>
-                        <h4 class="card-title mb-3">Video Consultations</h4>
+                        <h4 class="card-title mb-3">{{ _feat.feature_1_title|default('Video Consultations',true) }}</h4>
                         <p class="card-text text-muted mb-4">
-                            Face-to-face virtual appointments with board-certified doctors from the comfort of your home.
+                            {{ _feat.feature_1_text|default('Face-to-face virtual appointments with board-certified doctors from the comfort of your home.',true) }}
                         </p>
                         <ul class="feature-list text-start">
                             <li><i class="fas fa-check"></i>HD Quality Video</li>
@@ -875,11 +222,11 @@ setInterval(fetchTestimonials, 20000);
                 <div class="card feature-card fade-in">
                     <div class="card-body text-center p-4">
                         <div class="feature-icon">
-                            <i class="fas fa-file-medical"></i>
+                            <i class="{{ _feat.feature_2_icon|default('fas fa-file-medical',true) }}"></i>
                         </div>
-                        <h4 class="card-title mb-3">Digital Prescriptions</h4>
+                        <h4 class="card-title mb-3">{{ _feat.feature_2_title|default('Digital Prescriptions',true) }}</h4>
                         <p class="card-text text-muted mb-4">
-                            Get prescriptions sent directly to your pharmacy without visiting a physical clinic.
+                            {{ _feat.feature_2_text|default('Get prescriptions sent directly to your pharmacy without visiting a physical clinic.',true) }}
                         </p>
                         <ul class="feature-list text-start">
                             <li><i class="fas fa-check"></i>Instant Delivery</li>
@@ -893,11 +240,11 @@ setInterval(fetchTestimonials, 20000);
                 <div class="card feature-card fade-in">
                     <div class="card-body text-center p-4">
                         <div class="feature-icon">
-                            <i class="fas fa-shield-alt"></i>
+                            <i class="{{ _feat.feature_3_icon|default('fas fa-shield-alt',true) }}"></i>
                         </div>
-                        <h4 class="card-title mb-3">Secure & Private</h4>
+                        <h4 class="card-title mb-3">{{ _feat.feature_3_title|default('Secure & Private',true) }}</h4>
                         <p class="card-text text-muted mb-4">
-                            Your health information is protected with enterprise-grade security and HIPAA compliance.
+                            {{ _feat.feature_3_text|default('Your health information is protected with enterprise-grade security and HIPAA compliance.',true) }}
                         </p>
                         <ul class="feature-list text-start">
                             <li><i class="fas fa-check"></i>End-to-End Encryption</li>
@@ -911,228 +258,70 @@ setInterval(fetchTestimonials, 20000);
     </div>
 </section>
 
-<!-- How It Works Section -->
-<section id="how-it-works" class="steps-section section-padding">
-    <div class="container">
-        <div class="row mb-5">
-            <div class="col-12 text-center">
-                <h2 class="section-title">How Our Telemedicine Works</h2>
-                <p class="section-subtitle">Get quality healthcare in three simple steps</p>
-            </div>
-        </div>
-        <div class="row position-relative">
-            <div class="step-connector d-none d-lg-block"></div>
-            <div class="col-lg-4">
-                <div class="step-card fade-in">
-                    <div class="step-number">1</div>
-                    <h4 class="mb-3">Create Your Account</h4>
-                    <p class="text-muted">Sign up and complete your medical profile in minutes. It's free and secure.</p>
-                    <div class="mt-4">
-                        <i class="fas fa-user-circle fa-2x text-primary"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-4">
-                <div class="step-card fade-in">
-                    <div class="step-number">2</div>
-                    <h4 class="mb-3">Book Appointment</h4>
-                    <p class="text-muted">Choose your preferred doctor, select appointment type, and pick a time that works for you.</p>
-                    <div class="mt-4">
-                        <i class="fas fa-calendar-check fa-2x text-primary"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-4">
-                <div class="step-card fade-in">
-                    <div class="step-number">3</div>
-                    <h4 class="mb-3">Connect & Consult</h4>
-                    <p class="text-muted">Join your appointment via video, voice, or chat and receive professional medical care.</p>
-                    <div class="mt-4">
-                        <i class="fas fa-video fa-2x text-primary"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row mt-5">
-            <div class="col-12 text-center">
-                {% if not current_user.is_authenticated %}
-                <a href="{{ url_for('signup') }}" class="btn btn-primary btn-lg px-5 py-3">
-                    <i class="fas fa-rocket me-2"></i>Start Your Journey
-                </a>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</section>
 
-<!-- Services Section -->
-<section id="services" class="section-padding">
+
+
+
+<!-- Health Tips Section -->
+{% set _ht = site.health_tips if site and site.health_tips else {} %}
+<section id="health-tips" class="section-padding bg-light">
     <div class="container">
         <div class="row mb-5">
             <div class="col-12 text-center">
-                <h2 class="section-title">Our Medical Services</h2>
-                <p class="section-subtitle">Comprehensive healthcare services available through telemedicine</p>
+                <h2 class="section-title">{{ _ht.section_title|default('Health Tips & Guidance',true) }}</h2>
+                <p class="section-subtitle">{{ _ht.section_subtitle|default('Expert advice to keep you and your family healthy',true) }}</p>
             </div>
         </div>
         <div class="row g-4">
-            <div class="col-lg-3 col-md-6">
-                <div class="card service-card h-100 fade-in">
-                    <div class="card-body text-center p-4">
-                        <div class="service-icon">
-                            <i class="fas fa-heartbeat"></i>
+            <div class="col-lg-4 col-md-6">
+                <div class="card h-100 border-0 shadow-sm fade-in">
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <span class="badge bg-{{ _ht.tip_1_badge_color|default('success',true) }}"><i class="{{ _ht.tip_1_icon|default('fas fa-apple-alt',true) }} me-1"></i>{{ _ht.tip_1_badge|default('Nutrition',true) }}</span>
                         </div>
-                        <h5 class="mb-3">Primary Care</h5>
-                        <p class="text-muted">Routine check-ups, chronic condition management, and general health consultations.</p>
+                        <h5 class="card-title">{{ _ht.tip_1_title|default('Boost Your Immunity Naturally',true) }}</h5>
+                        <p class="text-muted">{{ _ht.tip_1_text|default('A balanced diet rich in vitamins C & D, zinc, and antioxidants strengthens your immune system. Include citrus fruits, leafy greens, and nuts in your daily meals.',true) }}</p>
+                        <small class="text-muted"><i class="fas fa-user-md me-1"></i>Medical Team</small>
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6">
-                <div class="card service-card h-100 fade-in">
-                    <div class="card-body text-center p-4">
-                        <div class="service-icon">
-                            <i class="fas fa-brain"></i>
+            <div class="col-lg-4 col-md-6">
+                <div class="card h-100 border-0 shadow-sm fade-in">
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <span class="badge bg-{{ _ht.tip_2_badge_color|default('primary',true) }}"><i class="{{ _ht.tip_2_icon|default('fas fa-heartbeat',true) }} me-1"></i>{{ _ht.tip_2_badge|default('Wellness',true) }}</span>
                         </div>
-                        <h5 class="mb-3">Mental Health</h5>
-                        <p class="text-muted">Therapy sessions, counseling, and mental health support with licensed professionals.</p>
+                        <h5 class="card-title">{{ _ht.tip_2_title|default('Managing Stress in the Digital Age',true) }}</h5>
+                        <p class="text-muted">{{ _ht.tip_2_text|default('Practice mindfulness, take regular screen breaks, and maintain a consistent sleep schedule. Even 10 minutes of daily meditation can reduce anxiety significantly.',true) }}</p>
+                        <small class="text-muted"><i class="fas fa-user-md me-1"></i>Medical Team</small>
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6">
-                <div class="card service-card h-100 fade-in">
-                    <div class="card-body text-center p-4">
-                        <div class="service-icon">
-                            <i class="fas fa-baby"></i>
+            <div class="col-lg-4 col-md-6">
+                <div class="card h-100 border-0 shadow-sm fade-in">
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <span class="badge bg-{{ _ht.tip_3_badge_color|default('info',true) }}"><i class="{{ _ht.tip_3_icon|default('fas fa-laptop-medical',true) }} me-1"></i>{{ _ht.tip_3_badge|default('Telemedicine',true) }}</span>
                         </div>
-                        <h5 class="mb-3">Pediatrics</h5>
-                        <p class="text-muted">Child healthcare, developmental assessments, and parental guidance.</p>
+                        <h5 class="card-title">{{ _ht.tip_3_title|default('When to Use Telemedicine',true) }}</h5>
+                        <p class="text-muted">{{ _ht.tip_3_text|default('Telemedicine is ideal for follow-ups, prescription refills, mental health sessions, and non-emergency consultations. Save time and get care from home.',true) }}</p>
+                        <small class="text-muted"><i class="fas fa-user-md me-1"></i>Medical Team</small>
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6">
-                <div class="card service-card h-100 fade-in">
-                    <div class="card-body text-center p-4">
-                        <div class="service-icon">
-                            <i class="fas fa-user-md"></i>
-                        </div>
-                        <h5 class="mb-3">Specialist Care</h5>
-                        <p class="text-muted">Access to various medical specialists for comprehensive healthcare.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Doctors Section -->
-<section id="doctors" class="section-padding bg-light">
-    <div class="container">
-        <div class="row mb-5">
-            <div class="col-12 text-center">
-                <h2 class="section-title">Meet Our Doctors</h2>
-                <p class="section-subtitle">Our team of certified healthcare professionals</p>
-            </div>
-        </div>
-        <div class="row g-4">
-            {% if doctors %}
-                {% for doctor, user in doctors %}
-                <div class="col-lg-4 col-md-6">
-                    <div class="card doctor-card fade-in position-relative">
-                            <img src="{{ url_for('profile_picture', user_id=user.id) }}" alt="Dr. {{ user.first_name }} {{ user.last_name }}" class="doctor-image" style="object-fit:cover;">
-                        <div class="card-body text-center p-4">
-                            <h5 class="card-title mb-1">Dr. {{ user.first_name }} {{ user.last_name }}</h5>
-                            <p class="doctor-specialty mb-2">{{ doctor.specialization }}</p>
-                            <p class="doctor-experience mb-3">{{ doctor.experience_years }} years experience</p>
-                            <!-- Average Rating Display -->
-                            <div class="mb-3" id="doctor-rating-{{ doctor.id }}">
-                                <div class="d-flex justify-content-center gap-2 mb-2">
-                                    <span class="badge bg-warning text-dark" id="doctor-avg-{{ doctor.id }}">Loading...</span>
-                                </div>
-                                <small class="text-muted d-block" id="doctor-reviews-{{ doctor.id }}"></small>
-                            </div>
-                            <!-- Action Buttons -->
-                            <div class="d-flex gap-2 justify-content-center">
-                                <button class="btn btn-outline-primary btn-sm" onclick="viewDoctorProfileFromIndex({{ doctor.id }})">
-                                    <i class="fas fa-info-circle me-1"></i>Profile & Reviews
-                                </button>
-                                <a href="{{ url_for('doctor_profile', doctor_id=doctor.id) }}" class="btn btn-outline-secondary btn-sm">View Full</a>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Doctor Reviews Carousel -->
-                    <div id="doctor-reviews-container-{{ doctor.id }}" class="mt-3" style="display:none;">
-                        <!-- Reviews will be loaded here -->
-                    </div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="col-12 text-center">
-                    <p class="text-muted">Our doctor profiles are being updated. Please check back soon.</p>
-                </div>
-            {% endif %}
-        </div>
-        <div class="row mt-5">
-            <div class="col-12 text-center">
-                <a href="{{ url_for('doctors') }}" class="btn btn-primary">View All Doctors</a>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Testimonials Section -->
-<section id="testimonials" class="testimonials-section section-padding">
-    <div class="container">
-        <div class="row mb-5">
-            <div class="col-12 text-center">
-                <h2 class="section-title">What Our Patients Say</h2>
-                <p class="section-subtitle">Real stories from our satisfied patients</p>
-            </div>
-        </div>
-        <div class="row g-4" id="testimonials-row">
-            {% if testimonials %}
-                {% for testimonial in testimonials %}
-                <div class="col-lg-4">
-                    <div class="testimonial-card fade-in">
-                        <div class="d-flex align-items-center mb-4">
-                            {% if testimonial.patient and testimonial.patient.user %}
-                                <img src="{{ url_for('profile_picture', user_id=testimonial.patient.user.id) }}" alt="Profile" class="testimonial-avatar me-3" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
-                            {% else %}
-                                <div class="testimonial-avatar me-3">P</div>
-                            {% endif %}
-                            <div>
-                                <h6 class="mb-1 fw-bold">{{ testimonial.patient.user.get_display_name() if testimonial.patient and testimonial.patient.user else 'Patient' }}</h6>
-                                <small class="text-muted">Dr. {{ testimonial.doctor.user.get_display_name() if testimonial.doctor and testimonial.doctor.user else '' }}</small>
-                            </div>
-                        </div>
-                        <div class="testimonial-text">
-                            <p class="text-muted mb-0">
-                                "{{ testimonial.content }}"
-                            </p>
-                        </div>
-                        <div class="text-warning mt-3">
-                            {% for i in range(testimonial.rating) %}
-                                <i class="fas fa-star"></i>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="col-12 text-center">
-                    <p class="text-muted">Patient testimonials will be displayed here.</p>
-                </div>
-            {% endif %}
         </div>
     </div>
 </section>
 
 <!-- CTA Section -->
+{% set _cta = site.cta if site and site.cta else {} %}
 <section class="cta-section">
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-8 text-center cta-content">
-                <h2 class="display-5 fw-bold mb-4">Ready to Experience Modern Healthcare?</h2>
+                <h2 class="display-5 fw-bold mb-4">{{ _cta.title|default('Ready to Experience Modern Healthcare?',true) }}</h2>
                 <p class="lead mb-5 opacity-90">
-                    Join thousands of patients who have transformed their healthcare experience with our telemedicine platform.
+                    {{ _cta.subtitle|default('Join thousands of patients who have transformed their healthcare experience with our telemedicine platform.',true) }}
                 </p>
                 <div class="d-flex flex-wrap justify-content-center gap-3">
                     {% if not current_user.is_authenticated %}
@@ -1162,12 +351,13 @@ setInterval(fetchTestimonials, 20000);
 </section>
 
 <!-- FAQ Section -->
+{% set _faq = site.faq if site and site.faq else {} %}
 <section id="faq" class="faq-section section-padding">
     <div class="container">
         <div class="row mb-5">
             <div class="col-12 text-center">
-                <h2 class="section-title">Frequently Asked Questions</h2>
-                <p class="section-subtitle">Get answers to common questions about our telemedicine services</p>
+                <h2 class="section-title">{{ _faq.section_title|default('Frequently Asked Questions',true) }}</h2>
+                <p class="section-subtitle">{{ _faq.section_subtitle|default('Get answers to common questions about our telemedicine services',true) }}</p>
             </div>
         </div>
         <div class="row justify-content-center">
@@ -1176,48 +366,48 @@ setInterval(fetchTestimonials, 20000);
                     <div class="accordion-item fade-in">
                         <h2 class="accordion-header">
                             <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
-                                How does telemedicine work?
+                                {{ _faq.faq_1_q|default('How does telemedicine work?',true) }}
                             </button>
                         </h2>
                         <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
                             <div class="accordion-body">
-                                Telemedicine allows you to consult with healthcare providers remotely using video, voice, or messaging. You can schedule appointments, have virtual consultations, receive prescriptions, and get medical advice without visiting a physical clinic.
+                                {{ _faq.faq_1_a|default('Telemedicine allows you to consult with healthcare providers remotely using video, voice, or messaging. You can schedule appointments, have virtual consultations, receive prescriptions, and get medical advice without visiting a physical clinic.',true) }}
                             </div>
                         </div>
                     </div>
                     <div class="accordion-item fade-in">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
-                                Is telemedicine secure and private?
+                                {{ _faq.faq_2_q|default('Is telemedicine secure and private?',true) }}
                             </button>
                         </h2>
                         <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                             <div class="accordion-body">
-                                Yes, we use enterprise-grade security measures including end-to-end encryption, secure servers, and comply with HIPAA regulations to ensure your health information remains private and secure.
+                                {{ _faq.faq_2_a|default('Yes, we use enterprise-grade security measures including end-to-end encryption, secure servers, and comply with HIPAA regulations to ensure your health information remains private and secure.',true) }}
                             </div>
                         </div>
                     </div>
                     <div class="accordion-item fade-in">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
-                                Can I get prescriptions through telemedicine?
+                                {{ _faq.faq_3_q|default('Can I get prescriptions through telemedicine?',true) }}
                             </button>
                         </h2>
                         <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                             <div class="accordion-body">
-                                Yes, our licensed healthcare providers can prescribe medications when appropriate. Prescriptions are sent electronically to your preferred pharmacy for convenient pickup.
+                                {{ _faq.faq_3_a|default('Yes, our licensed healthcare providers can prescribe medications when appropriate. Prescriptions are sent electronically to your preferred pharmacy for convenient pickup.',true) }}
                             </div>
                         </div>
                     </div>
                     <div class="accordion-item fade-in">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
-                                What equipment do I need for a telemedicine appointment?
+                                {{ _faq.faq_4_q|default('What equipment do I need for a telemedicine appointment?',true) }}
                             </button>
                         </h2>
                         <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                             <div class="accordion-body">
-                                You need a smartphone, tablet, or computer with a camera and microphone, plus a stable internet connection. Our platform works on all major browsers and devices.
+                                {{ _faq.faq_4_a|default('You need a smartphone, tablet, or computer with a camera and microphone, plus a stable internet connection. Our platform works on all major browsers and devices.',true) }}
                             </div>
                         </div>
                     </div>
@@ -1228,44 +418,51 @@ setInterval(fetchTestimonials, 20000);
 </section>
 
 <!-- Contact Us Section -->
+{% set _ct = site.contact if site and site.contact else {} %}
 <section id="contact" class="contact-section section-padding bg-white">
     <div class="container">
         <div class="row mb-4">
             <div class="col-12 text-center">
-                <h2 class="section-title">Contact Us</h2>
-                <p class="section-subtitle">We're here to help — reach out via phone, WhatsApp or message.</p>
+                <h2 class="section-title">{{ _ct.section_title|default('Contact Us',true) }}</h2>
+                <p class="section-subtitle">{{ _ct.section_subtitle|default("We're here to help — reach out via phone, WhatsApp or message.",true) }}</p>
             </div>
         </div>
         <div class="row justify-content-center">
             <div class="col-lg-8">
-                <div class="row g-2" style="font-size:0.95em;">
+                <div class="row g-2 contact-row-sm">
                     <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
                         <span class="footer-contact-icon phone"><i class="fas fa-phone"></i></span>
-                        <a href="tel:+254741256531/+254 713580997" class="text-dark text-decoration-none">+254 741256531/+254 713580997</a>
+                        <span>
+                            <a href="tel:{{ _ct.phone_1|default('+254741256531',true) }}" class="text-dark text-decoration-none">{{ _ct.phone_1|default('+254 741256531',true) }}</a>
+                            / <a href="tel:{{ _ct.phone_2|default('+254713580997',true) }}" class="text-dark text-decoration-none">{{ _ct.phone_2|default('+254 713580997',true) }}</a>
+                        </span>
                     </div>
                     <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
                         <span class="footer-contact-icon whatsapp"><i class="fab fa-whatsapp"></i></span>
-                        <a href="https://wa.me/254741256531/+254 713580997" target="_blank" class="text-success text-decoration-none">0741256531/+254 713580997</a>
+                        <span>
+                            <a href="https://wa.me/{{ _ct.whatsapp_1|default('254741256531',true) }}" target="_blank" rel="noopener noreferrer" class="text-success text-decoration-none">{{ _ct.whatsapp_1_display|default('0741256531',true) }}</a>
+                            / <a href="https://wa.me/{{ _ct.whatsapp_2|default('254713580997',true) }}" target="_blank" rel="noopener noreferrer" class="text-success text-decoration-none">{{ _ct.whatsapp_2_display|default('0713580997',true) }}</a>
+                        </span>
                     </div>
                     <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
                         <span class="footer-contact-icon message"><i class="fas fa-envelope"></i></span>
-                        <a href="mailto:makokhamedicalcentre@gmail.com" class="text-primary text-decoration-none">makokhamedicalcentre@gmail.com</a>
+                        <a href="mailto:{{ _ct.email|default('makokhamedicalcentre@gmail.com',true) }}" class="text-primary text-decoration-none">{{ _ct.email|default('makokhamedicalcentre@gmail.com',true) }}</a>
                     </div>
                     <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
                         <span class="social-icon facebook"><i class="fab fa-facebook-f"></i></span>
-                        <a href="https://facebook.com/makokhamedical" target="_blank" class="text-primary text-decoration-none">@makokhamedical</a>
+                        <a href="{{ _ct.facebook_url|default('https://facebook.com/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="text-primary text-decoration-none">{{ _ct.facebook_handle|default('@makokhamedical',true) }}</a>
                     </div>
                     <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
                         <span class="social-icon telegram"><i class="fab fa-telegram-plane"></i></span>
-                        <a href="https://t.me/makokhamedical" target="_blank" class="text-info text-decoration-none">@makokhamedical</a>
+                        <a href="{{ _ct.telegram_url|default('https://t.me/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="text-info text-decoration-none">{{ _ct.telegram_handle|default('@makokhamedical',true) }}</a>
                     </div>
                     <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
                         <span class="social-icon instagram"><i class="fab fa-instagram"></i></span>
-                        <a href="https://instagram.com/makokhamedical" target="_blank" class="text-danger text-decoration-none">@makokhamedical</a>
+                        <a href="{{ _ct.instagram_url|default('https://instagram.com/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="text-danger text-decoration-none">{{ _ct.instagram_handle|default('@makokhamedical',true) }}</a>
                     </div>
                     <div class="col-12 col-md-4 d-flex align-items-center gap-2 mb-2">
                         <span class="social-icon twitter"><i class="fab fa-twitter"></i></span>
-                        <a href="https://twitter.com/makokhamedical" target="_blank" class="text-dark text-decoration-none">@makokhamedicaltelemed</a>
+                        <a href="{{ _ct.twitter_url|default('https://twitter.com/makokhamedical',true) }}" target="_blank" rel="noopener noreferrer" class="text-dark text-decoration-none">{{ _ct.twitter_handle|default('@makokhamedicaltelemed',true) }}</a>
                     </div>
                 </div>
             </div>

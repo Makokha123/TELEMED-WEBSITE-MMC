@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+
+{% block title %}Customer Care Dashboard - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease;
+    }
+    .stats-card:hover { transform: translateY(-5px); }
+    .stats-icon { font-size: 2.5rem; opacity: 0.8; }
+    .conversation-list { max-height: calc(100vh - 260px); overflow-y: auto; }
+    .conversation-item {
+        padding: 12px 16px;
+        border-bottom: 1px solid #e9ecef;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .conversation-item:hover, .conversation-item.active { background: #e8f0fe; }
+    .conversation-item .badge { font-size: 0.7rem; }
+    .chat-container { display: flex; flex-direction: column; height: calc(100vh - 260px); }
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        background: #f8f9fa;
+    }
+    .chat-input { padding: 12px 16px; border-top: 1px solid #dee2e6; background: #fff; }
+    .message-bubble {
+        max-width: 70%;
+        padding: 10px 14px;
+        border-radius: 16px;
+        margin-bottom: 8px;
+        word-wrap: break-word;
+    }
+    .message-bubble.agent { background: #0d6efd; color: #fff; margin-left: auto; }
+    .message-bubble.user { background: #e9ecef; color: #212529; }
+    .message-bubble.system { background: #fff3cd; color: #856404; margin: 8px auto; text-align: center; font-size: 0.85rem; }
+    .message-meta { font-size: 0.75rem; opacity: 0.7; margin-top: 2px; }
+    .no-conversation { display: flex; align-items: center; justify-content: center; height: 100%; color: #6c757d; }
+    .unread-badge { width: 20px; height: 20px; font-size: 0.7rem; display: inline-flex; align-items: center; justify-content: center; }
+    .priority-high { border-left: 3px solid #dc3545; }
+    .priority-normal { border-left: 3px solid #ffc107; }
+    .priority-low { border-left: 3px solid #28a745; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-dot.open { background: #ffc107; }
+    .status-dot.assigned { background: #0d6efd; }
+    .status-dot.closed { background: #6c757d; }
+    .hidden { display: none !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="mb-1"><i class="fas fa-headset me-2"></i>Customer Care Dashboard</h3>
+            <p class="text-muted mb-0">Welcome, {{ current_user.get_display_name() }}</p>
+        </div>
+        <div>
+            <span class="badge bg-success" id="onlineStatus"><i class="fas fa-circle me-1"></i> Online</span>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stats-card bg-warning text-white">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Unassigned</h6>
+                        <h2 class="mb-0" id="statUnassigned">{{ unassigned|length }}</h2>
+                    </div>
+                    <i class="fas fa-inbox stats-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card bg-primary text-white">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">My Active</h6>
+                        <h2 class="mb-0" id="statActive">{{ conversations|selectattr('status','equalto','assigned')|list|length }}</h2>
+                    </div>
+                    <i class="fas fa-comments stats-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card bg-success text-white">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Resolved Today</h6>
+                        <h2 class="mb-0" id="statResolved">{{ conversations|selectattr('status','equalto','closed')|list|length }}</h2>
+                    </div>
+                    <i class="fas fa-check-circle stats-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card bg-info text-white">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">Total Queue</h6>
+                        <h2 class="mb-0" id="statTotal">{{ (conversations|length) + (unassigned|length) }}</h2>
+                    </div>
+                    <i class="fas fa-layer-group stats-icon"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content: Conversations + Chat -->
+    <div class="row">
+        <!-- Left Panel: Conversation List -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">Conversations</h6>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-outline-primary active" onclick="filterConversations('all')" id="filterAll">All</button>
+                        <button class="btn btn-outline-warning" onclick="filterConversations('open')" id="filterOpen">Open</button>
+                        <button class="btn btn-outline-primary" onclick="filterConversations('assigned')" id="filterAssigned">Mine</button>
+                        <button class="btn btn-outline-secondary" onclick="filterConversations('closed')" id="filterClosed">Closed</button>
+                    </div>
+                </div>
+                <div class="conversation-list" id="conversationList">
+                    <div class="text-center text-muted py-4 hidden" id="noConversations">
+                        <i class="fas fa-inbox fa-2x mb-2"></i>
+                        <p>No conversations yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Chat Area -->
+        <div class="col-md-8">
+            <div class="card">
+                <!-- Chat Header -->
+                <div class="card-header d-flex justify-content-between align-items-center" id="chatHeader">
+                    <div id="chatHeaderInfo">
+                        <h6 class="mb-0 text-muted">Select a conversation</h6>
+                    </div>
+                    <div id="chatHeaderActions" class="hidden">
+                        <button class="btn btn-sm btn-outline-success me-1" onclick="assignConversation()" id="btnAssign" title="Pick up this conversation">
+                            <i class="fas fa-hand-paper"></i> Pick Up
+                        </button>
+                        <button class="btn btn-sm btn-outline-info me-1" onclick="sendCallInvite()" id="btnCall" title="Invite user to a voice call">
+                            <i class="fas fa-phone"></i> Call
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="closeConversation()" id="btnClose" title="Close conversation">
+                            <i class="fas fa-times-circle"></i> Close
+                        </button>
+                    </div>
+                </div>
+                <!-- Chat Messages -->
+                <div class="chat-container" id="chatArea">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="no-conversation" id="noChatPlaceholder">
+                            <div class="text-center">
+                                <i class="fas fa-comments fa-3x mb-3 text-muted"></i>
+                                <p>Select a conversation from the left panel to start chatting</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input hidden" id="chatInputArea">
+                        <form onsubmit="sendMessage(event)" class="d-flex gap-2">
+                            <input type="text" class="form-control" id="messageInput" placeholder="Type your message..." autocomplete="off" maxlength="2000">
+                            <button type="submit" class="btn btn-primary" id="sendBtn">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+(function() {
+    let activeConversationId = null;
+    let allConversations = [];
+    let currentFilter = 'all';
+    const socket = io({ transports: ['websocket','polling'] });
+    const userId = Number('{{ current_user.id }}');
+
+    function setHiddenById(id, hidden) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.toggle('hidden', hidden);
+    }
+
+    socket.on('connect', () => {
+        socket.emit('register', { user_id: userId });
+    });
+
+    // --- Conversation List ---
+    function loadConversations() {
+        fetch('/api/support/conversations')
+            .then(r => r.json())
+            .then(data => {
+                allConversations = data.conversations || [];
+                renderConversationList();
+            })
+            .catch(err => console.error('Load conversations error:', err));
+    }
+
+    function renderConversationList() {
+        const list = document.getElementById('conversationList');
+        const noMsg = document.getElementById('noConversations');
+        let filtered = allConversations;
+        if (currentFilter === 'open') filtered = allConversations.filter(c => c.status === 'open');
+        else if (currentFilter === 'assigned') filtered = allConversations.filter(c => c.status === 'assigned' && c.agent_id === userId);
+        else if (currentFilter === 'closed') filtered = allConversations.filter(c => c.status === 'closed');
+
+        // Clear existing items (keep noConversations div)
+        list.querySelectorAll('.conversation-item').forEach(el => el.remove());
+
+        if (filtered.length === 0) {
+            noMsg.classList.remove('hidden');
+            return;
+        }
+        noMsg.classList.add('hidden');
+
+        filtered.forEach(conv => {
+            const el = document.createElement('div');
+            el.className = `conversation-item priority-${conv.priority || 'normal'}${conv.id === activeConversationId ? ' active' : ''}`;
+            el.dataset.id = conv.id;
+            el.onclick = () => openConversation(conv.id);
+            const statusDot = `<span class="status-dot ${conv.status}"></span>`;
+            const unread = conv.unread_count ? `<span class="badge bg-danger rounded-pill unread-badge">${conv.unread_count}</span>` : '';
+            const time = conv.updated_at ? new Date(conv.updated_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+            const lastMsg = conv.last_message ? escapeHtml(conv.last_message).substring(0, 50) + (conv.last_message.length > 50 ? '...' : '') : '<em class="text-muted">No messages</em>';
+            el.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="fw-bold">${statusDot} ${escapeHtml(conv.user_name || 'User #' + conv.user_id)}</div>
+                        <small class="text-muted">${escapeHtml(conv.subject || 'General Support')}</small>
+                    </div>
+                    <div class="text-end">
+                        <small class="text-muted">${time}</small><br>
+                        ${unread}
+                    </div>
+                </div>
+                <div class="mt-1 small text-truncate">${lastMsg}</div>
+            `;
+            list.appendChild(el);
+        });
+    }
+
+    window.filterConversations = function(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.card-header .btn-group .btn').forEach(b => b.classList.remove('active'));
+        const btn = document.getElementById('filter' + filter.charAt(0).toUpperCase() + filter.slice(1));
+        if (btn) btn.classList.add('active');
+        renderConversationList();
+    };
+
+    // --- Chat Area ---
+    function openConversation(convId) {
+        activeConversationId = convId;
+        document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+        const activeEl = document.querySelector(`.conversation-item[data-id="${convId}"]`);
+        if (activeEl) activeEl.classList.add('active');
+
+        const conv = allConversations.find(c => c.id === convId);
+        setHiddenById('chatHeaderActions', false);
+        setHiddenById('chatInputArea', false);
+        setHiddenById('noChatPlaceholder', true);
+        updateChatHeader(conv);
+
+        fetch(`/api/support/conversations/${convId}/messages`)
+            .then(r => r.json())
+            .then(data => {
+                renderMessages(data.messages || []);
+                // Update unread count to 0 for this conv
+                if (conv) conv.unread_count = 0;
+                renderConversationList();
+            })
+            .catch(err => console.error('Load messages error:', err));
+    }
+
+    function updateChatHeader(conv) {
+        if (!conv) return;
+        const info = document.getElementById('chatHeaderInfo');
+        info.innerHTML = `
+            <h6 class="mb-0">${escapeHtml(conv.user_name || 'User')} — ${escapeHtml(conv.subject || 'Support')}</h6>
+            <small class="text-muted">Status: <span class="status-dot ${conv.status}"></span> ${conv.status} | Priority: ${conv.priority || 'normal'}</small>
+        `;
+        setHiddenById('btnAssign', !(conv.status === 'open' || conv.agent_id !== userId));
+        setHiddenById('btnClose', conv.status === 'closed');
+        setHiddenById('chatInputArea', conv.status === 'closed');
+    }
+
+    function renderMessages(messages) {
+        const container = document.getElementById('chatMessages');
+        container.innerHTML = '';
+        messages.forEach(msg => {
+            const div = document.createElement('div');
+            const isAgent = (msg.sender_role === 'customer_care' || msg.sender_role === 'admin');
+            const isSystem = msg.message_type === 'system';
+            if (isSystem) {
+                div.className = 'message-bubble system';
+            } else {
+                div.className = `message-bubble ${isAgent ? 'agent' : 'user'} d-flex flex-column`;
+            }
+            const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+            div.innerHTML = `
+                <div>${escapeHtml(msg.content || '')}</div>
+                <div class="message-meta ${isAgent ? 'text-end' : ''}">${escapeHtml(msg.sender_name || '')} · ${time}</div>
+            `;
+            container.appendChild(div);
+        });
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function appendMessage(msg) {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        const isAgent = (msg.sender_role === 'customer_care' || msg.sender_role === 'admin');
+        const isSystem = msg.message_type === 'system';
+        div.className = isSystem ? 'message-bubble system' : `message-bubble ${isAgent ? 'agent' : 'user'} d-flex flex-column`;
+        const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+        div.innerHTML = `
+            <div>${escapeHtml(msg.content || '')}</div>
+            <div class="message-meta ${isAgent ? 'text-end' : ''}">${escapeHtml(msg.sender_name || '')} · ${time}</div>
+        `;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // --- Send Message ---
+    window.sendMessage = function(e) {
+        e.preventDefault();
+        const input = document.getElementById('messageInput');
+        const text = input.value.trim();
+        if (!text || !activeConversationId) return;
+        input.value = '';
+        document.getElementById('sendBtn').disabled = true;
+
+        fetch(`/api/support/conversations/${activeConversationId}/messages`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ message: text })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.message) appendMessage(data.message);
+            document.getElementById('sendBtn').disabled = false;
+            input.focus();
+        })
+        .catch(err => {
+            console.error('Send error:', err);
+            document.getElementById('sendBtn').disabled = false;
+        });
+    };
+
+    // --- Actions ---
+    window.assignConversation = function() {
+        if (!activeConversationId) return;
+        fetch(`/api/support/conversations/${activeConversationId}/assign`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.conversation) {
+                loadConversations();
+                const conv = data.conversation;
+                conv.user_name = allConversations.find(c => c.id === conv.id)?.user_name;
+                updateChatHeader(conv);
+            }
+        });
+    };
+
+    window.sendCallInvite = function() {
+        if (!activeConversationId) return;
+        const conv = allConversations.find(c => c.id === activeConversationId);
+        const userName = (conv && conv.user_name) ? conv.user_name : 'you';
+        const callUrl = window.location.origin + '/support/call/' + activeConversationId;
+        const messageText = `📞 I'd like to have a voice call with you. Please click the link to join: ${callUrl}`;
+        fetch(`/api/support/conversations/${activeConversationId}/messages`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ message: messageText })
+        })
+        .then(r => r.json())
+        .then(data => { if (data.message) appendMessage(data.message); });
+    };
+
+    window.closeConversation = function() {
+        if (!activeConversationId) return;
+        if (!confirm('Close this conversation?')) return;
+        fetch(`/api/support/conversations/${activeConversationId}/close`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.conversation) loadConversations();
+        });
+    };
+
+    // --- Real-time ---
+    socket.on('new_support_message', (msg) => {
+        // Update conversation list
+        const conv = allConversations.find(c => c.id === msg.conversation_id);
+        if (conv) {
+            conv.last_message = msg.content;
+            conv.updated_at = msg.created_at;
+            if (msg.conversation_id !== activeConversationId) {
+                conv.unread_count = (conv.unread_count || 0) + 1;
+            }
+        }
+        renderConversationList();
+        // If viewing this conversation, append message
+        if (msg.conversation_id === activeConversationId && msg.sender_id !== userId) {
+            appendMessage(msg);
+        }
+        // Reload if it's a new conversation we don't have
+        if (!conv) loadConversations();
+    });
+
+    socket.on('support_conversation_closed', (data) => {
+        loadConversations();
+    });
+
+    // --- Utility ---
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // --- Init ---
+    loadConversations();
+    // Refresh every 30 seconds
+    setInterval(loadConversations, 30000);
+})();
+</script>
+{% endblock %}
