@@ -1,2 +1,7 @@
 /.env
 /.qodo
+tests/
+uploads/
+scripts/
+instance/
+.pytest_cache
