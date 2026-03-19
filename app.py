@@ -6541,119 +6541,6 @@ def admin_download_communication_file(comm_id):
     return redirect(request.referrer or url_for('admin_view_patient', patient_id=pid))
 
 
-# Endpoint to accept uploaded recording via POST (form-data file)
-@app.route('/communication/upload_recording', methods=['POST'])
-@login_required
-def upload_recording():
-    # Expects fields: appointment_id, message_type (voice_note | video_recording), file (binary)
-    appointment_id = request.form.get('appointment_id')
-    message_type = request.form.get('message_type')
-    file = request.files.get('file')
-
-    if not appointment_id or not message_type or not file:
-        return jsonify({'error': 'Missing parameters'}), 400
-
-    appointment = db.session.get(Appointment, appointment_id)
-    if not appointment:
-        return jsonify({'error': 'Invalid appointment'}), 404
-
-    # Determine sender as current_user
-    try:
-        data = file.read()
-
-        # Offload encryption and DB save to background to avoid blocking the request thread
-        def _bg_http_save(app_obj, appointment_id, sender_id, message_type, raw_bytes):
-            with app_obj.app_context():
-                try:
-                    encrypted = encrypt_file_bytes(raw_bytes)
-                    comm = Communication(
-                        appointment_id=appointment_id,
-                        sender_id=sender_id,
-                        message_type=message_type,
-                        encrypted_file_blob=encrypted
-                    )
-                    db.session.add(comm)
-                    db.session.commit()
-                    # Notify appointment room about new message
-                    try:
-                        socketio.emit('new_communication', {
-                            'comm_id': comm.id,
-                            'appointment_id': appointment_id
-                        }, room=f'appointment_{appointment_id}')
-                    except Exception:
-                        pass
-                except Exception:
-                    db.session.rollback()
-
-        socketio.start_background_task(_bg_http_save, app, appointment.id, current_user.id, message_type, data)
-        # Return accepted so client can continue; final status will be emitted via Socket.IO
-        return jsonify({'status': 'processing'}), 202
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# Socket.IO handler to accept recording blobs as base64 (if client emits)
-if SOCKETIO_AVAILABLE:
-    @socketio.on('save_recording')
-    def handle_save_recording(data):
-        # data expected: { appointment_id, message_type, sender_id, blob_b64 }
-        import base64
-        appointment_id = data.get('appointment_id')
-        message_type = data.get('message_type')
-        sender_id = data.get('sender_id')
-        blob_b64 = data.get('blob_b64')
-
-        # Try to get the client's socket id so we can emit the result only to them
-        sid = None
-        try:
-            # flask-socketio exposes a request object with sid in this context
-            from flask import request as _flask_request
-            sid = getattr(_flask_request, 'sid', None)
-        except Exception:
-            sid = None
-
-        if not appointment_id or not message_type or not blob_b64:
-            emit('save_recording_response', {'error': 'missing parameters'})
-            return
-
-        try:
-            raw = base64.b64decode(blob_b64)
-        except Exception as e:
-            emit('save_recording_response', {'error': 'invalid base64'})
-            return
-
-        # Offload encryption and DB work to a background task so the socket handler returns quickly
-        def _bg_save(app_obj, appointment_id, message_type, sender_id, raw_bytes, client_sid):
-            with app_obj.app_context():
-                try:
-                    encrypted = encrypt_file_bytes(raw_bytes)
-                    comm = Communication(
-                        appointment_id=appointment_id,
-                        sender_id=sender_id or getattr(current_user, 'id', None),
-                        message_type=message_type,
-                        encrypted_file_blob=encrypted
-                    )
-                    db.session.add(comm)
-                    db.session.commit()
-                    payload = {'status': 'ok', 'comm_id': comm.id}
-                except Exception as e:
-                    db.session.rollback()
-                    payload = {'error': str(e)}
-
-                try:
-                    if client_sid:
-                        socketio.emit('save_recording_response', payload, to=client_sid)
-                    else:
-                        # Fallback: broadcast to caller (may reach multiple clients)
-                        socketio.emit('save_recording_response', payload)
-                except Exception:
-                    pass
-
-        socketio.start_background_task(_bg_save, app, appointment_id, message_type, sender_id, raw, sid)
-
-        # Immediately acknowledge receipt so the client doesn't wait
-        emit('save_recording_response', {'status': 'processing'})
-
 # ============================================
 # CUSTOMER CARE ROUTES
 # ============================================
@@ -6935,10 +6822,19 @@ def communication_dashboard(appointment_id):
         # fallback to safe query if something goes wrong
         messages = Communication.query.filter_by(appointment_id=appointment_id).order_by(Communication.timestamp).all()
 
+    # Load prescriptions for this appointment (for doctor prescription send panel)
+    prescriptions = []
+    if current_user.role == 'doctor':
+        try:
+            prescriptions = Prescription.query.filter_by(appointment_id=appointment_id).order_by(Prescription.created_at.desc()).all()
+        except Exception:
+            prescriptions = []
+
     return render_template('communication/communication_dashboard_new.html',
                          appointment=appointment,
                          appointments=appointments,
                          messages=messages,
+                         prescriptions=prescriptions,
                          payment_required=payment_required,
                          payment_url=payment_url)
 
@@ -8981,6 +8877,7 @@ def doctor_communication():
                          appointment=None,
                          appointments=[],
                          messages=[],
+                         prescriptions=[],
                          payment_required=False,
                          payment_url=None)
 
@@ -9005,6 +8902,7 @@ def patient_communication():
                          appointment=None,
                          appointments=[],
                          messages=[],
+                         prescriptions=[],
                          payment_required=False,
                          payment_url=None)
 

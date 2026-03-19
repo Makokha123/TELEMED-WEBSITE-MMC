@@ -2,9 +2,9 @@
 <div class="modal fade" id="callLogsModal" tabindex="-1" aria-labelledby="callLogsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header" style="border-bottom:1px solid #e5e5e5;padding:14px 20px">
+      <div class="modal-header cl-modal-header">
         <div>
-          <h5 class="modal-title" id="callLogsModalLabel" style="font-weight:700;font-size:18px">📞 Call Logs</h5>
+          <h5 class="modal-title cl-modal-title" id="callLogsModalLabel">📞 Call Logs</h5>
           <small class="text-muted">Your call history — missed, incoming &amp; outgoing</small>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -54,7 +54,7 @@
         <div id="clPagination" class="cl-pagination"></div>
       </div>
 
-      <div class="modal-footer" style="border-top:1px solid #e5e5e5;padding:8px 16px">
+      <div class="modal-footer cl-modal-footer">
         <span class="small text-muted me-auto" id="clSummary">Ready</span>
         <button id="clRefresh" class="btn btn-sm btn-outline-secondary">
           <i class="fas fa-sync-alt me-1"></i>Refresh
@@ -66,6 +66,9 @@
 
 <style>
 /* ── Call Logs Modal Styles ─────────────────────────────── */
+#callLogsModal .cl-modal-header{border-bottom:1px solid #e5e5e5;padding:14px 20px}
+#callLogsModal .cl-modal-title{font-weight:700;font-size:18px}
+#callLogsModal .cl-modal-footer{border-top:1px solid #e5e5e5;padding:8px 16px}
 #callLogsModal .cl-stats-bar{display:flex;gap:8px;padding:12px 16px;background:#f8f9fa;border-bottom:1px solid #e9ecef;overflow-x:auto}
 #callLogsModal .cl-stat{flex:1;min-width:80px;text-align:center;padding:8px;background:#fff;border-radius:8px;border:1px solid #e9ecef}
 #callLogsModal .cl-stat-num{display:block;font-weight:700;font-size:16px;color:#111b21}
@@ -145,10 +148,13 @@
 <script src="{{ url_for('static', filename='js/call-logs.js') }}"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    var _clUid  = document.getElementById('currentUserId');
+    var _clRole = document.getElementById('currentUserRole');
+    var _clCsrf = document.querySelector('meta[name=csrf-token]');
     CallLogs.init({
-      userId: {{ current_user.id | tojson }},
-      userRole: {{ current_user.role | tojson }},
-      csrfToken: document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || ''
+      userId: _clUid ? parseInt(_clUid.value, 10) : 0,
+      userRole: _clRole ? _clRole.value : '',
+      csrfToken: _clCsrf ? _clCsrf.getAttribute('content') : ''
     });
   });
 </script>

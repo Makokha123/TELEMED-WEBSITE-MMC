@@ -821,6 +821,7 @@ def _register_socket_handlers(socketio):
 
     @socketio.on('msg:recording')
     def on_msg_recording(data):
+        """Broadcast voice recording status indicator to appointment room."""
         if not current_user.is_authenticated:
             return
         data = data if isinstance(data, dict) else {}
@@ -834,3 +835,59 @@ def _register_socket_handlers(socketio):
             'recording': recording,
             'appointment_id': appointment_id
         }, room=_room(appointment_id), include_self=False)
+
+    @socketio.on('msg:prescription')
+    def on_msg_prescription(data):
+        """Send a prescription as a special message in the chat."""
+        if not current_user.is_authenticated:
+            emit('msg:error', {'error': 'auth_required'})
+            return
+        if current_user.role != 'doctor':
+            emit('msg:error', {'error': 'only_doctors_can_prescribe'})
+            return
+
+        data = data if isinstance(data, dict) else {}
+        appointment_id = data.get('appointment_id')
+        prescription_id = data.get('prescription_id')
+
+        if not appointment_id or not prescription_id:
+            emit('msg:error', {'error': 'appointment_id and prescription_id required'})
+            return
+
+        appointment = db.session.get(Appointment, int(appointment_id))
+        if not appointment or not _verify_access(appointment, current_user):
+            emit('msg:error', {'error': 'access_denied'})
+            return
+
+        from models import Prescription
+        prescription = db.session.get(Prescription, int(prescription_id))
+        if not prescription or prescription.appointment_id != appointment.id:
+            emit('msg:error', {'error': 'prescription_not_found'})
+            return
+
+        import json
+        content = json.dumps({
+            'text': f'Prescription: {prescription.medication}',
+            'prescription_id': prescription.id,
+            'medication': prescription.medication,
+            'dosage': prescription.dosage,
+            'instructions': prescription.instructions or '',
+        })
+
+        comm = Communication(
+            appointment_id=appointment.id,
+            sender_id=current_user.id,
+            message_type='prescription',
+            content=content,
+            timestamp=datetime.now(timezone.utc),
+            is_read=False,
+            message_status='sent',
+        )
+        db.session.add(comm)
+        db.session.commit()
+
+        msg_data = _serialize(comm)
+
+        emit('msg:ack', msg_data)
+        room = _room(appointment.id)
+        emit('new_message', msg_data, room=room, include_self=False)

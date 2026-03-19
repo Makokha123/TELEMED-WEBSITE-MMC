@@ -47,6 +47,7 @@
 
 /* Chat body */
 .chat-body{flex:1;overflow-y:auto;padding:16px 60px;position:relative;z-index:1;display:flex;flex-direction:column}
+.chat-body::before{content:'';flex:1 1 auto}
 
 /* Messages */
 .message-bubble{max-width:65%;padding:8px 12px;border-radius:8px;margin-bottom:4px;position:relative;word-wrap:break-word;animation:fadeIn .2s ease}
@@ -64,6 +65,27 @@
 .pending-icon{font-size:11px;color:#aaa}
 .msg-image img{max-width:300px;max-height:300px;border-radius:6px;cursor:pointer}
 .msg-voice audio{max-width:250px;height:36px}
+/* ── Voice note player ──────────────────────────────────── */
+.msg-voice-player{display:flex;align-items:center;gap:8px;padding:4px 0;min-width:220px;max-width:320px}
+.vn-play-btn{background:none;border:none;color:#00a884;font-size:18px;cursor:pointer;padding:2px 4px;flex-shrink:0}
+.vn-play-btn:hover{color:#008f72}
+.vn-wave-wrap{flex:1;position:relative;height:28px;border-radius:4px;overflow:hidden;cursor:pointer;background:rgba(0,0,0,.03)}
+.vn-wave-canvas{position:relative;z-index:1;width:100%;height:28px;display:block}
+.vn-progress{position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(0,168,132,.15);z-index:0;border-radius:4px;pointer-events:none;transition:width .15s linear}
+.vn-duration{font-size:11px;color:#667781;min-width:36px;text-align:right;flex-shrink:0;font-family:monospace}
+/* ── Prescription card in message ───────────────────────── */
+.msg-prescription-card{background:linear-gradient(135deg,#f0fdf4,#ecfccb);border:1px solid #86efac;border-radius:8px;padding:10px 12px;min-width:240px;max-width:320px}
+.rx-header{font-weight:700;color:#15803d;font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.rx-header i{font-size:16px}
+.rx-med{font-weight:600;font-size:15px;color:#111b21;margin-bottom:4px}
+.rx-dosage,.rx-inst{font-size:13px;color:#374151;margin-bottom:2px}
+.rx-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.rx-actions .btn{font-size:12px;padding:3px 8px}
+/* ── Prescription send panel (doctors) ───────────────────── */
+.prescription-send-panel{background:#f0fdf4;border-top:1px solid #86efac;padding:8px 16px;display:flex;align-items:center;gap:10px;z-index:2;position:relative}
+.prescription-send-panel select{max-width:280px;font-size:13px}
+.prescription-send-panel .btn{font-size:13px}
+.rx-panel-icon{color:#15803d;font-size:18px}
 .msg-file{display:flex;align-items:center;gap:8px;padding:6px 0}
 .msg-file i{font-size:20px;color:#667781}
 .msg-file a{color:#027eb5;text-decoration:none;font-size:14px}
@@ -141,6 +163,15 @@
 .image-viewer-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.85);cursor:pointer}
 .image-viewer-img{max-width:90vw;max-height:90vh;border-radius:8px;z-index:1;position:relative}
 .image-viewer-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:28px;cursor:pointer;width:40px;height:40px;border-radius:50%;z-index:2}
+
+/* ── Header actions ─────────────────────────────────────── */
+.chat-header-actions{display:flex;align-items:center;gap:6px}
+.header-action-btn{border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.header-action-btn i{font-size:13px}
+#search-input{width:160px;border-radius:16px;font-size:13px}
+.input-actions{position:relative}
+.system-message.clickable{cursor:pointer}
+.chat-input-locked{justify-content:center;color:#667781;font-size:14px;padding:16px}
 
 /* ── Animations ─────────────────────────────────────────── */
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -227,8 +258,7 @@
 
     <!-- Header -->
     <div class="chat-header" id="chat-header">
-      <button class="back-btn btn btn-sm btn-light" onclick="document.getElementById('sidebar').classList.remove('chat-open')"
-              style="display:none">
+      <button class="back-btn btn btn-sm btn-light" id="back-btn" title="Back to conversations">
         <i class="fas fa-arrow-left"></i>
       </button>
       {% set other_user = appointment.patient.user if current_user.role == 'doctor' else appointment.doctor.user %}
@@ -246,17 +276,17 @@
         </div>
         <div id="connection-status" class="connected"></div>
       </div>
-    <div class="chat-header-actions" style="display:flex;align-items:center;gap:6px">
-      <a href="{{ url_for('voice_call_page', appointment_id=appointment.id) }}?action=call" class="btn btn-sm btn-outline-success" id="voiceCallBtn" title="Voice call" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;text-decoration:none">
-        <i class="fas fa-phone" style="font-size:13px"></i>
+    <div class="chat-header-actions">
+      <a href="{{ url_for('voice_call_page', appointment_id=appointment.id) }}?action=call" class="btn btn-sm btn-outline-success header-action-btn" id="voiceCallBtn" title="Voice call">
+        <i class="fas fa-phone"></i>
       </a>
-      <a href="{{ url_for('consultation_room', appointment_id=appointment.id) }}" class="btn btn-sm btn-outline-secondary" id="consultationRoomBtn" title="Consultation room" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;text-decoration:none">
-        <i class="fas fa-door-open" style="font-size:13px"></i>
+      <a href="{{ url_for('consultation_room', appointment_id=appointment.id) }}" class="btn btn-sm btn-outline-secondary header-action-btn" id="consultationRoomBtn" title="Consultation room">
+        <i class="fas fa-door-open"></i>
       </a>
-      <button class="btn btn-sm btn-outline-secondary" id="openCallLogsHeaderBtn" title="Call logs" data-bs-toggle="modal" data-bs-target="#callLogsModal" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center">
-        <i class="fas fa-phone-alt" style="font-size:13px"></i>
+      <button class="btn btn-sm btn-outline-secondary header-action-btn" id="openCallLogsHeaderBtn" title="Call logs" data-bs-toggle="modal" data-bs-target="#callLogsModal">
+        <i class="fas fa-phone-alt"></i>
       </button>
-      <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." style="width:160px;border-radius:16px;font-size:13px">
+      <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search...">
     </div>
     </div>
 
@@ -265,7 +295,7 @@
       {% for msg in messages %}
       {% set is_mine = (msg.sender_id == current_user.id) %}
       {% if msg.message_type == 'system' %}
-      <div class="system-message" data-message-id="{{ msg.id }}"{% if '📵' in (msg.content or '') or '📞' in (msg.content or '') %} style="cursor:pointer" title="View call logs" onclick="(function(){var m=document.getElementById('callLogsModal');if(m)new bootstrap.Modal(m).show()})()"{% endif %}>
+      <div class="system-message{% if '📵' in (msg.content or '') or '📞' in (msg.content or '') %} clickable{% endif %}" data-message-id="{{ msg.id }}"{% if '📵' in (msg.content or '') or '📞' in (msg.content or '') %} title="View call logs" data-action="open-call-logs"{% endif %}>
         {{ msg.content or '' }}
       </div>
       {% else %}
@@ -278,11 +308,22 @@
         {% if msg.message_type == 'image' and (msg.encrypted_file_path or msg.encrypted_file_blob) %}
         <div class="msg-image">
           <img src="{{ url_for('messaging.download_file', message_id=msg.id) }}" alt="Image" loading="lazy"
-               onclick="Messaging.viewImage('{{ url_for('messaging.download_file', message_id=msg.id) }}')">
+               data-action="view-image" data-image-url="{{ url_for('messaging.download_file', message_id=msg.id) }}">
         </div>
         {% elif msg.message_type == 'voice_note' and (msg.encrypted_file_path or msg.encrypted_file_blob) %}
-        <div class="msg-voice">
-          <audio controls preload="none" src="{{ url_for('messaging.download_file', message_id=msg.id) }}"></audio>
+        <div class="msg-voice-player" data-vn-id="vn_{{ msg.id }}" data-src="{{ url_for('messaging.download_file', message_id=msg.id) }}">
+          <button class="vn-play-btn" title="Play"><i class="fas fa-play"></i></button>
+          <div class="vn-wave-wrap"><canvas class="vn-wave-canvas" height="28"></canvas><div class="vn-progress"></div></div>
+          <span class="vn-duration">--:--</span>
+        </div>
+        {% elif msg.message_type == 'prescription' %}
+        {% set rx = msg.content|default('{}',true) %}
+        <div class="msg-prescription-card">
+          <div class="rx-header"><i class="fas fa-prescription"></i> Prescription</div>
+          <div class="rx-med">{{ rx }}</div>
+          <div class="rx-actions">
+            <a href="#" class="btn btn-sm btn-outline-primary" target="_blank"><i class="fas fa-eye me-1"></i>View</a>
+          </div>
         </div>
         {% elif msg.message_type == 'document' and (msg.encrypted_file_path or msg.encrypted_file_blob) %}
         <div class="msg-file">
@@ -313,7 +354,7 @@
         </div>
 
         <div class="msg-actions">
-          <button class="btn-reply" onclick="Messaging.setReply({{ msg.id }}, '{{ msg.sender.get_display_name() if msg.sender else 'Unknown' }}', '{{ (msg.content or '')[:80]|e }}')" title="Reply">
+          <button class="btn-reply" data-action="reply" data-msg-id="{{ msg.id }}" data-sender-name="{{ msg.sender.get_display_name() if msg.sender else 'Unknown' }}" data-preview="{{ (msg.content or '')[:80]|e }}" title="Reply">
             <i class="fas fa-reply"></i>
           </button>
         </div>
@@ -341,13 +382,31 @@
       <button class="reply-bar-close" id="close-reply"><i class="fas fa-times"></i></button>
     </div>
 
+    <!-- Prescription send panel (doctors only) -->
+    {% if current_user.role == 'doctor' and appointment %}
+    <div class="prescription-send-panel d-none" id="prescription-panel">
+      <i class="fas fa-prescription rx-panel-icon"></i>
+      <select id="prescription-select" class="form-select form-select-sm" title="Select prescription">
+        <option value="">Select a prescription...</option>
+        {% for rx in prescriptions %}
+        <option value="{{ rx.id }}">{{ rx.medication }} – {{ rx.dosage }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-success" id="send-prescription-btn" title="Send prescription"><i class="fas fa-paper-plane me-1"></i>Send</button>
+      <button class="btn btn-sm btn-outline-secondary" id="close-prescription-btn" title="Close"><i class="fas fa-times"></i></button>
+    </div>
+    {% endif %}
+
     <!-- Input -->
     {% if not payment_required %}
     <div class="chat-input">
-      <div class="input-actions" style="position:relative">
+      <div class="input-actions">
         <button id="emoji-btn" title="Emoji"><i class="far fa-smile"></i></button>
-        <button onclick="document.getElementById('file-input').click()" title="Attach file"><i class="fas fa-paperclip"></i></button>
-        <input type="file" id="file-input" class="d-none"
+        <button id="attach-btn" title="Attach file"><i class="fas fa-paperclip"></i></button>
+        {% if current_user.role == 'doctor' %}
+        <button id="prescription-btn" title="Send prescription"><i class="fas fa-prescription"></i></button>
+        {% endif %}
+        <input type="file" id="file-input" class="d-none" title="Choose file to attach"
                accept="image/*,.pdf,.doc,.docx,audio/*">
       </div>
       <div class="msg-input-wrap">
@@ -357,7 +416,7 @@
       <button id="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
     </div>
     {% else %}
-    <div class="chat-input" style="justify-content:center;color:#667781;font-size:14px;padding:16px">
+    <div class="chat-input chat-input-locked">
       <i class="fas fa-lock me-2"></i> Complete payment to send messages
     </div>
     {% endif %}
@@ -378,7 +437,7 @@
 <input type="hidden" id="currentUserRole" value="{{ current_user.role }}">
 <input type="hidden" id="remoteUserId" value="{{ other_user.id if appointment and other_user else '' }}">
 <input type="hidden" id="appointmentId" value="{{ appointment.id if appointment else '' }}">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="csrf_token" id="csrfToken" value="{{ csrf_token() }}">
 
 
 
@@ -393,20 +452,26 @@
 <script src="{{ url_for('static', filename='js/messaging.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  var _aidVal = document.getElementById('appointmentId').value;
+  var _aidNum = _aidVal ? parseInt(_aidVal, 10) : null;
+  var _uid    = parseInt(document.getElementById('currentUserId').value, 10);
+  var _role   = document.getElementById('currentUserRole').value;
+  var _csrf   = document.getElementById('csrfToken').value;
+
   Messaging.init({
-    appointmentId: {{ appointment.id if appointment else 'null' }},
-    userId:        {{ current_user.id }},
-    userRole:      '{{ current_user.role }}',
-    csrfToken:     '{{ csrf_token() }}',
+    appointmentId: _aidNum,
+    userId:        _uid,
+    userRole:      _role,
+    csrfToken:     _csrf,
     socketUrl:     window.location.origin,
   });
 
   // Auto-scroll to bottom on initial load
-  const chatBody = document.getElementById('chat-body');
+  var chatBody = document.getElementById('chat-body');
   if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
 
   // Auto-grow textarea
-  const input = document.getElementById('msg-input');
+  var input = document.getElementById('msg-input');
   if (input) {
     input.addEventListener('input', function() {
       this.style.height = 'auto';
@@ -415,10 +480,10 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Mobile: show chat on appointment click
-  const apptList = document.getElementById('appointments-list');
+  var apptList = document.getElementById('appointments-list');
   if (apptList && window.innerWidth <= 768) {
     apptList.addEventListener('click', function(e) {
-      const item = e.target.closest('[data-appointment-id]');
+      var item = e.target.closest('[data-appointment-id]');
       if (item) {
         document.getElementById('sidebar').classList.add('chat-open');
       }
@@ -426,12 +491,12 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Sidebar search
-  const sidebarSearch = document.getElementById('sidebar-search');
+  var sidebarSearch = document.getElementById('sidebar-search');
   if (sidebarSearch) {
     sidebarSearch.addEventListener('input', function() {
-      const q = this.value.toLowerCase();
-      document.querySelectorAll('.appt-item').forEach(el => {
-        const name = (el.dataset.name || '').toLowerCase();
+      var q = this.value.toLowerCase();
+      document.querySelectorAll('.appt-item').forEach(function(el) {
+        var name = (el.dataset.name || '').toLowerCase();
         el.style.display = name.includes(q) ? '' : 'none';
       });
     });
@@ -439,15 +504,78 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Mark messages as read when window gains focus
   window.addEventListener('focus', function() {
-    const aid = {{ appointment.id if appointment else 'null' }};
-    if (aid) {
-      fetch('/api/messaging/read/' + aid, {
+    if (_aidNum) {
+      fetch('/api/messaging/read/' + _aidNum, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf },
         credentials: 'same-origin',
-      }).catch(() => {});
+      }).catch(function() {});
     }
   });
+
+  // ── Event delegation for data-action handlers ───────────
+  // Back button
+  var backBtn = document.getElementById('back-btn');
+  if (backBtn) {
+    backBtn.addEventListener('click', function() {
+      document.getElementById('sidebar').classList.remove('chat-open');
+    });
+  }
+
+  // Attach file button
+  var attachBtn = document.getElementById('attach-btn');
+  if (attachBtn) {
+    attachBtn.addEventListener('click', function() {
+      document.getElementById('file-input').click();
+    });
+  }
+
+  // Image viewer delegation
+  document.addEventListener('click', function(e) {
+    var imgEl = e.target.closest('[data-action="view-image"]');
+    if (imgEl) {
+      Messaging.viewImage(imgEl.dataset.imageUrl);
+      return;
+    }
+    var replyEl = e.target.closest('[data-action="reply"]');
+    if (replyEl) {
+      Messaging.setReply(
+        parseInt(replyEl.dataset.msgId, 10),
+        replyEl.dataset.senderName,
+        replyEl.dataset.preview
+      );
+      return;
+    }
+    var callLogEl = e.target.closest('[data-action="open-call-logs"]');
+    if (callLogEl) {
+      var modal = document.getElementById('callLogsModal');
+      if (modal) new bootstrap.Modal(modal).show();
+    }
+  });
+
+  // ── Prescription panel toggle (doctors) ───────────
+  var rxBtn = document.getElementById('prescription-btn');
+  var rxPanel = document.getElementById('prescription-panel');
+  if (rxBtn && rxPanel) {
+    rxBtn.addEventListener('click', function() {
+      rxPanel.classList.toggle('d-none');
+    });
+    var closeRxBtn = document.getElementById('close-prescription-btn');
+    if (closeRxBtn) {
+      closeRxBtn.addEventListener('click', function() { rxPanel.classList.add('d-none'); });
+    }
+    var sendRxBtn = document.getElementById('send-prescription-btn');
+    if (sendRxBtn) {
+      sendRxBtn.addEventListener('click', function() {
+        var sel = document.getElementById('prescription-select');
+        var rxId = sel ? parseInt(sel.value, 10) : null;
+        if (!rxId) { alert('Please select a prescription first.'); return; }
+        Messaging.sendPrescriptionMessage(rxId);
+        rxPanel.classList.add('d-none');
+        if (sel) sel.value = '';
+      });
+    }
+  }
 });
 </script>
 
@@ -456,7 +584,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <script>
 (function(){
-  const appointmentId = {{ appointment.id if appointment else 'null' }};
+  var aidVal = document.getElementById('appointmentId').value;
+  var appointmentId = aidVal ? parseInt(aidVal, 10) : null;
   if (!appointmentId) return;
 
   // Listen for incoming voice calls on the messaging socket and redirect to voice call page

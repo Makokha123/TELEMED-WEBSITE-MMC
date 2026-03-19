@@ -40,6 +40,7 @@ const Messaging = (() => {
     _cacheDom();
     _bindUI();
     _initSocket();
+    _initVoicePlayers(); // init voice player UIs for server-rendered messages
     if (_cfg.appointmentId) {
       _loadUnreadCounts();
       _loadPresence(_cfg.appointmentId);
@@ -374,7 +375,30 @@ const Messaging = (() => {
       const src = `/api/messaging/file/${msg.id}`;
       html += `<div class="msg-image"><img src="${src}" alt="Image" loading="lazy" onclick="Messaging.viewImage('${src}')"></div>`;
     } else if (msg.message_type === 'voice_note' && msg.has_file) {
-      html += `<div class="msg-voice"><audio controls preload="none" src="/api/messaging/file/${msg.id}"></audio></div>`;
+      const vnId = 'vn_' + msg.id;
+      html += `<div class="msg-voice-player" data-vn-id="${vnId}" data-src="/api/messaging/file/${msg.id}">
+        <button class="vn-play-btn" title="Play"><i class="fas fa-play"></i></button>
+        <div class="vn-wave-wrap"><canvas class="vn-wave-canvas" height="28"></canvas><div class="vn-progress"></div></div>
+        <span class="vn-duration">--:--</span>
+      </div>`;
+    } else if (msg.message_type === 'prescription' && msg.content) {
+      let rx;
+      try { rx = JSON.parse(msg.content); } catch(e) { rx = null; }
+      if (rx && rx.prescription_id) {
+        html += `<div class="msg-prescription-card">
+          <div class="rx-header"><i class="fas fa-prescription"></i> Prescription</div>
+          <div class="rx-med">${_esc(rx.medication || '')}</div>
+          <div class="rx-dosage"><strong>Dosage:</strong> ${_esc(rx.dosage || '')}</div>
+          ${rx.instructions ? `<div class="rx-inst"><strong>Instructions:</strong> ${_esc(rx.instructions)}</div>` : ''}
+          <div class="rx-actions">
+            <a href="/prescription/${rx.prescription_id}" class="btn btn-sm btn-outline-primary" target="_blank"><i class="fas fa-eye me-1"></i>View</a>
+            <a href="/prescription/${rx.prescription_id}/print" class="btn btn-sm btn-outline-secondary" target="_blank"><i class="fas fa-print me-1"></i>Print</a>
+            <a href="/prescription/${rx.prescription_id}/download" class="btn btn-sm btn-outline-success" target="_blank"><i class="fas fa-download me-1"></i>Download</a>
+          </div>
+        </div>`;
+      } else {
+        html += `<div class="msg-text">${_linkify(_esc(msg.content || ''))}</div>`;
+      }
     } else if (msg.message_type === 'document' && msg.has_file) {
       html += `<div class="msg-file"><i class="fas fa-file"></i><a href="/api/messaging/file/${msg.id}" target="_blank">${_esc(msg.content || 'Download')}</a></div>`;
     } else {
@@ -395,6 +419,9 @@ const Messaging = (() => {
     bubble.innerHTML = html;
     if (prepend) $chatBody.prepend(bubble);
     else $chatBody.appendChild(bubble);
+
+    // Init custom voice players for any new voice note bubbles
+    _initVoicePlayers();
   }
 
   function _renderPending(clientMsgId, content) {
@@ -534,7 +561,6 @@ const Messaging = (() => {
     // Determine type
     let msgType = 'document';
     if (file.type.startsWith('image/')) msgType = 'image';
-    else if (file.type.startsWith('audio/')) msgType = 'voice_note';
 
     const clientMsgId = _uuid();
     _renderPending(clientMsgId, `📎 ${file.name}`);
@@ -570,8 +596,15 @@ const Messaging = (() => {
   }
 
   // ═════════════════════════════════════════════════════════
-  //  VOICE RECORDING
+  //  VOICE RECORDING  (rebuilt – waveform, timer, quality)
   // ═════════════════════════════════════════════════════════
+  const MAX_RECORDING_SEC = 120; // 2 min cap
+  let _recStream = null;
+  let _recTimer = null;
+  let _recSeconds = 0;
+  let _recAnalyser = null;
+  let _recAnimFrame = null;
+
   function _toggleRecording() {
     if (_recording) _stopRecording();
     else _startRecording();
@@ -579,24 +612,36 @@ const Messaging = (() => {
 
   async function _startRecording() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      _recStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 } });
+      // Prefer opus in ogg/webm for quality+size; fall back gracefully
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+          ? 'audio/ogg;codecs=opus'
+          : 'audio/webm';
+
+      _mediaRecorder = new MediaRecorder(_recStream, { mimeType });
       _audioChunks = [];
       _mediaRecorder.ondataavailable = (e) => { if (e.data.size) _audioChunks.push(e.data); };
       _mediaRecorder.onstop = () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(_audioChunks, { type: 'audio/webm' });
+        _recStream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(_audioChunks, { type: mimeType });
         _uploadVoiceNote(blob);
+        _destroyRecordingUI();
       };
-      _mediaRecorder.start();
+      _mediaRecorder.start(250); // collect in 250ms chunks for timely waveform
       _recording = true;
-      if ($recordBtn) $recordBtn.classList.add('recording');
+
+      // Build recording overlay UI
+      _buildRecordingUI();
+
+      // Notify other party
       if (_socket && _connected) {
         _socket.emit('msg:recording', { appointment_id: _cfg.appointmentId, recording: true });
       }
     } catch (err) {
       console.error('Mic access denied', err);
-      _showToast('Microphone access denied', 'error');
+      _showToast('Microphone access denied. Please allow microphone access.', 'error');
     }
   }
 
@@ -605,9 +650,122 @@ const Messaging = (() => {
       _mediaRecorder.stop();
     }
     _recording = false;
-    if ($recordBtn) $recordBtn.classList.remove('recording');
+    clearInterval(_recTimer);
+    cancelAnimationFrame(_recAnimFrame);
     if (_socket && _connected) {
       _socket.emit('msg:recording', { appointment_id: _cfg.appointmentId, recording: false });
+    }
+  }
+
+  function _cancelRecording() {
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+      _mediaRecorder.ondataavailable = null;
+      _mediaRecorder.onstop = null;
+      _mediaRecorder.stop();
+    }
+    if (_recStream) _recStream.getTracks().forEach(t => t.stop());
+    _recording = false;
+    _audioChunks = [];
+    clearInterval(_recTimer);
+    cancelAnimationFrame(_recAnimFrame);
+    _destroyRecordingUI();
+    if (_socket && _connected) {
+      _socket.emit('msg:recording', { appointment_id: _cfg.appointmentId, recording: false });
+    }
+  }
+
+  /* ── Recording overlay (replaces input bar while recording) ── */
+  function _buildRecordingUI() {
+    const chatInput = document.querySelector('.chat-input');
+    if (!chatInput) return;
+
+    // Hide normal input elements
+    chatInput.querySelectorAll(':scope > *').forEach(el => el.style.display = 'none');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'recording-overlay';
+    overlay.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;padding:0 4px;';
+    overlay.innerHTML = `
+      <button id="rec-cancel" title="Cancel recording" style="background:none;border:none;color:#e74c3c;font-size:20px;cursor:pointer;padding:6px"><i class="fas fa-trash-alt"></i></button>
+      <div style="flex:1;display:flex;align-items:center;gap:8px;background:#fff;border-radius:20px;padding:6px 12px;">
+        <span id="rec-dot" style="width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:pulse 1s infinite;flex-shrink:0"></span>
+        <canvas id="rec-waveform" height="32" style="flex:1;min-width:100px;height:32px"></canvas>
+        <span id="rec-timer" style="font-family:monospace;font-size:14px;color:#111b21;min-width:44px;text-align:right">0:00</span>
+      </div>
+      <button id="rec-send" title="Send voice note" style="background:#00a884;color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-paper-plane"></i></button>
+    `;
+    chatInput.appendChild(overlay);
+
+    // Timer
+    _recSeconds = 0;
+    _recTimer = setInterval(() => {
+      _recSeconds++;
+      const m = Math.floor(_recSeconds / 60);
+      const s = _recSeconds % 60;
+      const timerEl = document.getElementById('rec-timer');
+      if (timerEl) timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+      if (_recSeconds >= MAX_RECORDING_SEC) _stopRecording();
+    }, 1000);
+
+    // Waveform visualizer
+    _startWaveform();
+
+    // Button handlers
+    document.getElementById('rec-cancel').addEventListener('click', _cancelRecording);
+    document.getElementById('rec-send').addEventListener('click', _stopRecording);
+  }
+
+  function _destroyRecordingUI() {
+    const overlay = document.getElementById('recording-overlay');
+    if (overlay) {
+      const chatInput = overlay.parentElement;
+      overlay.remove();
+      chatInput.querySelectorAll(':scope > *').forEach(el => el.style.display = '');
+    }
+    cancelAnimationFrame(_recAnimFrame);
+    _recAnalyser = null;
+  }
+
+  function _startWaveform() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(_recStream);
+      _recAnalyser = ctx.createAnalyser();
+      _recAnalyser.fftSize = 256;
+      source.connect(_recAnalyser);
+      const bufLen = _recAnalyser.frequencyBinCount;
+      const dataArr = new Uint8Array(bufLen);
+
+      const canvas = document.getElementById('rec-waveform');
+      if (!canvas) return;
+      const cCtx = canvas.getContext('2d');
+      canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+      canvas.height = 32 * (window.devicePixelRatio || 1);
+      cCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+      function draw() {
+        _recAnimFrame = requestAnimationFrame(draw);
+        _recAnalyser.getByteFrequencyData(dataArr);
+        const w = canvas.offsetWidth;
+        const h = 32;
+        cCtx.clearRect(0, 0, w, h);
+
+        const barW = 3, gap = 2, total = barW + gap;
+        const bars = Math.floor(w / total);
+        const step = Math.max(1, Math.floor(bufLen / bars));
+
+        for (let i = 0; i < bars; i++) {
+          const v = dataArr[i * step] / 255;
+          const barH = Math.max(2, v * h * 0.9);
+          const x = i * total;
+          const y = (h - barH) / 2;
+          cCtx.fillStyle = '#00a884';
+          cCtx.fillRect(x, y, barW, barH);
+        }
+      }
+      draw();
+    } catch (e) {
+      console.warn('Waveform visualizer unavailable', e);
     }
   }
 
@@ -876,6 +1034,135 @@ const Messaging = (() => {
   }
 
   // ═════════════════════════════════════════════════════════
+  //  CUSTOM VOICE PLAYER
+  // ═════════════════════════════════════════════════════════
+  let _vnPlayers = {}; // { vnId: { audio, ctx, analyser, animFrame, playing } }
+
+  function _initVoicePlayers() {
+    document.querySelectorAll('.msg-voice-player:not([data-vn-init])').forEach(el => {
+      el.setAttribute('data-vn-init', '1');
+      const vnId = el.dataset.vnId;
+      const src = el.dataset.src;
+      const playBtn = el.querySelector('.vn-play-btn');
+      const progress = el.querySelector('.vn-progress');
+      const durEl = el.querySelector('.vn-duration');
+      const canvas = el.querySelector('.vn-wave-canvas');
+
+      const audio = new Audio();
+      audio.preload = 'metadata';
+      audio.src = src;
+      _vnPlayers[vnId] = { audio, playing: false };
+
+      audio.addEventListener('loadedmetadata', () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          durEl.textContent = _fmtDur(audio.duration);
+        }
+      });
+      audio.addEventListener('timeupdate', () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          const pct = (audio.currentTime / audio.duration) * 100;
+          progress.style.width = pct + '%';
+          durEl.textContent = _fmtDur(audio.duration - audio.currentTime);
+        }
+      });
+      audio.addEventListener('ended', () => {
+        _vnPlayers[vnId].playing = false;
+        playBtn.innerHTML = '<i class="fas fa-play"></i>';
+        progress.style.width = '0%';
+        durEl.textContent = _fmtDur(audio.duration);
+      });
+
+      // Draw static waveform from random seed (deterministic per message id)
+      _drawStaticWave(canvas, vnId);
+
+      // Seek on click
+      const waveWrap = el.querySelector('.vn-wave-wrap');
+      waveWrap.addEventListener('click', (e) => {
+        if (!audio.duration || !isFinite(audio.duration)) return;
+        const rect = waveWrap.getBoundingClientRect();
+        const pct = (e.clientX - rect.left) / rect.width;
+        audio.currentTime = pct * audio.duration;
+        if (!_vnPlayers[vnId].playing) {
+          _playVN(vnId);
+        }
+      });
+
+      playBtn.addEventListener('click', () => {
+        if (_vnPlayers[vnId].playing) _pauseVN(vnId);
+        else _playVN(vnId);
+      });
+    });
+  }
+
+  function _playVN(vnId) {
+    // Pause any other playing
+    Object.keys(_vnPlayers).forEach(k => { if (k !== vnId && _vnPlayers[k].playing) _pauseVN(k); });
+    const p = _vnPlayers[vnId];
+    if (!p) return;
+    p.audio.play();
+    p.playing = true;
+    const el = document.querySelector(`[data-vn-id="${vnId}"]`);
+    if (el) el.querySelector('.vn-play-btn').innerHTML = '<i class="fas fa-pause"></i>';
+  }
+
+  function _pauseVN(vnId) {
+    const p = _vnPlayers[vnId];
+    if (!p) return;
+    p.audio.pause();
+    p.playing = false;
+    const el = document.querySelector(`[data-vn-id="${vnId}"]`);
+    if (el) el.querySelector('.vn-play-btn').innerHTML = '<i class="fas fa-play"></i>';
+  }
+
+  function _drawStaticWave(canvas, seed) {
+    if (!canvas) return;
+    const w = canvas.offsetWidth || 200;
+    const h = 28;
+    canvas.width = w * (window.devicePixelRatio || 1);
+    canvas.height = h * (window.devicePixelRatio || 1);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+    // Simple seeded pseudo-random
+    let s = 0;
+    for (let i = 0; i < seed.length; i++) s = ((s << 5) - s + seed.charCodeAt(i)) | 0;
+    const rand = () => { s = (s * 16807 + 0) % 2147483647; return (s & 0x7fffffff) / 2147483647; };
+
+    const barW = 2, gap = 1.5, total = barW + gap;
+    const bars = Math.floor(w / total);
+    for (let i = 0; i < bars; i++) {
+      const v = 0.15 + rand() * 0.7;
+      const barH = Math.max(2, v * h * 0.85);
+      const x = i * total;
+      const y = (h - barH) / 2;
+      ctx.fillStyle = '#8696a0';
+      ctx.fillRect(x, y, barW, barH);
+    }
+  }
+
+  function _fmtDur(sec) {
+    if (!sec || !isFinite(sec)) return '--:--';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
+  // ═════════════════════════════════════════════════════════
+  //  PRESCRIPTION SEND  (doctor only)
+  // ═════════════════════════════════════════════════════════
+  function sendPrescriptionMessage(prescriptionId) {
+    if (!_cfg.appointmentId || !prescriptionId) return;
+    if (_socket && _connected) {
+      _socket.emit('msg:prescription', {
+        appointment_id: _cfg.appointmentId,
+        prescription_id: prescriptionId,
+      });
+    } else {
+      _showToast('Not connected. Please try again.', 'error');
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════
   //  NOTIFICATION
   // ═════════════════════════════════════════════════════════
   function _playNotification() {
@@ -944,6 +1231,7 @@ const Messaging = (() => {
     switchAppointment,
     viewImage,
     closeImage,
+    sendPrescriptionMessage,
     _retryFailed,
   };
 })();

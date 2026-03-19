@@ -146,6 +146,7 @@
 <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
 <input type="hidden" id="appointmentId" value="{{ appointment.id }}">
 <input type="hidden" id="remoteUserId" value="{{ other.id if other else '' }}">
+<input type="hidden" id="activeCallData" value="{{ (active_call | tojson | e) if active_call else '' }}">
 
 <!-- Socket.IO -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"
@@ -158,10 +159,12 @@
 (function(){
   'use strict';
 
-  const appointmentId = {{ appointment.id }};
-  const currentUserId = {{ current_user.id }};
-  const remoteUserId  = {{ other.id if other else 'null' }};
-  const activeCall    = {{ active_call | tojson if active_call else 'null' }};
+  var appointmentId = parseInt(document.getElementById('appointmentId').value, 10);
+  var currentUserId = parseInt(document.getElementById('currentUserId').value, 10);
+  var _remVal       = document.getElementById('remoteUserId').value;
+  var remoteUserId  = _remVal ? parseInt(_remVal, 10) : null;
+  var _acVal        = document.getElementById('activeCallData').value;
+  var activeCall    = _acVal ? JSON.parse(_acVal) : null;
 
   // State query params
   const params = new URLSearchParams(window.location.search);
