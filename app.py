@@ -1,14 +1,15 @@
 import os
 import warnings
 
-# Select async backend early so monkey patching happens before other imports.
-# Default to threading for quieter startup logs unless ASYNC_MODE explicitly requests eventlet/gevent.
-preferred_async = (os.getenv('ASYNC_MODE') or 'threading').strip().lower()
+# Select async backend early so monkey patching happens before ANY other imports.
+# Default to eventlet for production (gunicorn uses eventlet worker class).
+# Set ASYNC_MODE=threading locally if you don't want eventlet during development.
+preferred_async = (os.getenv('ASYNC_MODE') or 'eventlet').strip().lower()
 debug_mode = os.getenv('ENVIRONMENT', '') == 'development' or os.getenv('FLASK_DEBUG', '') == '1'
 detected_async = None
 
 if preferred_async not in ('eventlet', 'gevent', 'threading'):
-    preferred_async = 'threading'
+    preferred_async = 'eventlet'
 
 if preferred_async == 'eventlet':
     try:
@@ -2402,6 +2403,7 @@ def initialize_database():
                 if existing_user_count == 0:
                     print("⚠ Database appears empty at startup. Verify DATABASE_URL points to your persistent production database.")
             except Exception as count_error:
+                db.session.rollback()
                 print(f"✗ Unable to count users during startup: {count_error}")
 
             # Ensure notifications table has expected columns (hotfix for missing migrations)
@@ -2424,6 +2426,7 @@ def initialize_database():
                 if 'users' in insp.get_table_names():
                     user_cols = [c['name'] for c in insp.get_columns('users')]
                     needed = {
+                        'title': 'VARCHAR(20)',
                         'email_verified': 'BOOLEAN DEFAULT FALSE',
                         'email_verification_token': 'VARCHAR(255)',
                         'password_reset_token': 'VARCHAR(255)',
@@ -2607,6 +2610,7 @@ def initialize_database():
                 post_bootstrap_user_count = User.query.count()
                 print(f"ℹ Startup user count after admin bootstrap: {post_bootstrap_user_count}")
             except Exception as count_error:
+                db.session.rollback()
                 print(f"✗ Unable to count users after bootstrap: {count_error}")
             
         except Exception as e:
@@ -4266,25 +4270,6 @@ def api_doctor_profile_with_reviews(doctor_id: int):
 
 @app.route('/')
 def index():
-    # Get real-time statistics from database
-    stats = {
-        'total_patients': Patient.query.count(),
-        'total_doctors': Doctor.query.count(),
-        'total_appointments': Appointment.query.count(),
-        'satisfaction_rate': 95  # You can calculate this from feedback/reviews if available
-    }
-    
-    # Get available doctors for the doctors section
-    doctors = db.session.query(Doctor, User).join(
-        User, Doctor.user_id == User.id
-    ).filter(Doctor.availability == True).all()
-    
-    # Get recent public testimonials
-    try:
-        testimonials = Testimonial.query.filter_by(is_public=True).order_by(Testimonial.created_at.desc()).limit(6).all()
-    except Exception:
-        testimonials = []
-    
     # If user is authenticated, redirect to appropriate dashboard
     if current_user.is_authenticated:
         if current_user.role == 'admin':
@@ -4295,10 +4280,38 @@ def index():
             return redirect(url_for('customer_care_dashboard'))
         else:
             return redirect(url_for('patient_dashboard'))
-    
-    return render_template('index.html', 
-                         stats=stats, 
-                         doctors=doctors, 
+
+    # Get real-time statistics from database
+    try:
+        stats = {
+            'total_patients': Patient.query.count(),
+            'total_doctors': Doctor.query.count(),
+            'total_appointments': Appointment.query.count(),
+            'satisfaction_rate': 95
+        }
+    except Exception:
+        db.session.rollback()
+        stats = {'total_patients': 0, 'total_doctors': 0, 'total_appointments': 0, 'satisfaction_rate': 95}
+
+    # Get available doctors for the doctors section
+    try:
+        doctors = db.session.query(Doctor, User).join(
+            User, Doctor.user_id == User.id
+        ).filter(Doctor.availability == True).all()
+    except Exception:
+        db.session.rollback()
+        doctors = []
+
+    # Get recent public testimonials
+    try:
+        testimonials = Testimonial.query.filter_by(is_public=True).order_by(Testimonial.created_at.desc()).limit(6).all()
+    except Exception:
+        db.session.rollback()
+        testimonials = []
+
+    return render_template('index.html',
+                         stats=stats,
+                         doctors=doctors,
                          testimonials=testimonials)
 
 # Add this function before creating the app
