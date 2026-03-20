@@ -79,7 +79,7 @@
 {% block content %}
 {% set other = other_user %}
 <div class="vc-page" id="vc-page">
-  <a href="{{ url_for('communication_dashboard') }}" class="vc-back">
+  <a href="{{ url_for('communication_dashboard', appointment_id=appointment.id) }}" class="vc-back">
     <i class="fas fa-arrow-left"></i> Back
   </a>
 
@@ -146,11 +146,10 @@
 <input type="hidden" id="currentUserId" value="{{ current_user.id }}">
 <input type="hidden" id="appointmentId" value="{{ appointment.id }}">
 <input type="hidden" id="remoteUserId" value="{{ other.id if other else '' }}">
-<input type="hidden" id="activeCallData" value="{{ (active_call | tojson | e) if active_call else '' }}">
+<input type="hidden" id="activeCallData" value='{{ (active_call | tojson) if active_call else "" }}'>
 
 <!-- Socket.IO -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"
-        integrity="sha384-ERIFOycl5Hy6bJwSh8bIKH9KPzcDzCLORBBAnGvOIuUyGJEjM/kW0l8+BbwCL2Q"
         crossorigin="anonymous"></script>
 <!-- Voice Call module -->
 <script src="{{ url_for('static', filename='js/voice-call.js') }}"></script>
@@ -258,14 +257,17 @@
       case 'initiating':
         elStatus.textContent = 'Calling...';
         elAvatar.classList.add('ringing');
+        playRingback();
         break;
       case 'ringing':
         elStatus.textContent = 'Ringing...';
+        playRingback();
         break;
       case 'connecting':
         elStatus.textContent = 'Connecting...';
         elAvatar.classList.remove('ringing');
         stopRingtone();
+        stopRingback();
         break;
       case 'connected':
         elStatus.textContent = 'Connected';
@@ -274,6 +276,7 @@
         elRemoteStatus.classList.remove('d-none');
         elAvatar.classList.remove('ringing');
         stopRingtone();
+        stopRingback();
         break;
       case 'on_hold':
         elStatus.textContent = 'On Hold';
@@ -284,6 +287,7 @@
       case 'ended':
         elAvatar.classList.remove('ringing');
         stopRingtone();
+        stopRingback();
         const reason = (detail && detail.reason) || 'ended';
         const messages = {
           busy: 'User is busy',
@@ -300,7 +304,7 @@
         elQuality.classList.add('d-none');
         // Redirect back after short delay
         setTimeout(function() {
-          window.location.href = '/communication?appointment_id=' + appointmentId;
+          window.location.href = '/communication/' + appointmentId;
         }, 2500);
         break;
     }
@@ -381,6 +385,56 @@
     if (_ringtoneOsc) { try { _ringtoneOsc.stop(); } catch(_){} _ringtoneOsc = null; }
     if (_ringtoneCtx) { try { _ringtoneCtx.close(); } catch(_){} _ringtoneCtx = null; }
     _ringtoneGain = null;
+  }
+
+  // ── Outgoing Ringback Tone ──────────────────────────────
+  let _ringbackCtx = null;
+  let _ringbackGain = null;
+  let _ringbackTimer = null;
+  let _ringbackPlaying = false;
+
+  function playRingback() {
+    if (_ringbackPlaying) return;
+    stopRingback();
+    try {
+      _ringbackCtx = new (window.AudioContext || window.webkitAudioContext)();
+      _ringbackGain = _ringbackCtx.createGain();
+      _ringbackGain.gain.value = 0;
+      _ringbackGain.connect(_ringbackCtx.destination);
+      _ringbackPlaying = true;
+
+      function burst() {
+        if (!_ringbackCtx || !_ringbackPlaying) return;
+        // Standard US ringback: 440+480 Hz, 2s on / 4s off
+        var osc1 = _ringbackCtx.createOscillator();
+        var osc2 = _ringbackCtx.createOscillator();
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+        osc1.frequency.value = 440;
+        osc2.frequency.value = 480;
+        osc1.connect(_ringbackGain);
+        osc2.connect(_ringbackGain);
+        // Smooth fade in/out
+        _ringbackGain.gain.cancelScheduledValues(_ringbackCtx.currentTime);
+        _ringbackGain.gain.setValueAtTime(0.0001, _ringbackCtx.currentTime);
+        _ringbackGain.gain.linearRampToValueAtTime(0.12, _ringbackCtx.currentTime + 0.04);
+        _ringbackGain.gain.setValueAtTime(0.12, _ringbackCtx.currentTime + 1.96);
+        _ringbackGain.gain.linearRampToValueAtTime(0.0001, _ringbackCtx.currentTime + 2.0);
+        osc1.start();
+        osc2.start();
+        osc1.stop(_ringbackCtx.currentTime + 2.0);
+        osc2.stop(_ringbackCtx.currentTime + 2.0);
+        _ringbackTimer = setTimeout(burst, 6000);
+      }
+      burst();
+    } catch (e) { console.warn('playRingback failed', e); }
+  }
+
+  function stopRingback() {
+    _ringbackPlaying = false;
+    if (_ringbackTimer) { clearTimeout(_ringbackTimer); _ringbackTimer = null; }
+    if (_ringbackGain) { try { _ringbackGain.gain.value = 0; } catch(_){} _ringbackGain = null; }
+    if (_ringbackCtx) { try { _ringbackCtx.close(); } catch(_){} _ringbackCtx = null; }
   }
 
   // ── Auto-start based on query params ────────────────────

@@ -4268,6 +4268,10 @@ def api_doctor_profile_with_reviews(doctor_id: int):
         app.logger.exception('api_doctor_profile_with_reviews failed: %s', e)
         return jsonify({'success': False, 'error': 'server_error'}), 500
 
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(os.path.join(app.static_folder, 'favicon.ico'), mimetype='image/x-icon')
+
 @app.route('/')
 def index():
     # If user is authenticated, redirect to appropriate dashboard
@@ -11959,12 +11963,141 @@ def appointment_realtime_bootstrap(appointment_id):
 
 # Add this route for getting missed calls
 @app.route('/api/missed_calls')
+@app.route('/api/missed-calls')
 @login_required
 def get_missed_calls():
-    """Get missed calls for current user"""
-    # This would typically query a database table for missed calls
-    # For now, return empty array - implementation would depend on your data model
-    return jsonify([])
+    """Get missed calls for current user, optionally since a timestamp."""
+    since = request.args.get('since')
+    try:
+        query = CallHistory.query.filter(
+            CallHistory.callee_id == current_user.id,
+            CallHistory.end_reason.in_(['missed', 'unanswered', 'timeout'])
+        )
+        if since:
+            from dateutil.parser import isoparse
+            query = query.filter(CallHistory.ended_at >= isoparse(since))
+        calls = query.order_by(CallHistory.ended_at.desc()).limit(20).all()
+        return jsonify({
+            'success': True,
+            'missed_calls': [c.to_dict() for c in calls]
+        })
+    except Exception as e:
+        return jsonify({'success': True, 'missed_calls': []})
+
+
+@app.route('/api/call-logs')
+@login_required
+def api_call_logs():
+    """Paginated call history for current user."""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = min(request.args.get('per_page', 25, type=int), 100)
+        filter_type = request.args.get('filter', 'all')
+        call_type = request.args.get('call_type', '')
+
+        query = CallHistory.query.filter(
+            db.or_(
+                CallHistory.caller_id == current_user.id,
+                CallHistory.callee_id == current_user.id
+            )
+        )
+
+        if filter_type == 'incoming':
+            query = query.filter(CallHistory.callee_id == current_user.id)
+        elif filter_type == 'outgoing':
+            query = query.filter(CallHistory.caller_id == current_user.id)
+        elif filter_type == 'missed':
+            query = query.filter(
+                CallHistory.callee_id == current_user.id,
+                CallHistory.end_reason.in_(['missed', 'unanswered', 'timeout'])
+            )
+        elif filter_type == 'declined':
+            query = query.filter(
+                CallHistory.end_reason.in_(['callee_declined', 'declined', 'rejected'])
+            )
+
+        if call_type in ('voice', 'video'):
+            query = query.filter(CallHistory.call_type == call_type)
+
+        total = query.count()
+        calls = query.order_by(CallHistory.initiated_at.desc()) \
+                      .offset((page - 1) * per_page).limit(per_page).all()
+
+        return jsonify({
+            'success': True,
+            'call_logs': [c.to_dict() for c in calls],
+            'total': total,
+            'page': page,
+            'per_page': per_page
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/call-logs/<int:call_id>')
+@login_required
+def api_call_log_detail(call_id):
+    """Single call detail by ID."""
+    try:
+        call = CallHistory.query.filter_by(id=call_id).first()
+        if not call:
+            return jsonify({'success': False, 'error': 'Not found'}), 404
+        if call.caller_id != current_user.id and call.callee_id != current_user.id and current_user.role != 'admin':
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        return jsonify({'success': True, 'call': call.to_dict()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/call-statistics')
+@login_required
+def api_call_statistics():
+    """Aggregated call statistics for current user over a period."""
+    try:
+        period = request.args.get('period', '30d')
+        days = int(period.replace('d', '')) if period.endswith('d') else 30
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+
+        base = CallHistory.query.filter(
+            db.or_(
+                CallHistory.caller_id == current_user.id,
+                CallHistory.callee_id == current_user.id
+            ),
+            CallHistory.initiated_at >= since
+        )
+
+        total = base.count()
+        incoming = base.filter(CallHistory.callee_id == current_user.id).count()
+        outgoing = base.filter(CallHistory.caller_id == current_user.id).count()
+        missed = base.filter(
+            CallHistory.callee_id == current_user.id,
+            CallHistory.end_reason.in_(['missed', 'unanswered', 'timeout'])
+        ).count()
+        completed = base.filter(CallHistory.status == 'ended', CallHistory.duration > 0).count()
+
+        avg_duration = db.session.query(db.func.avg(CallHistory.duration)).filter(
+            db.or_(
+                CallHistory.caller_id == current_user.id,
+                CallHistory.callee_id == current_user.id
+            ),
+            CallHistory.initiated_at >= since,
+            CallHistory.duration > 0
+        ).scalar() or 0
+
+        return jsonify({
+            'success': True,
+            'statistics': {
+                'total': total,
+                'incoming': incoming,
+                'outgoing': outgoing,
+                'missed': missed,
+                'completed': completed,
+                'avg_duration': round(float(avg_duration)),
+                'period_days': days
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/presence/online-users', methods=['GET'])
@@ -12912,6 +13045,19 @@ def handle_reject_voice_call(data):
     """Callee declines a voice call."""
     payload = dict(data or {})
     payload.setdefault('reason', 'rejected')
+    # Also emit explicit call_rejected so frontend dedicated handler fires
+    call_id = payload.get('call_id')
+    appointment_id = payload.get('appointment_id')
+    if call_id or appointment_id:
+        _, call = find_active_call(call_id=call_id, appointment_id=appointment_id)
+        if call:
+            caller_id = call.get('caller') or call.get('caller_id')
+            if caller_id:
+                _emit_to_user(caller_id, 'call_rejected', {
+                    'call_id': call.get('id') or call_id,
+                    'appointment_id': appointment_id,
+                    'reason': 'rejected',
+                })
     return handle_end_voice_call(payload)
 
 

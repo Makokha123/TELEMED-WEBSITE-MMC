@@ -29,7 +29,7 @@ const Messaging = (() => {
 
   // ── DOM refs (cached on init) ────────────────────────────
   let $chatBody, $msgInput, $sendBtn, $typingIndicator, $replyBar;
-  let $presenceDot, $presenceText, $connStatus, $scrollBtn;
+  let $presenceDot, $presenceText, $connStatus;
   let $emojiBtn, $fileInput, $recordBtn;
 
   // ═════════════════════════════════════════════════════════
@@ -56,7 +56,6 @@ const Messaging = (() => {
     $presenceDot     = document.getElementById('presence-dot');
     $presenceText    = document.getElementById('presence-text');
     $connStatus      = document.getElementById('connection-status');
-    $scrollBtn       = document.getElementById('scroll-down-btn');
     $emojiBtn        = document.getElementById('emoji-btn');
     $fileInput       = document.getElementById('file-input');
     $recordBtn       = document.getElementById('record-btn');
@@ -74,7 +73,6 @@ const Messaging = (() => {
       $msgInput.addEventListener('input', _onInputChange);
     }
     if ($chatBody) $chatBody.addEventListener('scroll', _onScroll);
-    if ($scrollBtn) $scrollBtn.addEventListener('click', () => _scrollToBottom(true));
     if ($fileInput) $fileInput.addEventListener('change', _handleFileUpload);
     if ($emojiBtn) $emojiBtn.addEventListener('click', _toggleEmojiPicker);
     if ($recordBtn) $recordBtn.addEventListener('click', _toggleRecording);
@@ -847,10 +845,6 @@ const Messaging = (() => {
     if (!$chatBody) return;
     const threshold = 60;
     _atBottom = ($chatBody.scrollHeight - $chatBody.scrollTop - $chatBody.clientHeight) < threshold;
-
-    if ($scrollBtn) {
-      $scrollBtn.classList.toggle('d-none', _atBottom);
-    }
 
     // Load more on scroll to top
     if ($chatBody.scrollTop < 50 && _hasMore && !_loadingMore) {

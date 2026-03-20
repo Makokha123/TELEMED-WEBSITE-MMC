@@ -43,6 +43,8 @@
   let _reconnectAttempts = 0;
   const MAX_RECONNECT = 5;
   const RECONNECT_DELAY = 2000;
+  let _ringTimeoutTimer = null;
+  const RING_TIMEOUT_MS = 65000; // 65s frontend safety (server fires at 60s)
   let _audioCtx    = null;
   let _analyser    = null;
   let _levelFrameId= null;
@@ -84,6 +86,18 @@
         appointment_id: _appointmentId,
         call_type: 'voice',
       });
+      // Frontend safety timeout — if server doesn't end the call within 65s, end it here
+      _clearRingTimeout();
+      _ringTimeoutTimer = setTimeout(function() {
+        if (_state === State.INITIATING || _state === State.RINGING) {
+          _socket.emit('end_voice_call', {
+            call_id: _callId,
+            appointment_id: _appointmentId,
+            reason: 'unanswered',
+          });
+          _cleanup('unanswered');
+        }
+      }, RING_TIMEOUT_MS);
     },
 
     /** Accept an incoming call */
@@ -194,6 +208,7 @@
 
     _socket.on('voice_call_accepted', (d) => {
       if (d.appointment_id == _appointmentId || d.call_id === _callId) {
+        _clearRingTimeout();
         _setState(State.CONNECTING);
         _startWebRTC(true);
       }
@@ -210,12 +225,12 @@
 
     _socket.on('voice_call_ended', (d) => {
       if (d.appointment_id == _appointmentId || d.call_id === _callId) {
-        _cleanup();
+        _cleanup(d.reason || 'ended');
       }
     });
     _socket.on('call_ended', (d) => {
       if (d.appointment_id == _appointmentId || d.call_id === _callId) {
-        _cleanup();
+        _cleanup(d.reason || 'ended');
       }
     });
 
@@ -515,7 +530,12 @@
     if (_callbacks.onError) _callbacks.onError(msg);
   }
 
+  function _clearRingTimeout() {
+    if (_ringTimeoutTimer) { clearTimeout(_ringTimeoutTimer); _ringTimeoutTimer = null; }
+  }
+
   function _cleanup(reason) {
+    _clearRingTimeout();
     _stopTimer();
     _stopQualityMonitor();
     if (_levelFrameId) { cancelAnimationFrame(_levelFrameId); _levelFrameId = null; }

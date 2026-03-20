@@ -396,7 +396,9 @@ def upload_file():
         return jsonify({'success': False, 'error': 'Empty file'}), 400
 
     mime = f.content_type or 'application/octet-stream'
-    if mime not in ALLOWED_MIME_TYPES:
+    # Strip codec parameters (e.g. "audio/webm;codecs=opus" → "audio/webm")
+    base_mime = mime.split(';')[0].strip()
+    if base_mime not in ALLOWED_MIME_TYPES:
         return jsonify({'success': False, 'error': 'File type not allowed'}), 400
 
     # Idempotency

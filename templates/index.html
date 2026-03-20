@@ -159,8 +159,8 @@ async function fetchTestimonials() {
 
 // Initial load
 fetchTestimonials();
-// Refresh every 20 seconds
-setInterval(fetchTestimonials, 20000);
+// Refresh every 5 minutes (testimonials rarely change)
+setInterval(fetchTestimonials, 300000);
 </script>
 
 <!-- Stats Section -->
