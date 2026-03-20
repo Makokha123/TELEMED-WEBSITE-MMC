@@ -81,6 +81,9 @@
 .rx-dosage,.rx-inst{font-size:13px;color:#374151;margin-bottom:2px}
 .rx-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 .rx-actions .btn{font-size:12px;padding:3px 8px}
+.rx-dosage-detail{font-size:12px;color:#4a5568}
+.rx-inst-detail{font-size:12px;color:#6b7280;margin-top:4px}
+.rx-unavailable{font-size:12px}
 /* ── Prescription send panel (doctors) ───────────────────── */
 .prescription-send-panel{background:#f0fdf4;border-top:1px solid #86efac;padding:8px 16px;display:flex;align-items:center;gap:10px;z-index:2;position:relative}
 .prescription-send-panel select{max-width:280px;font-size:13px}
@@ -317,13 +320,25 @@
           <span class="vn-duration">--:--</span>
         </div>
         {% elif msg.message_type == 'prescription' %}
-        {% set rx = msg.content|default('{}',true) %}
+        {% set rxd = msg.content|from_json %}
         <div class="msg-prescription-card">
           <div class="rx-header"><i class="fas fa-prescription"></i> Prescription</div>
-          <div class="rx-med">{{ rx }}</div>
+          {% if rxd is mapping and rxd.medication %}
+          <div class="rx-med">{{ rxd.medication }}</div>
+          <div class="rx-dosage-detail">{{ rxd.dosage|default('') }}</div>
+          {% if rxd.instructions %}<div class="rx-inst-detail">{{ rxd.instructions }}</div>{% endif %}
           <div class="rx-actions">
-            <a href="#" class="btn btn-sm btn-outline-primary" target="_blank"><i class="fas fa-eye me-1"></i>View</a>
+            {% if rxd.id %}
+            <a href="{{ url_for('view_prescription', prescription_id=rxd.id) }}" class="btn btn-sm btn-outline-primary" target="_blank"><i class="fas fa-eye me-1"></i>View</a>
+            <a href="{{ url_for('download_prescription_pdf', prescription_id=rxd.id) }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-file-pdf me-1"></i>PDF</a>
+            {% endif %}
           </div>
+          {% else %}
+          <div class="rx-med">Prescription</div>
+          <div class="rx-actions">
+            <span class="text-muted rx-unavailable">Details unavailable</span>
+          </div>
+          {% endif %}
         </div>
         {% elif msg.message_type == 'document' and (msg.encrypted_file_path or msg.encrypted_file_blob) %}
         <div class="msg-file">

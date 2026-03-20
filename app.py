@@ -4326,6 +4326,17 @@ def to_datetime(value):
 app.jinja_env.filters['datetimeformat'] = datetimeformat
 app.jinja_env.filters['to_datetime'] = to_datetime
 
+def _from_json(value):
+    """Parse a JSON string into a dict/list."""
+    if not value or not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        return value
+
+app.jinja_env.filters['from_json'] = _from_json
+
 # Dedicated About page
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
@@ -5140,6 +5151,32 @@ def patient_appointment():
                          pending_confirmation=appointments_data.get('pending_confirmation', []),
                          completed=appointments_data.get('completed', []),
                          rescheduled=appointments_data.get('rescheduled', []))
+
+# ── Patient My Prescriptions ─────────────────────────────────────────
+@app.route('/patient/my-prescriptions')
+@login_required
+def patient_my_prescriptions():
+    if current_user.role != 'patient':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+
+    patient = current_user.patient_profile
+    if not patient:
+        flash('Patient profile not found', 'error')
+        return redirect(url_for('patient_dashboard'))
+
+    prescriptions = (
+        Prescription.query
+        .filter_by(patient_id=patient.id)
+        .order_by(Prescription.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        'patient/my_prescriptions.html',
+        prescriptions=prescriptions,
+        patient=patient
+    )
 
 @app.route('/patient/edit_profile', methods=['GET', 'POST'])
 @login_required

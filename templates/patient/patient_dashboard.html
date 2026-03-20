@@ -134,6 +134,17 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-4">
+            <a href="{{ url_for('patient_my_prescriptions') }}" class="text-decoration-none">
+                <div class="card quick-action-card border-left-warning">
+                    <div class="card-body">
+                        <i class="fas fa-prescription fa-3x text-danger mb-3"></i>
+                        <h5 class="card-title">My Prescriptions</h5>
+                        <p class="card-text text-muted">View and download your prescriptions</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
             <div class="card quick-action-card border-left-info cursor-pointer" data-bs-toggle="modal" data-bs-target="#findDoctorsModal">
                 <div class="card-body">
                     <i class="fas fa-user-md fa-3x text-warning mb-3"></i>

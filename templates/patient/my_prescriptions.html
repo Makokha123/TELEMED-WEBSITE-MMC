@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}My Prescriptions - MAKOKHA MEDICAL CENTRE{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Page header ───────────────────────────────────────── */
+.rx-page-header{background:linear-gradient(135deg,#0d6efd,#0dcaf0);color:#fff;border-radius:14px;padding:28px 32px;margin-bottom:28px}
+.rx-page-header h2{font-weight:700;margin:0 0 4px}
+.rx-page-header p{opacity:.85;margin:0;font-size:15px}
+
+/* ── Stats row ─────────────────────────────────────────── */
+.rx-stat-card{border:none;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);text-align:center;padding:20px 12px;transition:transform .2s}
+.rx-stat-card:hover{transform:translateY(-3px)}
+.rx-stat-value{font-size:1.75rem;font-weight:700;line-height:1.1}
+.rx-stat-label{font-size:13px;color:#6c757d;margin-top:4px}
+
+/* ── Toolbar / filter bar ──────────────────────────────── */
+.rx-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:20px}
+.rx-toolbar .form-control,.rx-toolbar .form-select{max-width:220px;font-size:14px;border-radius:8px}
+@media(max-width:575px){.rx-toolbar .form-control,.rx-toolbar .form-select{max-width:100%;flex:1 1 100%}}
+
+/* ── Prescription cards ────────────────────────────────── */
+.rx-card{border:none;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);overflow:hidden;transition:box-shadow .2s,transform .2s}
+.rx-card:hover{box-shadow:0 6px 20px rgba(0,0,0,.1);transform:translateY(-2px)}
+.rx-card-accent{width:5px;min-height:100%}
+.rx-card-accent.active{background:linear-gradient(180deg,#198754,#20c997)}
+.rx-card-accent.expired{background:linear-gradient(180deg,#dc3545,#fd7e14)}
+.rx-card-accent.dispensed{background:linear-gradient(180deg,#0d6efd,#6610f2)}
+.rx-card .card-body{padding:18px 20px}
+.rx-med-name{font-size:16px;font-weight:700;color:#1a1a2e}
+.rx-dosage{font-size:13px;color:#6c757d;margin-top:2px}
+.rx-instructions{font-size:13.5px;color:#495057;margin-top:8px;line-height:1.5}
+.rx-meta{font-size:12.5px;color:#6c757d}
+.rx-meta i{width:16px;text-align:center}
+.rx-status-badge{font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px}
+.rx-actions .btn{font-size:13px;padding:5px 12px;border-radius:8px}
+
+/* ── Empty state ───────────────────────────────────────── */
+.rx-empty{text-align:center;padding:60px 20px}
+.rx-empty i{font-size:4rem;color:#dee2e6;margin-bottom:16px}
+.rx-empty h5{color:#6c757d}
+.rx-empty p{color:#adb5bd;max-width:420px;margin:8px auto 0}
+.rx-stat-dispensed{color:#6610f2}
+.rx-toolbar-search{max-width:280px}
+.rx-info-col{min-width:200px}
+.rx-badge-dispensed{background:#6610f2}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set total   = prescriptions|length %}
+{% set active  = prescriptions|selectattr('is_expired','false')|rejectattr('dispensed_at')|list|length %}
+{% set expired = prescriptions|selectattr('is_expired')|list|length %}
+{% set dispensed = prescriptions|selectattr('dispensed_at')|list|length %}
+
+<div class="container mt-4 mb-5">
+
+  <!-- Page header -->
+  <div class="rx-page-header">
+    <h2><i class="fas fa-prescription me-2"></i>My Prescriptions</h2>
+    <p>View, download and track all prescriptions from your consultations</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card rx-stat-card">
+        <div class="rx-stat-value text-primary">{{ total }}</div>
+        <div class="rx-stat-label">Total</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card rx-stat-card">
+        <div class="rx-stat-value text-success">{{ active }}</div>
+        <div class="rx-stat-label">Active</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card rx-stat-card">
+        <div class="rx-stat-value text-danger">{{ expired }}</div>
+        <div class="rx-stat-label">Expired</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card rx-stat-card">
+        <div class="rx-stat-value rx-stat-dispensed">{{ dispensed }}</div>
+        <div class="rx-stat-label">Dispensed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="rx-toolbar">
+    <div class="input-group rx-toolbar-search">
+      <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
+      <input type="text" class="form-control border-start-0" id="rx-search" placeholder="Search medication..." />
+    </div>
+    <select class="form-select" id="rx-filter-status" title="Filter by status">
+      <option value="all">All Statuses</option>
+      <option value="active">Active</option>
+      <option value="expired">Expired</option>
+      <option value="dispensed">Dispensed</option>
+    </select>
+  </div>
+
+  <!-- Prescription list -->
+  {% if prescriptions %}
+  <div class="row g-3" id="rx-list">
+    {% for p in prescriptions %}
+    {% set is_dispensed = p.dispensed_at is not none %}
+    {% set status = 'dispensed' if is_dispensed else ('expired' if p.is_expired else 'active') %}
+    <div class="col-12 rx-item" data-status="{{ status }}" data-med="{{ p.medication|lower }}">
+      <div class="card rx-card">
+        <div class="d-flex">
+          <div class="rx-card-accent {{ status }}"></div>
+          <div class="card-body w-100">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+              <!-- Left info -->
+              <div class="flex-grow-1 rx-info-col">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <span class="rx-med-name">{{ p.medication }}</span>
+                  {% if status == 'active' %}
+                  <span class="badge bg-success rx-status-badge">Active</span>
+                  {% elif status == 'expired' %}
+                  <span class="badge bg-danger rx-status-badge">Expired</span>
+                  {% else %}
+                  <span class="badge rx-status-badge rx-badge-dispensed">Dispensed</span>
+                  {% endif %}
+                </div>
+                <div class="rx-dosage"><i class="fas fa-pills me-1"></i>{{ p.dosage }}</div>
+                {% if p.instructions %}
+                <div class="rx-instructions"><i class="fas fa-clipboard-list me-1 text-muted"></i>{{ p.instructions }}</div>
+                {% endif %}
+                <div class="d-flex flex-wrap gap-3 mt-2">
+                  <span class="rx-meta"><i class="fas fa-user-md me-1"></i>Dr. {{ p.doctor.user.first_name }} {{ p.doctor.user.last_name }}</span>
+                  <span class="rx-meta"><i class="fas fa-calendar-alt me-1"></i>{{ p.created_at.strftime('%b %d, %Y') }}</span>
+                  {% if p.appointment %}
+                  <span class="rx-meta"><i class="fas fa-stethoscope me-1"></i>Appt #{{ p.appointment_id }}</span>
+                  {% endif %}
+                  {% if is_dispensed %}
+                  <span class="rx-meta"><i class="fas fa-check-circle me-1 text-primary"></i>Dispensed {{ p.dispensed_at.strftime('%b %d, %Y') }}</span>
+                  {% endif %}
+                </div>
+              </div>
+              <!-- Actions -->
+              <div class="rx-actions d-flex gap-2 flex-shrink-0 align-self-center">
+                <a href="{{ url_for('view_prescription', prescription_id=p.id) }}" class="btn btn-sm btn-outline-primary" title="View"><i class="fas fa-eye me-1"></i>View</a>
+                <a href="{{ url_for('print_prescription', prescription_id=p.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank" title="Print"><i class="fas fa-print me-1"></i>Print</a>
+                <a href="{{ url_for('download_prescription_pdf', prescription_id=p.id) }}" class="btn btn-sm btn-primary" title="Download PDF"><i class="fas fa-file-pdf me-1"></i>PDF</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="rx-empty">
+    <i class="fas fa-prescription-bottle-alt d-block"></i>
+    <h5>No prescriptions yet</h5>
+    <p>Prescriptions from your doctor consultations will appear here. Book an appointment to get started.</p>
+    <a href="{{ url_for('patient_appointment') }}" class="btn btn-primary mt-3"><i class="fas fa-calendar-plus me-2"></i>Book Appointment</a>
+  </div>
+  {% endif %}
+
+  <!-- No-results state (hidden by default) -->
+  <div class="rx-empty d-none" id="rx-no-results">
+    <i class="fas fa-search d-block"></i>
+    <h5>No matching prescriptions</h5>
+    <p>Try adjusting your search or filter criteria.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const search = document.getElementById('rx-search');
+  const filter = document.getElementById('rx-filter-status');
+  const list   = document.getElementById('rx-list');
+  const noRes  = document.getElementById('rx-no-results');
+  if (!list) return;
+  const items = Array.from(list.querySelectorAll('.rx-item'));
+
+  function applyFilters(){
+    const q = (search.value||'').trim().toLowerCase();
+    const s = filter.value;
+    let visible = 0;
+    items.forEach(function(el){
+      const matchMed = !q || el.dataset.med.includes(q);
+      const matchStatus = s === 'all' || el.dataset.status === s;
+      const show = matchMed && matchStatus;
+      el.classList.toggle('d-none', !show);
+      if(show) visible++;
+    });
+    if(noRes) noRes.classList.toggle('d-none', visible > 0);
+  }
+
+  search.addEventListener('input', applyFilters);
+  filter.addEventListener('change', applyFilters);
+})();
+</script>
+{% endblock %}
